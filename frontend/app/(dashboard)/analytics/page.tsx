@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { analyticsApi, campaignsApi } from '@/lib/api'
 import { SendLog, PaginatedResponse } from '@/lib/types'
@@ -10,11 +10,11 @@ import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatDateTime, formatNumber } from '@/lib/utils'
-import { Search, BarChart3, RefreshCw, Download, AlertCircle } from 'lucide-react'
+import { Search, BarChart3, RefreshCw, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'next/navigation'
 
-export default function AnalyticsPage() {
+function AnalyticsContent() {
   const searchParams = useSearchParams()
   const defaultCampaign = searchParams.get('campaign') || ''
 
@@ -220,5 +220,21 @@ export default function AnalyticsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function AnalyticsPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6 space-y-6">
+        <div className="h-8 w-48 skeleton rounded-lg" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <div key={i} className="h-20 skeleton rounded-xl" />)}
+        </div>
+        <div className="h-96 skeleton rounded-xl" />
+      </div>
+    }>
+      <AnalyticsContent />
+    </Suspense>
   )
 }
