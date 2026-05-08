@@ -1,0 +1,350 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  MailFlow — Full Production Setup Script
+#  Backend:  Gunicorn + Django  → systemd → port 9001
+#  Frontend: Next.js            → systemd → port 3000
+#  Proxy:    Nginx (optional)   → port 80 / 443
+# =============================================================================
+set -e
+
+# ─── Colours ─────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+info()    { echo -e "${BLUE}[INFO]${NC}  $*"; }
+success() { echo -e "${GREEN}[OK]${NC}    $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+error()   { echo -e "${RED}[ERR]${NC}   $*"; exit 1; }
+
+# ─── Configuration (edit before running) ─────────────────────────────────────
+BACKEND_PORT=9001
+FRONTEND_PORT=3000
+DOMAIN=""                        # e.g. "mail.example.com" — leave blank to skip nginx
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$PROJECT_DIR/backend"
+FRONTEND_DIR="$PROJECT_DIR/frontend"
+VENV_DIR="$BACKEND_DIR/venv"
+SERVICE_USER="$(whoami)"
+PYTHON_BIN="python3"
+NODE_BIN="node"
+NPM_BIN="npm"
+
+# ─── Banner ──────────────────────────────────────────────────────────────────
+echo -e "${CYAN}"
+echo "  ███╗   ███╗ █████╗ ██╗██╗     ███████╗██╗      ██████╗ ██╗    ██╗"
+echo "  ████╗ ████║██╔══██╗██║██║     ██╔════╝██║     ██╔═══██╗██║    ██║"
+echo "  ██╔████╔██║███████║██║██║     █████╗  ██║     ██║   ██║██║ █╗ ██║"
+echo "  ██║╚██╔╝██║██╔══██║██║██║     ██╔══╝  ██║     ██║   ██║██║███╗██║"
+echo "  ██║ ╚═╝ ██║██║  ██║██║███████╗██║     ███████╗╚██████╔╝╚███╔███╔╝"
+echo "  ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝ "
+echo -e "${NC}"
+echo -e "${GREEN}  Email Marketing Platform — Production Setup${NC}"
+echo -e "  Backend  → http://localhost:${BACKEND_PORT}"
+echo -e "  Frontend → http://localhost:${FRONTEND_PORT}"
+echo ""
+
+# ─── Preflight checks ────────────────────────────────────────────────────────
+info "Checking prerequisites..."
+
+command -v $PYTHON_BIN >/dev/null 2>&1 || error "Python 3 not found. Install it first."
+command -v $NODE_BIN   >/dev/null 2>&1 || error "Node.js not found. Install it first (v18+)."
+command -v $NPM_BIN    >/dev/null 2>&1 || error "npm not found."
+command -v systemctl   >/dev/null 2>&1 || error "systemctl not found. This script requires a systemd-based Linux system."
+
+PYTHON_VER=$($PYTHON_BIN -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+NODE_VER=$($NODE_BIN -e "process.stdout.write(process.version)")
+info "Python $PYTHON_VER  |  Node $NODE_VER"
+
+# ─── 1. Backend — Python virtual environment ──────────────────────────────────
+echo ""
+info "━━━ [1/7] Setting up Python virtual environment..."
+$PYTHON_BIN -m venv "$VENV_DIR"
+source "$VENV_DIR/bin/activate"
+pip install --upgrade pip --quiet
+pip install -r "$BACKEND_DIR/requirements.txt" --quiet
+success "Python dependencies installed."
+
+# ─── 2. Backend — Environment file ───────────────────────────────────────────
+echo ""
+info "━━━ [2/7] Configuring backend environment..."
+ENV_FILE="$BACKEND_DIR/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
+    ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    cat > "$ENV_FILE" <<EOF
+SECRET_KEY=${SECRET_KEY}
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,${DOMAIN}
+DATABASE_URL=sqlite:///db.sqlite3
+REDIS_URL=redis://localhost:6379/0
+CORS_ALLOWED_ORIGINS=http://localhost:${FRONTEND_PORT}$([ -n "$DOMAIN" ] && echo ",https://${DOMAIN}")
+ENCRYPTION_KEY=${ENCRYPTION_KEY}
+EOF
+    success "Created .env with generated keys."
+else
+    warn ".env already exists — skipping generation."
+fi
+
+# ─── 3. Backend — Migrations & static files ──────────────────────────────────
+echo ""
+info "━━━ [3/7] Running database migrations..."
+cd "$BACKEND_DIR"
+python manage.py makemigrations --no-input 2>/dev/null || true
+python manage.py migrate --no-input
+python manage.py collectstatic --no-input --clear -v 0
+success "Database migrated and static files collected."
+
+# Prompt to create superuser
+echo ""
+read -p "  Create Django superuser now? [Y/n] " CREATE_SU
+if [[ "$CREATE_SU" != "n" && "$CREATE_SU" != "N" ]]; then
+    python manage.py createsuperuser
+fi
+
+# ─── 4. Backend — systemd service (Gunicorn) ─────────────────────────────────
+echo ""
+info "━━━ [4/7] Creating systemd service for backend (port ${BACKEND_PORT})..."
+
+sudo tee /etc/systemd/system/mailflow-backend.service > /dev/null <<EOF
+[Unit]
+Description=MailFlow Backend (Gunicorn + Django)
+After=network.target
+
+[Service]
+Type=notify
+User=${SERVICE_USER}
+WorkingDirectory=${BACKEND_DIR}
+ExecStart=${VENV_DIR}/bin/gunicorn \\
+    email_marketing.wsgi:application \\
+    --bind 0.0.0.0:${BACKEND_PORT} \\
+    --workers 4 \\
+    --worker-class sync \\
+    --timeout 120 \\
+    --access-logfile ${BACKEND_DIR}/logs/access.log \\
+    --error-logfile  ${BACKEND_DIR}/logs/error.log \\
+    --log-level info
+EnvironmentFile=${ENV_FILE}
+Restart=on-failure
+RestartSec=5s
+StandardOutput=append:${BACKEND_DIR}/logs/stdout.log
+StandardError=append:${BACKEND_DIR}/logs/stderr.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+mkdir -p "$BACKEND_DIR/logs"
+sudo systemctl daemon-reload
+sudo systemctl enable mailflow-backend
+sudo systemctl restart mailflow-backend
+sleep 2
+
+if systemctl is-active --quiet mailflow-backend; then
+    success "mailflow-backend service running on port ${BACKEND_PORT}."
+else
+    warn "Service may not have started. Check: sudo journalctl -u mailflow-backend -n 30"
+fi
+
+# ─── 5. Frontend — install & build ───────────────────────────────────────────
+echo ""
+info "━━━ [5/7] Installing frontend dependencies..."
+cd "$FRONTEND_DIR"
+
+# Point frontend at the backend
+FE_ENV="$FRONTEND_DIR/.env.local"
+cat > "$FE_ENV" <<EOF
+NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}
+EOF
+[ -n "$DOMAIN" ] && sed -i "s|localhost:${BACKEND_PORT}|https://${DOMAIN}|" "$FE_ENV"
+
+$NPM_BIN install --prefer-offline --quiet
+info "Building Next.js for production..."
+$NPM_BIN run build
+success "Frontend built."
+
+# ─── 6. Frontend — systemd service (Next.js) ─────────────────────────────────
+echo ""
+info "━━━ [6/7] Creating systemd service for frontend (port ${FRONTEND_PORT})..."
+
+sudo tee /etc/systemd/system/mailflow-frontend.service > /dev/null <<EOF
+[Unit]
+Description=MailFlow Frontend (Next.js)
+After=network.target mailflow-backend.service
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${FRONTEND_DIR}
+Environment=PORT=${FRONTEND_PORT}
+Environment=NODE_ENV=production
+ExecStart=$(which $NODE_BIN) node_modules/.bin/next start --port ${FRONTEND_PORT}
+Restart=on-failure
+RestartSec=5s
+StandardOutput=append:${FRONTEND_DIR}/.next/stdout.log
+StandardError=append:${FRONTEND_DIR}/.next/stderr.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable mailflow-frontend
+sudo systemctl restart mailflow-frontend
+sleep 2
+
+if systemctl is-active --quiet mailflow-frontend; then
+    success "mailflow-frontend service running on port ${FRONTEND_PORT}."
+else
+    warn "Service may not have started. Check: sudo journalctl -u mailflow-frontend -n 30"
+fi
+
+# ─── 7. Nginx reverse proxy (optional) ───────────────────────────────────────
+if [ -n "$DOMAIN" ] && command -v nginx >/dev/null 2>&1; then
+    echo ""
+    info "━━━ [7/7] Configuring Nginx reverse proxy for ${DOMAIN}..."
+
+    sudo tee /etc/nginx/sites-available/mailflow > /dev/null <<EOF
+upstream mailflow_backend  { server 127.0.0.1:${BACKEND_PORT}; }
+upstream mailflow_frontend { server 127.0.0.1:${FRONTEND_PORT}; }
+
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    client_max_body_size 20M;
+
+    # API → Django
+    location /api/ {
+        proxy_pass http://mailflow_backend;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # Django admin
+    location /admin/ {
+        proxy_pass http://mailflow_backend;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # Django static files
+    location /static/ {
+        alias ${BACKEND_DIR}/staticfiles/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Next.js frontend
+    location / {
+        proxy_pass http://mailflow_frontend;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           \$http_upgrade;
+        proxy_set_header Connection        "upgrade";
+    }
+}
+EOF
+
+    sudo ln -sf /etc/nginx/sites-available/mailflow /etc/nginx/sites-enabled/mailflow
+    sudo nginx -t && sudo systemctl reload nginx
+    success "Nginx configured for ${DOMAIN}."
+
+    # Optional: auto SSL with certbot
+    if command -v certbot >/dev/null 2>&1; then
+        read -p "  Setup HTTPS with Let's Encrypt? [Y/n] " DO_SSL
+        if [[ "$DO_SSL" != "n" && "$DO_SSL" != "N" ]]; then
+            sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
+                -m "admin@${DOMAIN}" --redirect
+            success "SSL certificate installed."
+        fi
+    else
+        warn "certbot not found — skipping SSL. Install with: sudo apt install certbot python3-certbot-nginx"
+    fi
+else
+    info "━━━ [7/7] Skipping Nginx (DOMAIN not set or nginx not installed)."
+fi
+
+# ─── Celery worker (optional) ────────────────────────────────────────────────
+if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
+    info "Redis detected — creating Celery worker service..."
+
+    sudo tee /etc/systemd/system/mailflow-celery.service > /dev/null <<EOF
+[Unit]
+Description=MailFlow Celery Worker
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${BACKEND_DIR}
+ExecStart=${VENV_DIR}/bin/celery -A email_marketing worker -l info --concurrency=2
+EnvironmentFile=${ENV_FILE}
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:${BACKEND_DIR}/logs/celery.log
+StandardError=append:${BACKEND_DIR}/logs/celery-err.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo tee /etc/systemd/system/mailflow-beat.service > /dev/null <<EOF
+[Unit]
+Description=MailFlow Celery Beat (Scheduler)
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=${SERVICE_USER}
+WorkingDirectory=${BACKEND_DIR}
+ExecStart=${VENV_DIR}/bin/celery -A email_marketing beat -l info \
+    --scheduler django_celery_beat.schedulers:DatabaseScheduler
+EnvironmentFile=${ENV_FILE}
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable mailflow-celery mailflow-beat
+    sudo systemctl restart mailflow-celery mailflow-beat
+    success "Celery worker + beat scheduler started."
+else
+    warn "Redis not running — Celery (campaign sending) will be synchronous."
+    warn "Install Redis: sudo apt install redis-server && sudo systemctl start redis"
+fi
+
+# ─── Summary ─────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}  MailFlow is ready!${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${CYAN}Frontend${NC}   →  http://localhost:${FRONTEND_PORT}"
+echo -e "  ${CYAN}Backend API${NC} →  http://localhost:${BACKEND_PORT}/api/"
+echo -e "  ${CYAN}Django Admin${NC}→  http://localhost:${BACKEND_PORT}/admin/"
+[ -n "$DOMAIN" ] && echo -e "  ${CYAN}Domain${NC}     →  https://${DOMAIN}"
+echo ""
+echo -e "  ${YELLOW}Manage services:${NC}"
+echo -e "    sudo systemctl status  mailflow-backend"
+echo -e "    sudo systemctl restart mailflow-backend"
+echo -e "    sudo systemctl status  mailflow-frontend"
+echo -e "    sudo systemctl restart mailflow-frontend"
+echo -e "    sudo journalctl -u mailflow-backend  -f   # live logs"
+echo -e "    sudo journalctl -u mailflow-frontend -f   # live logs"
+echo ""
+echo -e "  ${YELLOW}Logs:${NC}"
+echo -e "    ${BACKEND_DIR}/logs/access.log"
+echo -e "    ${BACKEND_DIR}/logs/error.log"
+echo -e "    ${BACKEND_DIR}/logs/celery.log"
+echo ""
