@@ -42,21 +42,79 @@ echo -e "  Backend  → http://localhost:${BACKEND_PORT}"
 echo -e "  Frontend → http://localhost:${FRONTEND_PORT}"
 echo ""
 
-# ─── Preflight checks ────────────────────────────────────────────────────────
+# ─── Preflight checks & auto-install ─────────────────────────────────────────
 info "Checking prerequisites..."
 
-command -v $PYTHON_BIN >/dev/null 2>&1 || error "Python 3 not found. Install it first."
-command -v $NODE_BIN   >/dev/null 2>&1 || error "Node.js not found. Install it first (v18+)."
-command -v $NPM_BIN    >/dev/null 2>&1 || error "npm not found."
-command -v systemctl   >/dev/null 2>&1 || error "systemctl not found. This script requires a systemd-based Linux system."
+command -v systemctl >/dev/null 2>&1 || error "systemctl not found. This script requires a systemd-based Linux system."
+
+# Detect package manager
+if command -v apt-get >/dev/null 2>&1; then
+    PKG_MGR="apt-get"
+elif command -v dnf >/dev/null 2>&1; then
+    PKG_MGR="dnf"
+elif command -v yum >/dev/null 2>&1; then
+    PKG_MGR="yum"
+else
+    PKG_MGR=""
+fi
+
+# ── Auto-install Python 3 ──────────────────────────────────────────────────
+if ! command -v $PYTHON_BIN >/dev/null 2>&1; then
+    warn "Python 3 not found — installing..."
+    if [ "$PKG_MGR" = "apt-get" ]; then
+        sudo apt-get update -qq
+        sudo apt-get install -y python3 python3-pip python3-venv
+    elif [ "$PKG_MGR" = "dnf" ] || [ "$PKG_MGR" = "yum" ]; then
+        sudo $PKG_MGR install -y python3 python3-pip
+    else
+        error "Cannot auto-install Python 3. Please install it manually and re-run."
+    fi
+fi
+command -v $PYTHON_BIN >/dev/null 2>&1 || error "Python 3 installation failed."
+
+# ── Auto-install Node.js v20 LTS ──────────────────────────────────────────
+if ! command -v $NODE_BIN >/dev/null 2>&1; then
+    warn "Node.js not found — installing Node.js 20 LTS via NodeSource..."
+    if [ "$PKG_MGR" = "apt-get" ]; then
+        sudo apt-get install -y ca-certificates curl gnupg
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+    elif [ "$PKG_MGR" = "dnf" ] || [ "$PKG_MGR" = "yum" ]; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+        sudo $PKG_MGR install -y nodejs
+    else
+        # Fallback: install via nvm
+        warn "No supported package manager — installing Node.js via nvm..."
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+        nvm install 20
+        nvm use 20
+        NODE_BIN="node"
+        NPM_BIN="npm"
+    fi
+fi
+command -v $NODE_BIN >/dev/null 2>&1 || error "Node.js installation failed."
+command -v $NPM_BIN  >/dev/null 2>&1 || error "npm not found after Node.js install."
+
+# ── Auto-install common build tools ───────────────────────────────────────
+if [ "$PKG_MGR" = "apt-get" ]; then
+    info "Installing system build tools..."
+    sudo apt-get install -y build-essential libssl-dev libffi-dev python3-dev git curl --no-install-recommends -qq
+fi
 
 PYTHON_VER=$($PYTHON_BIN -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 NODE_VER=$($NODE_BIN -e "process.stdout.write(process.version)")
-info "Python $PYTHON_VER  |  Node $NODE_VER"
+info "Python $PYTHON_VER  |  Node $NODE_VER  |  npm $(npm -v)"
 
 # ─── 1. Backend — Python virtual environment ──────────────────────────────────
 echo ""
 info "━━━ [1/7] Setting up Python virtual environment..."
+# Ensure python3-venv is available (Ubuntu splits it into a separate package)
+if ! $PYTHON_BIN -m venv --help >/dev/null 2>&1; then
+    warn "python3-venv missing — installing..."
+    sudo apt-get install -y python3-venv 2>/dev/null || true
+fi
 $PYTHON_BIN -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip --quiet
