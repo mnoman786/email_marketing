@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { contactsApi } from '@/lib/api'
 import { Contact, PaginatedResponse } from '@/lib/types'
@@ -27,6 +27,31 @@ export default function ContactsPage() {
   const [editContact, setEditContact] = useState<Contact | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [importTaskId, setImportTaskId] = useState<string | null>(null)
+
+  const { data: importStatus } = useQuery({
+    queryKey: ['import-status', importTaskId],
+    queryFn: () => contactsApi.importStatus(importTaskId!).then(r => r.data),
+    enabled: !!importTaskId,
+    refetchInterval: (query) => {
+      const state = (query.state.data as any)?.state
+      return state === 'success' || state === 'failure' ? false : 2000
+    },
+  })
+
+  useEffect(() => {
+    if (!importStatus) return
+    const s = (importStatus as any).state
+    if (s === 'success') {
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+      qc.invalidateQueries({ queryKey: ['lists-all'] })
+      toast.success(`Import done: ${(importStatus as any).created} created, ${(importStatus as any).updated} updated`)
+      setImportTaskId(null)
+    } else if (s === 'failure') {
+      toast.error('Import failed')
+      setImportTaskId(null)
+    }
+  }, [importStatus])
 
   const { data, isLoading } = useQuery({
     queryKey: ['contacts', { search, status, page }],
@@ -231,7 +256,7 @@ export default function ContactsPage() {
       <BulkImportDialog
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImported={() => qc.invalidateQueries({ queryKey: ['contacts'] })}
+        onImported={(taskId) => setImportTaskId(taskId)}
       />
       <ConfirmDialog
         open={!!deleteId}

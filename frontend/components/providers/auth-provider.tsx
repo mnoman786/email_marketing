@@ -1,5 +1,6 @@
 'use client'
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { User } from '@/lib/types'
 import { authApi } from '@/lib/api'
 import { setTokens, clearTokens, setUser, getUser, isAuthenticated, getRefreshToken } from '@/lib/auth'
@@ -21,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -43,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const res = await authApi.login({ email, password })
+    queryClient.clear()
     setTokens(res.data.access, res.data.refresh)
     setUser(res.data.user)
     setUserState(res.data.user)
@@ -50,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: any) => {
     const res = await authApi.register(data)
+    queryClient.clear()
     setTokens(res.data.access, res.data.refresh)
     setUser(res.data.user)
     setUserState(res.data.user)
@@ -60,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const refresh = getRefreshToken()
       if (refresh) await authApi.logout(refresh)
     } catch {}
+    queryClient.clear()
     clearTokens()
     setUserState(null)
     router.push('/login')

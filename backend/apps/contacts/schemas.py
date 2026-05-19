@@ -101,6 +101,22 @@ class BulkImportOut(Schema):
     errors: List[Dict[str, Any]]
 
 
+class BulkImportStartOut(Schema):
+    task_id: str
+    total: int
+
+
+class ImportStatusOut(Schema):
+    state: str
+    current: int
+    total: int
+    percent: int
+    created: int
+    updated: int
+    failed: int
+    errors: List[Dict[str, Any]]
+
+
 class BulkDeleteIn(Schema):
     ids: List[int]
 

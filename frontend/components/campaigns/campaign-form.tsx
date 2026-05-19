@@ -46,6 +46,7 @@ export function CampaignForm({ campaign }: Props) {
   const { data: lists } = useQuery({
     queryKey: ['lists-all'],
     queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
+    staleTime: 0,
   })
 
   const { data: templates } = useQuery({

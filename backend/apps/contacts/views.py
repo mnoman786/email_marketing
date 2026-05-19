@@ -2,7 +2,6 @@ from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.shortcuts import get_object_or_404
-from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from typing import Optional, List
@@ -11,6 +10,7 @@ from .schemas import (
     ContactListOut, ContactListIn, ContactListUpdateIn,
     ContactOut, ContactIn, ContactUpdateIn,
     BulkImportIn, BulkImportOut, BulkDeleteIn, AddRemoveContactsIn,
+    BulkImportStartOut, ImportStatusOut,
 )
 from apps.accounts.auth import auth
 
@@ -112,6 +112,50 @@ def create_contact(request, data: ContactIn):
     return contact
 
 
+# Static paths must come before /{contact_id}/ to avoid route capture conflicts
+@router.post('/bulk-import/', response=BulkImportStartOut, auth=auth)
+def bulk_import(request, data: BulkImportIn):
+    if data.list_id:
+        get_object_or_404(ContactList, id=data.list_id, user=request.auth)
+    from .tasks import bulk_import_contacts_task
+    task = bulk_import_contacts_task.delay(
+        user_id=request.auth.id,
+        contacts_data=data.contacts,
+        list_id=data.list_id,
+    )
+    return {'task_id': task.id, 'total': len(data.contacts)}
+
+
+@router.get('/import-status/{task_id}/', response=ImportStatusOut, auth=auth)
+def import_status(request, task_id: str):
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    state = result.state
+
+    if state == 'PENDING':
+        return {'state': 'pending', 'current': 0, 'total': 0, 'percent': 0,
+                'created': 0, 'updated': 0, 'failed': 0, 'errors': []}
+    if state == 'PROGRESS':
+        info = result.info or {}
+        return {'state': 'progress', 'current': info.get('current', 0), 'total': info.get('total', 0),
+                'percent': info.get('percent', 0), 'created': info.get('created', 0),
+                'updated': info.get('updated', 0), 'failed': info.get('failed', 0), 'errors': []}
+    if state == 'SUCCESS':
+        info = result.result or {}
+        return {'state': 'success', 'current': info.get('current', 0), 'total': info.get('total', 0),
+                'percent': 100, 'created': info.get('created', 0), 'updated': info.get('updated', 0),
+                'failed': info.get('failed', 0), 'errors': info.get('errors', [])}
+    return {'state': 'failure', 'current': 0, 'total': 0, 'percent': 0,
+            'created': 0, 'updated': 0, 'failed': 0, 'errors': [{'row': 0, 'error': str(result.info)}]}
+
+
+@router.post('/bulk-delete/', auth=auth)
+def bulk_delete(request, data: BulkDeleteIn):
+    deleted, _ = Contact.objects.filter(user=request.auth, id__in=data.ids).delete()
+    return {'deleted': deleted}
+
+
+# Dynamic /{contact_id}/ routes after all static paths
 @router.get('/{contact_id}/', response=ContactOut, auth=auth)
 def get_contact(request, contact_id: int):
     return get_object_or_404(Contact, id=contact_id, user=request.auth)
@@ -134,54 +178,6 @@ def update_contact(request, contact_id: int, data: ContactUpdateIn):
 def delete_contact(request, contact_id: int):
     get_object_or_404(Contact, id=contact_id, user=request.auth).delete()
     return {'detail': 'Deleted.'}
-
-
-@router.post('/bulk-import/', response=BulkImportOut, auth=auth)
-def bulk_import(request, data: BulkImportIn):
-    contact_list = None
-    if data.list_id:
-        contact_list = get_object_or_404(ContactList, id=data.list_id, user=request.auth)
-
-    created, updated, failed = 0, 0, 0
-    errors = []
-
-    with transaction.atomic():
-        for idx, row in enumerate(data.contacts):
-            try:
-                email = row.get('email', '').strip().lower()
-                if not email:
-                    failed += 1
-                    continue
-                contact, is_new = Contact.objects.update_or_create(
-                    user=request.auth, email=email,
-                    defaults={
-                        'first_name': row.get('first_name', ''),
-                        'last_name': row.get('last_name', ''),
-                        'phone': row.get('phone', ''),
-                        'company': row.get('company', ''),
-                        'custom_fields': {
-                            k: v for k, v in row.items()
-                            if k not in ['email', 'first_name', 'last_name', 'phone', 'company']
-                        },
-                    }
-                )
-                if contact_list:
-                    contact.lists.add(contact_list)
-                if is_new:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as e:
-                failed += 1
-                errors.append({'row': idx + 1, 'error': str(e)})
-
-    return {'created': created, 'updated': updated, 'failed': failed, 'errors': errors[:20]}
-
-
-@router.post('/bulk-delete/', auth=auth)
-def bulk_delete(request, data: BulkDeleteIn):
-    deleted, _ = Contact.objects.filter(user=request.auth, id__in=data.ids).delete()
-    return {'deleted': deleted}
 
 
 @router.post('/{contact_id}/unsubscribe/', auth=auth)

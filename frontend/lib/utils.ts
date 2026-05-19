@@ -32,17 +32,20 @@ export function formatPercent(n: number): string {
 
 export function getStatusColor(status: string): string {
   const map: Record<string, string> = {
-    draft: 'text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400',
-    scheduled: 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400',
-    sending: 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400',
-    sent: 'text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400',
-    failed: 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400',
-    paused: 'text-orange-600 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400',
-    cancelled: 'text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400',
-    active: 'text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400',
-    unsubscribed: 'text-orange-600 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400',
-    bounced: 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400',
-    pending: 'text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400',
+    draft:        'badge-gray',
+    scheduled:    'badge-blue',
+    sending:      'badge-amber',
+    sent:         'badge-green',
+    failed:       'badge-red',
+    paused:       'badge-orange',
+    cancelled:    'badge-gray',
+    active:       'badge-green',
+    unsubscribed: 'badge-orange',
+    bounced:      'badge-red',
+    pending:      'badge-gray',
+    opened:       'badge-purple',
+    clicked:      'badge-blue',
+    complained:   'badge-red',
   }
-  return map[status] || 'text-gray-500 bg-gray-100'
+  return map[status] || 'badge-gray'
 }

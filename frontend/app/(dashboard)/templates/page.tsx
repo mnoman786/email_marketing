@@ -73,8 +73,8 @@ export default function TemplatesPage() {
           {templates.map(tpl => (
             <div key={tpl.id} className="rounded-xl border bg-card overflow-hidden card-hover">
               {/* Preview strip */}
-              <div className="h-28 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 flex items-center justify-center">
-                <Mail className="text-blue-300 dark:text-blue-700" size={36} />
+              <div className="h-28 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-950/30 dark:to-indigo-950/30 flex items-center justify-center">
+                <Mail className="text-blue-400 dark:text-blue-700" size={36} />
               </div>
 
               <div className="p-4">

@@ -70,6 +70,7 @@ export const contactsApi = {
   update: (id: number, data: any) => api.patch(`/api/contacts/${id}/`, data),
   delete: (id: number) => api.delete(`/api/contacts/${id}/`),
   bulkImport: (data: any) => api.post('/api/contacts/bulk-import/', data),
+  importStatus: (taskId: string) => api.get(`/api/contacts/import-status/${taskId}/`),
   bulkDelete: (ids: number[]) => api.post('/api/contacts/bulk-delete/', { ids }),
   unsubscribe: (id: number) => api.post(`/api/contacts/${id}/unsubscribe/`),
 }
