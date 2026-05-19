@@ -51,7 +51,7 @@ export default function ContactsPage() {
     },
   })
 
-  const contacts = data?.results || []
+  const contacts = data?.items || []
   const total = data?.count || 0
   const totalPages = Math.ceil(total / 20)
 

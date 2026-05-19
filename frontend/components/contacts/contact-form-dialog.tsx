@@ -33,7 +33,7 @@ interface Props {
 export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
   const { data: listsData } = useQuery({
     queryKey: ['lists-all'],
-    queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.results || r.data),
+    queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
   })
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<FormData>({

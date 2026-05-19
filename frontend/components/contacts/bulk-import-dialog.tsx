@@ -22,7 +22,7 @@ export function BulkImportDialog({ open, onClose, onImported }: Props) {
 
   const { data: listsData } = useQuery({
     queryKey: ['lists-all'],
-    queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.results || r.data),
+    queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
   })
 
   const mutation = useMutation({

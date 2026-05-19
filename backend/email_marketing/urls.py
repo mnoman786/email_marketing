@@ -1,16 +1,26 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework_simplejwt.views import TokenRefreshView
+from ninja import NinjaAPI
+
+from apps.accounts.views import router as accounts_router
+from apps.contacts.views import router as contacts_router
+from apps.email_templates.views import router as templates_router
+from apps.smtp_accounts.views import router as smtp_router
+from apps.campaigns.views import router as campaigns_router
+from apps.analytics.views import router as analytics_router
+
+api = NinjaAPI(title='Email Marketing API', version='1.0.0')
+
+api.add_router('/auth/', accounts_router)
+api.add_router('/contacts/', contacts_router)
+api.add_router('/templates/', templates_router)
+api.add_router('/smtp/', smtp_router)
+api.add_router('/campaigns/', campaigns_router)
+api.add_router('/analytics/', analytics_router)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/auth/', include('apps.accounts.urls')),
-    path('api/contacts/', include('apps.contacts.urls')),
-    path('api/templates/', include('apps.email_templates.urls')),
-    path('api/smtp/', include('apps.smtp_accounts.urls')),
-    path('api/campaigns/', include('apps.campaigns.urls')),
-    path('api/analytics/', include('apps.analytics.urls')),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/', api.urls),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

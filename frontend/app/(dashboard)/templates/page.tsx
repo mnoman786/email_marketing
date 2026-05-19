@@ -35,7 +35,7 @@ export default function TemplatesPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['templates'] }); toast.success('Template duplicated') },
   })
 
-  const templates = data?.results || []
+  const templates = data?.items || []
 
   return (
     <div className="p-6 space-y-6">

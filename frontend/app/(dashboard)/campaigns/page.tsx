@@ -46,7 +46,7 @@ export default function CampaignsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign duplicated') },
   })
 
-  const campaigns = data?.results || []
+  const campaigns = data?.items || []
   const total = data?.count || 0
 
   return (

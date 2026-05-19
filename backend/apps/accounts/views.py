@@ -1,72 +1,78 @@
-from rest_framework import status, generics
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
+from ninja import Router
+from ninja.errors import HttpError
+from django.contrib.auth import authenticate
 from .models import User
-from .serializers import (
-    UserSerializer, RegisterSerializer, LoginSerializer, ChangePasswordSerializer
+from .schemas import (
+    RegisterIn, LoginIn, TokenOut, TokenRefreshIn, TokenRefreshOut,
+    UserOut, ProfileUpdateIn, ChangePasswordIn,
 )
+from .auth import create_tokens, decode_refresh_token, auth
+
+router = Router(tags=['Auth'])
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def register(request):
-    serializer = RegisterSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    user = serializer.save()
-    refresh = RefreshToken.for_user(user)
-    return Response({
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-        'user': UserSerializer(user).data,
-    }, status=status.HTTP_201_CREATED)
+@router.post('/register/', response=TokenOut, auth=None)
+def register(request, data: RegisterIn):
+    if User.objects.filter(email=data.email).exists():
+        raise HttpError(400, 'Email already registered.')
+    if User.objects.filter(username=data.username).exists():
+        raise HttpError(400, 'Username already taken.')
+    user = User.objects.create_user(
+        email=data.email,
+        username=data.username,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        company_name=data.company_name,
+        password=data.password,
+    )
+    access, refresh = create_tokens(user.id)
+    return {'access': access, 'refresh': refresh, 'user': user}
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def login(request):
-    serializer = LoginSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    user = serializer.validated_data['user']
-    refresh = RefreshToken.for_user(user)
-    return Response({
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-        'user': UserSerializer(user).data,
-    })
+@router.post('/login/', response=TokenOut, auth=None)
+def login(request, data: LoginIn):
+    user = authenticate(username=data.email, password=data.password)
+    if not user:
+        raise HttpError(401, 'Invalid credentials.')
+    if not user.is_active:
+        raise HttpError(401, 'Account is disabled.')
+    access, refresh = create_tokens(user.id)
+    return {'access': access, 'refresh': refresh, 'user': user}
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@router.post('/logout/', auth=auth)
 def logout(request):
-    try:
-        refresh_token = request.data.get('refresh')
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        return Response({'detail': 'Logged out successfully.'})
-    except TokenError:
-        return Response({'detail': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
+    return {'detail': 'Logged out successfully.'}
 
 
-@api_view(['GET', 'PATCH'])
-@permission_classes([IsAuthenticated])
-def profile(request):
-    if request.method == 'GET':
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
-    serializer = UserSerializer(request.user, data=request.data, partial=True)
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    return Response(serializer.data)
+@router.post('/token/refresh/', response=TokenRefreshOut, auth=None)
+def token_refresh(request, data: TokenRefreshIn):
+    user_id = decode_refresh_token(data.refresh)
+    if not user_id:
+        raise HttpError(401, 'Invalid or expired refresh token.')
+    access, _ = create_tokens(user_id)
+    return {'access': access}
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def change_password(request):
-    serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-    request.user.set_password(serializer.validated_data['new_password'])
-    request.user.save()
-    return Response({'detail': 'Password changed successfully.'})
+@router.get('/profile/', response=UserOut, auth=auth)
+def get_profile(request):
+    return request.auth
+
+
+@router.patch('/profile/', response=UserOut, auth=auth)
+def update_profile(request, data: ProfileUpdateIn):
+    user = request.auth
+    for field, value in data.dict(exclude_none=True).items():
+        setattr(user, field, value)
+    user.save()
+    return user
+
+
+@router.post('/change-password/', auth=auth)
+def change_password(request, data: ChangePasswordIn):
+    user = request.auth
+    if not user.check_password(data.old_password):
+        raise HttpError(400, 'Old password is incorrect.')
+    user.set_password(data.new_password)
+    user.save()
+    return {'detail': 'Password changed successfully.'}

@@ -26,7 +26,7 @@ export default function SMTPPage() {
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['smtp-accounts'],
-    queryFn: () => smtpApi.getAll().then(r => r.data.results || r.data),
+    queryFn: () => smtpApi.getAll().then(r => r.data.items || []),
   })
 
   const { data: stats } = useQuery({

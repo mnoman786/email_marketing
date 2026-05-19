@@ -195,7 +195,7 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* Recent logs */}
-      {logs?.results?.length > 0 && (
+      {logs?.items?.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Recent Send Logs</CardTitle>
@@ -214,7 +214,7 @@ export default function CampaignDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {logs.results.map((log: any) => (
+                {logs.items.map((log: any) => (
                   <tr key={log.id} className="hover:bg-muted/30">
                     <td className="px-4 py-2">
                       <p className="font-medium text-xs">{log.contact_name}</p>

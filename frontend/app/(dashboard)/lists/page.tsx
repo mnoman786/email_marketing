@@ -34,7 +34,7 @@ export default function ListsPage() {
     },
   })
 
-  const lists = data?.results || []
+  const lists = data?.items || []
 
   return (
     <div className="p-6 space-y-6">

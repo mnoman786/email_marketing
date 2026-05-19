@@ -28,7 +28,7 @@ api.interceptors.response.use(
       try {
         const refresh = localStorage.getItem('refresh_token')
         if (!refresh) throw new Error('No refresh token')
-        const res = await axios.post(`${API_URL}/api/token/refresh/`, { refresh })
+        const res = await axios.post(`${API_URL}/api/auth/token/refresh/`, { refresh })
         localStorage.setItem('access_token', res.data.access)
         original.headers.Authorization = `Bearer ${res.data.access}`
         return api(original)
@@ -69,8 +69,8 @@ export const contactsApi = {
   create: (data: any) => api.post('/api/contacts/', data),
   update: (id: number, data: any) => api.patch(`/api/contacts/${id}/`, data),
   delete: (id: number) => api.delete(`/api/contacts/${id}/`),
-  bulkImport: (data: any) => api.post('/api/contacts/bulk_import/', data),
-  bulkDelete: (ids: number[]) => api.post('/api/contacts/bulk_delete/', { ids }),
+  bulkImport: (data: any) => api.post('/api/contacts/bulk-import/', data),
+  bulkDelete: (ids: number[]) => api.post('/api/contacts/bulk-delete/', { ids }),
   unsubscribe: (id: number) => api.post(`/api/contacts/${id}/unsubscribe/`),
 }
 
@@ -108,13 +108,13 @@ export const campaignsApi = {
   cancel: (id: number) => api.post(`/api/campaigns/${id}/cancel/`),
   duplicate: (id: number) => api.post(`/api/campaigns/${id}/duplicate/`),
   stats: (id: number) => api.get(`/api/campaigns/${id}/stats/`),
-  smtpRoutes: (id: number) => api.get(`/api/campaigns/${id}/smtp_routes/`),
-  updateSmtpRoutes: (id: number, data: any) => api.post(`/api/campaigns/${id}/smtp_routes/`, data),
+  smtpRoutes: (id: number) => api.get(`/api/campaigns/${id}/smtp-routes/`),
+  updateSmtpRoutes: (id: number, data: any) => api.post(`/api/campaigns/${id}/smtp-routes/`, data),
 }
 
 // Analytics
 export const analyticsApi = {
   dashboard: () => api.get('/api/analytics/dashboard/'),
   logs: (params?: any) => api.get('/api/analytics/logs/', { params }),
-  retryFailed: (data: any) => api.post('/api/analytics/logs/retry_failed/', data),
+  retryFailed: (data: any) => api.post('/api/analytics/logs/retry-failed/', data),
 }

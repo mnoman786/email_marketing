@@ -45,17 +45,17 @@ export function CampaignForm({ campaign }: Props) {
 
   const { data: lists } = useQuery({
     queryKey: ['lists-all'],
-    queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.results || r.data),
+    queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
   })
 
   const { data: templates } = useQuery({
     queryKey: ['templates-all'],
-    queryFn: () => templatesApi.getAll({ page_size: 100 }).then(r => r.data.results || r.data),
+    queryFn: () => templatesApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
   })
 
   const { data: smtpAccounts } = useQuery({
     queryKey: ['smtp-accounts'],
-    queryFn: () => smtpApi.getAll().then(r => r.data.results || r.data),
+    queryFn: () => smtpApi.getAll().then(r => r.data.items || []),
   })
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({

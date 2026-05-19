@@ -38,7 +38,7 @@ function AnalyticsContent() {
 
   const { data: campaigns } = useQuery({
     queryKey: ['campaigns-list'],
-    queryFn: () => campaignsApi.getAll({ page_size: 100 }).then(r => r.data.results || r.data),
+    queryFn: () => campaignsApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
   })
 
   const retryMut = useMutation({
@@ -54,7 +54,7 @@ function AnalyticsContent() {
     },
   })
 
-  const logs = data?.results || []
+  const logs = data?.items || []
   const total = data?.count || 0
   const totalPages = Math.ceil(total / 20)
 
