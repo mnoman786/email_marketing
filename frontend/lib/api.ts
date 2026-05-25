@@ -107,6 +107,7 @@ export const campaignsApi = {
   send: (id: number, data?: any) => api.post(`/api/campaigns/${id}/send/`, data || {}),
   pause: (id: number) => api.post(`/api/campaigns/${id}/pause/`),
   cancel: (id: number) => api.post(`/api/campaigns/${id}/cancel/`),
+  reset: (id: number) => api.post(`/api/campaigns/${id}/reset/`),
   duplicate: (id: number) => api.post(`/api/campaigns/${id}/duplicate/`),
   stats: (id: number) => api.get(`/api/campaigns/${id}/stats/`),
   smtpRoutes: (id: number) => api.get(`/api/campaigns/${id}/smtp-routes/`),

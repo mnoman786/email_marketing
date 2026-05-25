@@ -111,6 +111,17 @@ def cancel_campaign(request, campaign_id: int):
     return {'status': 'cancelled'}
 
 
+@router.post('/{campaign_id}/reset/', auth=auth)
+def reset_campaign(request, campaign_id: int):
+    """Reset a stuck 'sending' campaign back to 'failed' so it can be retried."""
+    campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
+    if campaign.status != 'sending':
+        raise HttpError(400, f'Campaign is not stuck (status: {campaign.status}).')
+    campaign.status = 'failed'
+    campaign.save(update_fields=['status'])
+    return {'status': 'failed'}
+
+
 @router.post('/{campaign_id}/duplicate/', response=CampaignOut, auth=auth)
 def duplicate_campaign(request, campaign_id: int):
     campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)

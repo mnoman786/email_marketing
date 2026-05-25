@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Save, Send, Variable, Loader2, Calendar, X } from 'lucide-react'
+import { ArrowLeft, Save, Send, Variable, Loader2, Calendar } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -210,37 +210,28 @@ export function CampaignForm({ campaign }: Props) {
         </div>
       </div>
 
-      {/* Schedule panel */}
+      {/* Schedule modal */}
       {scheduleMode && (
-        <div className="border-b bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-          <div className="px-6 py-5 flex items-center gap-6 flex-wrap">
-
-            {/* Icon + label */}
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                 <Calendar size={16} className="text-primary" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Schedule Campaign</p>
-                <p className="text-xs text-muted-foreground">Sends automatically at the selected time</p>
+                <p className="font-semibold text-sm">Schedule Campaign</p>
+                <p className="text-xs text-muted-foreground">Pick a date and time to send automatically</p>
               </div>
             </div>
-
-            <div className="w-px h-8 bg-border hidden sm:block" />
-
-            {/* Datetime input */}
-            <div className="flex items-center gap-2 flex-1 min-w-55 max-w-xs">
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
-                onChange={e => setScheduledAt(e.target.value)}
-                className="flex-1 h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-
-            {/* Confirm + close */}
-            <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
+              onChange={e => setScheduledAt(e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => { setScheduleMode(false); setScheduledAt('') }}>Cancel</Button>
               <Button
                 size="sm"
                 disabled={!scheduledAt || scheduleMut.isPending}
@@ -252,12 +243,6 @@ export function CampaignForm({ campaign }: Props) {
                   ? `Schedule for ${new Date(scheduledAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
                   : 'Pick a time first'}
               </Button>
-              <button
-                onClick={() => { setScheduleMode(false); setScheduledAt('') }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-black/5 transition-colors"
-              >
-                <X size={14} />
-              </button>
             </div>
           </div>
         </div>

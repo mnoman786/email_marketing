@@ -26,6 +26,8 @@ export default function CampaignDetailPage() {
   const qc = useQueryClient()
   const [showSend, setShowSend] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
+  const [scheduleAt, setScheduleAt] = useState('')
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', id],
@@ -57,6 +59,23 @@ export default function CampaignDetailPage() {
   const cancelMut = useMutation({
     mutationFn: () => campaignsApi.cancel(Number(id)),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign cancelled'); setShowCancel(false) },
+  })
+
+  const resetMut = useMutation({
+    mutationFn: () => campaignsApi.reset(Number(id)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign reset — you can retry or reschedule now') },
+    onError: () => toast.error('Could not reset campaign'),
+  })
+
+  const scheduleMut = useMutation({
+    mutationFn: () => campaignsApi.send(Number(id), { scheduled_at: new Date(scheduleAt).toISOString() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaign', id] })
+      toast.success('Campaign scheduled!')
+      setShowSchedule(false)
+      setScheduleAt('')
+    },
+    onError: () => toast.error('Could not schedule campaign'),
   })
 
   if (isLoading) return <PageSkeleton />
@@ -98,11 +117,19 @@ export default function CampaignDetailPage() {
               <Button variant="outline" size="sm">Edit</Button>
             </Link>
           )}
-          {(campaign.status === 'draft' || campaign.status === 'failed' || campaign.status === 'scheduled') && (
+          {campaign.status === 'sending' && (
+            <Button variant="outline" size="sm" onClick={() => resetMut.mutate()} disabled={resetMut.isPending}>
+              <RefreshCw size={14} className={resetMut.isPending ? 'animate-spin' : ''} /> Reset Stuck
+            </Button>
+          )}
+          {(campaign.status === 'draft' || campaign.status === 'failed' || campaign.status === 'scheduled') && (<>
+            <Button variant="outline" size="sm" onClick={() => setShowSchedule(true)}>
+              <Clock size={14} /> Schedule
+            </Button>
             <Button size="sm" onClick={() => setShowSend(true)}>
               <Send size={14} /> Send Now
             </Button>
-          )}
+          </>)}
           {campaign.status !== 'sent' && campaign.status !== 'cancelled' && (
             <Button variant="destructive" size="sm" onClick={() => setShowCancel(true)}>
               <XCircle size={14} />
@@ -279,6 +306,36 @@ export default function CampaignDetailPage() {
         destructive
         loading={cancelMut.isPending}
       />
+
+      {/* Schedule dialog */}
+      {showSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Clock size={16} className="text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">Schedule Campaign</p>
+                <p className="text-xs text-muted-foreground">Pick a date and time to send automatically</p>
+              </div>
+            </div>
+            <input
+              type="datetime-local"
+              value={scheduleAt}
+              min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
+              onChange={e => setScheduleAt(e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => { setShowSchedule(false); setScheduleAt('') }}>Cancel</Button>
+              <Button size="sm" disabled={!scheduleAt || scheduleMut.isPending} onClick={() => scheduleMut.mutate()}>
+                {scheduleMut.isPending ? 'Scheduling…' : scheduleAt ? `Schedule for ${new Date(scheduleAt).toLocaleString()}` : 'Pick a time first'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

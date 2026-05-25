@@ -115,6 +115,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.campaigns.tasks.process_scheduled_campaigns',
         'schedule': 60.0,
     },
+    'recover-stuck-campaigns': {
+        'task': 'apps.campaigns.tasks.recover_stuck_campaigns',
+        'schedule': 300.0,  # every 5 minutes
+    },
 }
 
 # Encryption key for SMTP passwords

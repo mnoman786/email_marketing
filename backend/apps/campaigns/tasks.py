@@ -108,6 +108,19 @@ def send_campaign_task(self, campaign_id):
 
 
 @shared_task
+def recover_stuck_campaigns():
+    """Periodic task: reset campaigns stuck in 'sending' for more than 1 hour."""
+    from .models import Campaign
+    cutoff = timezone.now() - timezone.timedelta(hours=1)
+    stuck = Campaign.objects.filter(status='sending', started_at__lt=cutoff)
+    count = stuck.count()
+    stuck.update(status='failed')
+    if count:
+        logger.warning(f'Recovered {count} stuck campaign(s) (sending > 1 hour).')
+    return f'Recovered {count} stuck campaigns.'
+
+
+@shared_task
 def process_scheduled_campaigns():
     """Periodic task: check for scheduled campaigns that are due."""
     from .models import Campaign
