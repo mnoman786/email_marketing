@@ -210,37 +210,55 @@ export function CampaignForm({ campaign }: Props) {
         </div>
       </div>
 
-      {/* Schedule popover */}
+      {/* Schedule panel */}
       {scheduleMode && (
-        <div className="border-b bg-blue-50 dark:bg-blue-950/20 px-6 py-4">
-          <div className="max-w-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold flex items-center gap-2">
-                <Calendar size={14} className="text-primary" /> Schedule Send Time
-              </p>
-              <button onClick={() => setScheduleMode(false)} className="text-muted-foreground hover:text-foreground">
+        <div className="border-b bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+          <div className="px-6 py-5 flex items-center gap-6 flex-wrap">
+
+            {/* Icon + label */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Calendar size={16} className="text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Schedule Campaign</p>
+                <p className="text-xs text-muted-foreground">Sends automatically at the selected time</p>
+              </div>
+            </div>
+
+            <div className="w-px h-8 bg-border hidden sm:block" />
+
+            {/* Datetime input */}
+            <div className="flex items-center gap-2 flex-1 min-w-55 max-w-xs">
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
+                onChange={e => setScheduledAt(e.target.value)}
+                className="flex-1 h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            {/* Confirm + close */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                disabled={!scheduledAt || scheduleMut.isPending}
+                loading={scheduleMut.isPending}
+                onClick={handleSubmit(d => scheduleMut.mutate(d))}
+              >
+                <Calendar size={13} />
+                {scheduledAt
+                  ? `Schedule for ${new Date(scheduledAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                  : 'Pick a time first'}
+              </Button>
+              <button
+                onClick={() => { setScheduleMode(false); setScheduledAt('') }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-black/5 transition-colors"
+              >
                 <X size={14} />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Choose a future date and time. The campaign will send automatically at that time.
-            </p>
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
-              onChange={e => setScheduledAt(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={!scheduledAt || scheduleMut.isPending}
-              loading={scheduleMut.isPending}
-              onClick={handleSubmit(d => scheduleMut.mutate(d))}
-            >
-              <Calendar size={13} /> Confirm Schedule
-            </Button>
           </div>
         </div>
       )}

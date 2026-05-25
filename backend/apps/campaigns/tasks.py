@@ -34,7 +34,6 @@ def send_campaign_task(self, campaign_id):
     if campaign.use_custom_smtp_routing:
         routes = CampaignSMTPRoute.objects.filter(campaign=campaign, is_active=True).select_related('smtp_account')
         smtp_accounts = [r.smtp_account for r in routes]
-        # Apply campaign-level weights
         for r in routes:
             r.smtp_account.weight = r.weight
     else:
@@ -59,26 +58,39 @@ def send_campaign_task(self, campaign_id):
     sent, failed = 0, 0
 
     for contact in contacts:
-        # Skip if already logged (idempotency for retries)
-        if SendLog.objects.filter(campaign=campaign, contact=contact, status='sent').exists():
+        # Get or create a pending SendLog first so we have its ID for tracking URLs
+        existing = SendLog.objects.filter(campaign=campaign, contact=contact).first()
+
+        if existing and existing.status == 'sent':
             sent += 1
             continue
 
-        success, smtp_used, error = send_campaign_email(campaign, contact, smtp_accounts)
-
-        with transaction.atomic():
-            SendLog.objects.update_or_create(
+        if existing:
+            sendlog = existing
+        else:
+            sendlog = SendLog.objects.create(
                 campaign=campaign,
                 contact=contact,
-                defaults={
-                    'smtp_account': smtp_used,
-                    'status': 'sent' if success else 'failed',
-                    'sent_at': timezone.now() if success else None,
-                    'error_message': error or '',
-                    'contact_email': contact.email,
-                    'contact_name': contact.full_name,
-                }
+                status='pending',
+                contact_email=contact.email,
+                contact_name=contact.full_name,
             )
+
+        success, smtp_used, error = send_campaign_email(
+            campaign, contact, smtp_accounts, sendlog_id=sendlog.id
+        )
+
+        with transaction.atomic():
+            sendlog.smtp_account = smtp_used
+            sendlog.status = 'sent' if success else 'failed'
+            sendlog.sent_at = timezone.now() if success else None
+            sendlog.error_message = error or ''
+            sendlog.contact_email = contact.email
+            sendlog.contact_name = contact.full_name
+            sendlog.save(update_fields=[
+                'smtp_account', 'status', 'sent_at', 'error_message',
+                'contact_email', 'contact_name',
+            ])
 
         if success:
             sent += 1
@@ -121,18 +133,30 @@ def send_single_email_task(self, campaign_id, contact_id):
     contact = Contact.objects.get(id=contact_id)
     smtp_accounts = list(SMTPAccount.objects.filter(user=campaign.user, is_active=True))
 
-    success, smtp_used, error = send_campaign_email(campaign, contact, smtp_accounts)
-
-    SendLog.objects.update_or_create(
+    # Ensure a SendLog row exists so tracking pixel has an ID
+    sendlog, _ = SendLog.objects.get_or_create(
         campaign=campaign,
         contact=contact,
         defaults={
-            'smtp_account': smtp_used,
-            'status': 'sent' if success else 'failed',
-            'sent_at': timezone.now() if success else None,
-            'error_message': error or '',
+            'status': 'pending',
             'contact_email': contact.email,
             'contact_name': contact.full_name,
         }
     )
+
+    success, smtp_used, error = send_campaign_email(
+        campaign, contact, smtp_accounts, sendlog_id=sendlog.id
+    )
+
+    sendlog.smtp_account = smtp_used
+    sendlog.status = 'sent' if success else 'failed'
+    sendlog.sent_at = timezone.now() if success else None
+    sendlog.error_message = error or ''
+    sendlog.contact_email = contact.email
+    sendlog.contact_name = contact.full_name
+    sendlog.save(update_fields=[
+        'smtp_account', 'status', 'sent_at', 'error_message',
+        'contact_email', 'contact_name',
+    ])
+
     return {'success': success, 'error': error}

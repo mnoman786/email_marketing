@@ -1,12 +1,15 @@
 """
 Email sending service with SMTP probability routing, retry, and logging.
 """
+import re
 import smtplib
 import random
 import logging
+import urllib.parse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from django.conf import settings
 from django.utils import timezone
 from django.template import Template, Context
 
@@ -37,6 +40,40 @@ def pick_smtp_by_weight(smtp_accounts):
             return account
 
     return active[-1]
+
+
+def inject_tracking(html, campaign, sendlog_id):
+    """
+    Inject open-tracking pixel and rewrite click links based on campaign settings.
+    sendlog_id must exist in the DB before this is called.
+    """
+    base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
+
+    if campaign.track_opens:
+        pixel = (
+            f'<img src="{base_url}/api/analytics/track/open/{sendlog_id}/" '
+            f'width="1" height="1" alt="" style="display:none;border:0;" />'
+        )
+        # Insert just before </body>; fall back to appending
+        if re.search(r'</body>', html, re.IGNORECASE):
+            html = re.sub(r'(</body>)', pixel + r'\1', html, flags=re.IGNORECASE)
+        else:
+            html += pixel
+
+    if campaign.track_clicks:
+        def rewrite_href(match):
+            quote = match.group(1)
+            url = match.group(2)
+            # Only rewrite http/https links; leave mailto:, #, etc. untouched
+            if not url.startswith(('http://', 'https://')):
+                return match.group(0)
+            encoded = urllib.parse.quote(url, safe='')
+            redirect = f'{base_url}/api/analytics/track/click/{sendlog_id}/?url={encoded}'
+            return f'href={quote}{redirect}{quote}'
+
+        html = re.sub(r'href=(["\'])(https?://[^"\'>\s]+)\1', rewrite_href, html)
+
+    return html
 
 
 def build_email_message(smtp_account, to_email, subject, html_content, text_content='',
@@ -110,15 +147,12 @@ def render_template_for_contact(html_content, contact, campaign_variables=None):
         return html_content
 
 
-def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3):
+def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog_id=None):
     """
     Send a single campaign email to one contact.
     Uses weighted SMTP selection with fallback on failure.
     Returns (success, smtp_account_used, error_message).
     """
-    from apps.analytics.models import SendLog
-
-    # Prepare remaining SMTP accounts for fallback
     available = list(smtp_accounts)
     attempted = []
 
@@ -129,6 +163,10 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3):
     )
     text = campaign.text_content or (campaign.template.text_content if campaign.template else '')
     subject = campaign.subject
+
+    # Inject tracking pixel / rewrite links if tracking is enabled and we have a log ID
+    if sendlog_id and (campaign.track_opens or campaign.track_clicks):
+        html = inject_tracking(html, campaign, sendlog_id)
 
     for attempt in range(max_retries):
         remaining = [s for s in available if s not in attempted]

@@ -158,9 +158,9 @@ def campaign_stats(request, campaign_id: int):
                 smtp_stats[key] = {
                     'smtp_id': key, 'smtp_name': log.smtp_account.name, 'sent': 0, 'failed': 0
                 }
-            if log.status == 'sent':
+            if log.status in ('sent', 'opened', 'clicked'):
                 smtp_stats[key]['sent'] += 1
-            else:
+            elif log.status == 'failed':
                 smtp_stats[key]['failed'] += 1
 
     return {

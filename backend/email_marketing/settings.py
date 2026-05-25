@@ -120,6 +120,9 @@ CELERY_BEAT_SCHEDULE = {
 # Encryption key for SMTP passwords
 ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='')
 
+# Public base URL used to build tracking pixel / click-redirect URLs in emails
+SITE_URL = config('SITE_URL', default='http://localhost:8000')
+
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',

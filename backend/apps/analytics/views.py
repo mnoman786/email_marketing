@@ -1,13 +1,20 @@
+import base64
 from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
+from django.http import HttpResponse, HttpResponseRedirect
 from django.utils import timezone
 from datetime import timedelta
 from typing import Optional, List
 from .models import SendLog
 from .schemas import SendLogOut, RetryFailedIn
 from apps.accounts.auth import auth
+
+# 1×1 transparent GIF — served as the open-tracking pixel
+_PIXEL_GIF = base64.b64decode(
+    'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+)
 
 router = Router(tags=['Analytics'])
 
@@ -135,3 +142,45 @@ def retry_failed(request, data: RetryFailedIn):
             count += 1
 
     return {'queued': count}
+
+
+@router.get('/track/open/{log_id}/', auth=None, include_in_schema=False)
+def track_open(request, log_id: int):
+    """Return a 1×1 tracking pixel and mark the send log as opened."""
+    try:
+        log = SendLog.objects.select_related('campaign').get(id=log_id)
+        # Only advance status forward: sent → opened
+        if log.status == 'sent':
+            log.status = 'opened'
+            log.opened_at = timezone.now()
+            log.save(update_fields=['status', 'opened_at'])
+            from apps.campaigns.models import Campaign
+            Campaign.objects.filter(id=log.campaign_id).update(open_count=F('open_count') + 1)
+    except SendLog.DoesNotExist:
+        pass
+    return HttpResponse(_PIXEL_GIF, content_type='image/gif')
+
+
+@router.get('/track/click/{log_id}/', auth=None, include_in_schema=False)
+def track_click(request, log_id: int, url: str = ''):
+    """Record a link click and redirect the recipient to the original URL."""
+    if not url:
+        return HttpResponse('Missing url', status=400)
+
+    # Basic safety check — only allow http/https redirects
+    if not url.startswith(('http://', 'https://')):
+        return HttpResponse('Invalid url', status=400)
+
+    try:
+        log = SendLog.objects.select_related('campaign').get(id=log_id)
+        # Advance status: sent/opened → clicked (don't downgrade)
+        if log.status in ('sent', 'opened'):
+            log.status = 'clicked'
+            log.clicked_at = timezone.now()
+            log.save(update_fields=['status', 'clicked_at'])
+            from apps.campaigns.models import Campaign
+            Campaign.objects.filter(id=log.campaign_id).update(click_count=F('click_count') + 1)
+    except SendLog.DoesNotExist:
+        pass
+
+    return HttpResponseRedirect(url)
