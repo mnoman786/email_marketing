@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='sendlog',
             name='contact_email',
-            field=models.EmailField(blank=True, max_length=254),
+            field=models.EmailField(blank=True, default='', max_length=254),
         ),
         migrations.AddField(
             model_name='sendlog',
             name='contact_name',
-            field=models.CharField(blank=True, max_length=255),
+            field=models.CharField(blank=True, default='', max_length=255),
         ),
     ]
