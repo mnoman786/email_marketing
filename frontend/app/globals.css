@@ -234,3 +234,59 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* ── GrapesJS overrides ────────────────────────────────────────────────────── */
+.grapes-wrapper { display: flex; flex-direction: column; }
+.grapes-wrapper .gjs-editor { flex: 1; min-height: 0; }
+
+/* Make panels fill available height */
+.gjs-editor { height: 100% !important; }
+.gjs-editor-cont { height: 100% !important; }
+
+/* Tighten the top panel */
+.gjs-pn-panel.gjs-pn-options,
+.gjs-pn-panel.gjs-pn-commands,
+.gjs-pn-panel.gjs-pn-views {
+  padding: 4px 6px;
+}
+
+/* Cleaner block buttons */
+.gjs-block {
+  border-radius: 6px !important;
+  border: 1px solid hsl(var(--border)) !important;
+  padding: 10px 6px !important;
+  font-size: 11px !important;
+  transition: all 0.15s ease !important;
+}
+.gjs-block:hover {
+  border-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+/* Style panel labels */
+.gjs-sm-label, .gjs-sm-sector__title {
+  font-size: 11px !important;
+}
+
+/* Tighter sector padding */
+.gjs-sm-sector { padding: 0 !important; }
+.gjs-sm-sector__title { padding: 6px 10px !important; }
+.gjs-sm-properties { padding: 6px 10px !important; }
+
+/* Canvas background */
+.gjs-cv-canvas { background: #f4f4f4 !important; }
+
+/* Trait manager */
+.gjs-trt-trait { padding: 4px 10px !important; }
+.gjs-trt-trait__label { font-size: 11px !important; }
+
+/* Layer manager */
+.gjs-layer { font-size: 12px !important; }
+.gjs-layer__name { padding: 4px 6px !important; }
+
+/* Views panel tabs */
+.gjs-pn-views .gjs-pn-btn { font-size: 12px !important; padding: 4px 8px !important; }
+
+/* Remove border radius on editor panels for flat look */
+.gjs-pn-panel { border-radius: 0 !important; }
+

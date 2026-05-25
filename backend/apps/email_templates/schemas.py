@@ -25,6 +25,12 @@ class TemplateListOut(Schema):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    preview_html: str = ''
+
+    @staticmethod
+    def resolve_preview_html(obj) -> str:
+        html = obj.html_content or ''
+        return html[:12000]
 
 
 class TemplateIn(Schema):

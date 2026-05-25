@@ -1,5 +1,5 @@
 from ninja import Schema
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 
 
@@ -77,6 +77,7 @@ class CampaignOut(Schema):
     open_count: int
     click_count: int
     bounce_count: int
+    campaign_variables: Dict[str, str]
     use_custom_smtp_routing: bool
     smtp_routes: List[SMTPRouteOut]
     track_opens: bool
@@ -150,6 +151,7 @@ class CampaignIn(Schema):
     from_name: str = ''
     from_email: str = ''
     reply_to: str = ''
+    campaign_variables: Dict[str, str] = {}
     use_custom_smtp_routing: bool = False
     track_opens: bool = True
     track_clicks: bool = True
@@ -166,6 +168,7 @@ class CampaignUpdateIn(Schema):
     from_name: Optional[str] = None
     from_email: Optional[str] = None
     reply_to: Optional[str] = None
+    campaign_variables: Optional[Dict[str, str]] = None
     use_custom_smtp_routing: Optional[bool] = None
     track_opens: Optional[bool] = None
     track_clicks: Optional[bool] = None

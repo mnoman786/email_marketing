@@ -12,7 +12,7 @@ import { formatDateTime, formatNumber, formatPercent } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { ArrowLeft, Send, Pause, XCircle, RefreshCw, Users, Mail, AlertTriangle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Send, Pause, XCircle, RefreshCw, Users, Mail, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -45,7 +45,7 @@ export default function CampaignDetailPage() {
 
   const { data: logs } = useQuery({
     queryKey: ['campaign-logs', id],
-    queryFn: () => analyticsApi.logs({ campaign: id, page_size: 10 }).then(r => r.data),
+    queryFn: () => analyticsApi.logs({ campaign_id: id, page_size: 10 }).then(r => r.data),
     enabled: !!id,
   })
 
@@ -72,35 +72,43 @@ export default function CampaignDetailPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/campaigns')}>
+      <div className="rounded-2xl border bg-card p-5 flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/campaigns')} className="shrink-0">
             <ArrowLeft size={16} />
           </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">{campaign.name}</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-bold truncate">{campaign.name}</h1>
               <StatusBadge status={campaign.status} />
             </div>
-            <p className="text-sm text-muted-foreground mt-0.5">{campaign.subject}</p>
+            <p className="text-sm text-muted-foreground truncate mt-0.5">{campaign.subject}</p>
+            {campaign.status === 'scheduled' && campaign.scheduled_at && (
+              <p className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 mt-1">
+                <Clock size={11} />
+                Scheduled for <span className="font-semibold">{formatDateTime(campaign.scheduled_at)}</span>
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex gap-2">
-          {campaign.status === 'draft' || campaign.status === 'failed' ? (
-            <Button onClick={() => setShowSend(true)}>
-              <Send size={15} /> Send Now
-            </Button>
-          ) : null}
-          {campaign.status !== 'sent' && campaign.status !== 'cancelled' && (
-            <Button variant="destructive" onClick={() => setShowCancel(true)}>
-              <XCircle size={15} /> Cancel
+
+        <div className="flex items-center gap-2 shrink-0">
+          {campaign.status === 'draft' && (
+            <Link href={`/campaigns/${id}/edit`}>
+              <Button variant="outline" size="sm">Edit</Button>
+            </Link>
+          )}
+          {(campaign.status === 'draft' || campaign.status === 'failed' || campaign.status === 'scheduled') && (
+            <Button size="sm" onClick={() => setShowSend(true)}>
+              <Send size={14} /> Send Now
             </Button>
           )}
-          <Link href={`/campaigns/${id}/edit`}>
-            {campaign.status === 'draft' && (
-              <Button variant="outline">Edit</Button>
-            )}
-          </Link>
+          {campaign.status !== 'sent' && campaign.status !== 'cancelled' && (
+            <Button variant="destructive" size="sm" onClick={() => setShowCancel(true)}>
+              <XCircle size={14} />
+              {campaign.status === 'scheduled' ? 'Cancel Schedule' : 'Cancel'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -217,8 +225,8 @@ export default function CampaignDetailPage() {
                 {logs.items.map((log: any) => (
                   <tr key={log.id} className="hover:bg-muted/30">
                     <td className="px-4 py-2">
-                      <p className="font-medium text-xs">{log.contact_name}</p>
-                      <p className="text-muted-foreground text-xs">{log.contact_email}</p>
+                      <p className="font-medium text-xs">{log.contact_name || <span className="text-muted-foreground italic">Deleted contact</span>}</p>
+                      <p className="text-muted-foreground text-xs">{log.contact_email || '—'}</p>
                     </td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">{log.smtp_name || '—'}</td>
                     <td className="px-4 py-2"><StatusBadge status={log.status} /></td>

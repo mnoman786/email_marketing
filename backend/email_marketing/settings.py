@@ -110,6 +110,12 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULE = {
+    'process-scheduled-campaigns': {
+        'task': 'apps.campaigns.tasks.process_scheduled_campaigns',
+        'schedule': 60.0,
+    },
+}
 
 # Encryption key for SMTP passwords
 ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='')

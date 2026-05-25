@@ -44,6 +44,8 @@ class Campaign(models.Model):
     # SMTP routing override (if empty, use all active user SMTP accounts)
     use_custom_smtp_routing = models.BooleanField(default=False)
 
+    campaign_variables = models.JSONField(default=dict, blank=True)
+
     track_opens = models.BooleanField(default=True)
     track_clicks = models.BooleanField(default=True)
 

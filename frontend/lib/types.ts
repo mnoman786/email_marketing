@@ -49,6 +49,7 @@ export interface EmailTemplate {
   is_active: boolean
   created_at: string
   updated_at: string
+  preview_html?: string
 }
 
 export interface SMTPAccount {
@@ -104,6 +105,7 @@ export interface Campaign {
   open_count: number
   click_count: number
   bounce_count: number
+  campaign_variables: Record<string, string>
   use_custom_smtp_routing: boolean
   smtp_routes: CampaignSMTPRoute[]
   track_opens: boolean

@@ -33,11 +33,11 @@ class SendLogOut(Schema):
 
     @staticmethod
     def resolve_contact_email(obj):
-        return obj.contact.email if obj.contact else ''
+        return obj.contact_email or (obj.contact.email if obj.contact else '')
 
     @staticmethod
     def resolve_contact_name(obj):
-        return obj.contact.full_name if obj.contact else ''
+        return obj.contact_name or (obj.contact.full_name if obj.contact else '')
 
     @staticmethod
     def resolve_smtp_account(obj):

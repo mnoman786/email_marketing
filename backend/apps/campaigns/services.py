@@ -91,17 +91,18 @@ def send_via_smtp(smtp_account, msg, to_email):
         return False, f'Unexpected error: {e}'
 
 
-def render_template_for_contact(html_content, contact):
-    """Render Django template with contact variables."""
+def render_template_for_contact(html_content, contact, campaign_variables=None):
+    """Render template variables: campaign-level vars first, then per-contact vars override."""
     try:
         context = {
+            **(campaign_variables or {}),
+            **contact.custom_fields,
             'first_name': contact.first_name,
             'last_name': contact.last_name,
             'full_name': contact.full_name,
             'email': contact.email,
             'phone': contact.phone,
             'company': contact.company,
-            **contact.custom_fields,
         }
         t = Template(html_content)
         return t.render(Context(context))
@@ -123,7 +124,8 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3):
 
     html = render_template_for_contact(
         campaign.html_content or (campaign.template.html_content if campaign.template else ''),
-        contact
+        contact,
+        campaign_variables=campaign.campaign_variables or {},
     )
     text = campaign.text_content or (campaign.template.text_content if campaign.template else '')
     subject = campaign.subject

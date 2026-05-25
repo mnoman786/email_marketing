@@ -75,6 +75,8 @@ def send_campaign_task(self, campaign_id):
                     'status': 'sent' if success else 'failed',
                     'sent_at': timezone.now() if success else None,
                     'error_message': error or '',
+                    'contact_email': contact.email,
+                    'contact_name': contact.full_name,
                 }
             )
 
@@ -129,6 +131,8 @@ def send_single_email_task(self, campaign_id, contact_id):
             'status': 'sent' if success else 'failed',
             'sent_at': timezone.now() if success else None,
             'error_message': error or '',
+            'contact_email': contact.email,
+            'contact_name': contact.full_name,
         }
     )
     return {'success': success, 'error': error}

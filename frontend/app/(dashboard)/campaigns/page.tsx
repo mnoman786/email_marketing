@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDateTime, formatNumber } from '@/lib/utils'
 import {
-  Plus, Search, Trash2, Megaphone, Send, Pause, MoreHorizontal, Copy, BarChart3
+  Plus, Search, Trash2, Megaphone, Send, Pause, MoreHorizontal, Copy, BarChart3, Clock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
@@ -128,6 +128,11 @@ export default function CampaignsPage() {
                             <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                           )}
                         </div>
+                        {campaign.status === 'scheduled' && campaign.scheduled_at && (
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <Clock size={9} /> {formatDateTime(campaign.scheduled_at)}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3">{formatNumber(campaign.total_recipients)}</td>
                       <td className="px-4 py-3">

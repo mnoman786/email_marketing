@@ -1,9 +1,11 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import dynamic from 'next/dynamic'
+import * as Popover from '@radix-ui/react-popover'
 import { templatesApi } from '@/lib/api'
 import { EmailTemplate } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -11,13 +13,45 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Save, Eye, Code, X, Plus } from 'lucide-react'
+import { ArrowLeft, Save, Plus, X, Loader2, Settings2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
-import dynamic from 'next/dynamic'
+import type { GrapesEditorHandle } from './grapes-editor'
+import { ImportTemplateDialog } from './import-template-dialog'
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
+const GrapesEmailEditor = dynamic(
+  () => import('./grapes-editor').then(m => m.GrapesEmailEditor),
+  { ssr: false, loading: () => <EditorSkeleton /> }
+)
+
+function EditorSkeleton() {
+  return (
+    <div className="flex-1 flex items-center justify-center bg-muted/30">
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <Loader2 size={28} className="animate-spin" />
+        <p className="text-sm">Loading editor…</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Project persistence ──────────────────────────────────────────────────────
+
+const MARKER = 'grapesjs-project-v1'
+const RE = new RegExp(`<!--${MARKER}:([A-Za-z0-9+/=%-]+):${MARKER}-->`)
+
+function extractProject(html: string): object | null {
+  const m = html.match(RE)
+  if (!m) return null
+  try { return JSON.parse(decodeURIComponent(atob(m[1]))) } catch { return null }
+}
+
+function embedProject(html: string, data: object): string {
+  const encoded = btoa(encodeURIComponent(JSON.stringify(data)))
+  return `${html.replace(RE, '').trimEnd()}\n<!--${MARKER}:${encoded}:${MARKER}-->`
+}
+
+// ─── Form ─────────────────────────────────────────────────────────────────────
 
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
@@ -25,54 +59,119 @@ const schema = z.object({
   preview_text: z.string().optional(),
   is_active: z.boolean().optional(),
 })
-
 type FormData = z.infer<typeof schema>
 
-const DEFAULT_HTML = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
-    .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
-    .header { background: #3b82f6; color: white; padding: 30px; text-align: center; }
-    .content { padding: 30px; }
-    .footer { background: #f4f4f4; padding: 20px; text-align: center; font-size: 12px; color: #888; }
-    .btn { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Hello, {{ first_name }}!</h1>
-    </div>
-    <div class="content">
-      <h2>Your email content here</h2>
-      <p>Hi {{ full_name }}, thank you for subscribing!</p>
-      <p>We're excited to have you on board.</p>
-      <a href="#" class="btn">Click Here</a>
-    </div>
-    <div class="footer">
-      <p>© 2026 {{ company }}. All rights reserved.</p>
-      <p><a href="#">Unsubscribe</a></p>
-    </div>
-  </div>
-</body>
-</html>`
+// ─── Settings popover (variables + plain text) ────────────────────────────────
 
-interface Props {
-  template?: EmailTemplate
+function SettingsPopover({
+  variables, onVariablesChange,
+  textContent, onTextContentChange,
+}: {
+  variables: string[]
+  onVariablesChange: (v: string[]) => void
+  textContent: string
+  onTextContentChange: (v: string) => void
+}) {
+  const [newVar, setNewVar] = useState('')
+
+  const add = () => {
+    const v = newVar.trim().replace(/\s+/g, '_').toLowerCase()
+    if (v && !variables.includes(v)) {
+      onVariablesChange([...variables, v])
+      setNewVar('')
+    }
+  }
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Settings2 size={14} />
+          Settings
+        </Button>
+      </Popover.Trigger>
+
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={8}
+          className="z-50 w-80 rounded-xl border bg-card shadow-xl p-0 outline-none"
+        >
+          <div className="px-4 py-3 border-b">
+            <p className="font-semibold text-sm">Template Settings</p>
+          </div>
+
+          <div className="p-4 space-y-5">
+            {/* Variables */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Merge Variables
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Use <code className="bg-muted px-1 rounded">&#123;&#123;variable&#125;&#125;</code> inside your blocks
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={newVar}
+                  onChange={e => setNewVar(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && add()}
+                  placeholder="variable_name"
+                  className="h-8 text-xs"
+                />
+                <Button size="icon-sm" variant="outline" onClick={add}>
+                  <Plus size={12} />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {variables.map(v => (
+                  <span key={v} className="flex items-center gap-1 bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-mono">
+                    &#123;&#123;{v}&#125;&#125;
+                    <button
+                      onClick={() => onVariablesChange(variables.filter(x => x !== v))}
+                      className="hover:text-destructive ml-0.5"
+                    >
+                      <X size={9} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Plain text */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Plain Text Fallback
+              </Label>
+              <Textarea
+                value={textContent}
+                onChange={e => onTextContentChange(e.target.value)}
+                placeholder="Plain text version for email clients that don't render HTML…"
+                className="text-xs h-28 resize-none"
+              />
+            </div>
+          </div>
+
+          <Popover.Arrow className="fill-border" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  )
 }
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+interface Props { template?: EmailTemplate }
 
 export function TemplateEditor({ template }: Props) {
   const router = useRouter()
-  const [html, setHtml] = useState(template?.html_content || DEFAULT_HTML)
+  const qc = useQueryClient()
+  const editorRef = useRef<GrapesEditorHandle>(null)
   const [textContent, setTextContent] = useState(template?.text_content || '')
-  const [variables, setVariables] = useState<string[]>(template?.variables || ['first_name', 'last_name', 'full_name', 'email'])
-  const [newVar, setNewVar] = useState('')
-  const [tab, setTab] = useState<'html' | 'preview' | 'text'>('html')
-  const [previewHtml, setPreviewHtml] = useState('')
-  const [useTheme, setUseTheme] = useState(false)
+  const [variables, setVariables] = useState<string[]>(
+    template?.variables || ['first_name', 'last_name', 'full_name', 'email']
+  )
+
+  const savedProject = template?.html_content ? extractProject(template.html_content) : null
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -83,18 +182,25 @@ export function TemplateEditor({ template }: Props) {
       is_active: template?.is_active ?? true,
     },
   })
-
   const isActive = watch('is_active')
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => {
-      const payload = { ...data, html_content: html, text_content: textContent, variables }
+    mutationFn: (formData: FormData) => {
+      const html = editorRef.current?.exportHtml() ?? ''
+      const project = editorRef.current?.getProjectData() ?? {}
+      const payload = {
+        ...formData,
+        html_content: embedProject(html, project),
+        text_content: textContent,
+        variables,
+      }
       return template
         ? templatesApi.update(template.id, payload)
         : templatesApi.create(payload)
     },
     onSuccess: () => {
       toast.success(template ? 'Template saved' : 'Template created')
+      qc.invalidateQueries({ queryKey: ['templates'] })
       router.push('/templates')
     },
     onError: (err: any) => {
@@ -102,178 +208,100 @@ export function TemplateEditor({ template }: Props) {
     },
   })
 
-  const generatePreview = () => {
-    setPreviewHtml(html
-      .replace(/\{\{\s*first_name\s*\}\}/g, 'John')
-      .replace(/\{\{\s*last_name\s*\}\}/g, 'Doe')
-      .replace(/\{\{\s*full_name\s*\}\}/g, 'John Doe')
-      .replace(/\{\{\s*email\s*\}\}/g, 'john@example.com')
-      .replace(/\{\{\s*company\s*\}\}/g, 'Acme Inc.')
-    )
-    setTab('preview')
-  }
-
-  const addVariable = () => {
-    const v = newVar.trim().replace(/\s+/g, '_').toLowerCase()
-    if (v && !variables.includes(v)) {
-      setVariables([...variables, v])
-      setNewVar('')
-    }
-  }
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/templates')}>
-            <ArrowLeft size={16} />
-          </Button>
-          <div>
-            <h1 className="font-semibold">{template ? 'Edit Template' : 'New Template'}</h1>
-            <p className="text-xs text-muted-foreground">HTML email template editor</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={generatePreview}>
-            <Eye size={15} /> Preview
-          </Button>
-          <Button onClick={handleSubmit(d => mutation.mutate(d))} loading={mutation.isPending}>
-            <Save size={15} /> Save Template
-          </Button>
-        </div>
-      </div>
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Settings */}
-        <div className="w-72 border-r overflow-y-auto p-4 space-y-4">
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Template Info</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-xs">Template Name *</Label>
-                <Input {...register('name')} placeholder="Welcome Email" className="mt-1 h-8 text-sm" />
-                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
-              </div>
-              <div>
-                <Label className="text-xs">Email Subject *</Label>
-                <Input {...register('subject')} placeholder="Welcome to {{company}}!" className="mt-1 h-8 text-sm" />
-                {errors.subject && <p className="text-xs text-destructive mt-1">{errors.subject.message}</p>}
-              </div>
-              <div>
-                <Label className="text-xs">Preview Text</Label>
-                <Input {...register('preview_text')} placeholder="Short email preview..." className="mt-1 h-8 text-sm" />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Active</Label>
-                <Switch
-                  checked={isActive}
-                  onCheckedChange={v => setValue('is_active', v)}
-                />
-              </div>
-            </CardContent>
-          </Card>
+      {/* ── Compact header ── */}
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b bg-card shrink-0">
 
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Variables</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-xs text-muted-foreground">Use &#123;&#123;variable&#125;&#125; in your template</p>
-              <div className="flex gap-2">
-                <Input
-                  value={newVar}
-                  onChange={e => setNewVar(e.target.value)}
-                  placeholder="variable_name"
-                  className="h-7 text-xs flex-1"
-                  onKeyDown={e => e.key === 'Enter' && addVariable()}
-                />
-                <Button size="icon-sm" variant="outline" onClick={addVariable}>
-                  <Plus size={12} />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {variables.map(v => (
-                  <span key={v} className="flex items-center gap-1 badge bg-muted text-muted-foreground text-xs">
-                    &#123;&#123;{v}&#125;&#125;
-                    <button
-                      onClick={() => setVariables(variables.filter(x => x !== v))}
-                      className="hover:text-destructive"
-                    >
-                      <X size={10} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Back */}
+        <Button variant="ghost" size="icon-sm" onClick={() => router.push('/templates')}>
+          <ArrowLeft size={16} />
+        </Button>
 
-          <Card>
-            <CardHeader className="pb-3"><CardTitle className="text-sm">Plain Text</CardTitle></CardHeader>
-            <CardContent>
-              <Textarea
-                value={textContent}
-                onChange={e => setTextContent(e.target.value)}
-                placeholder="Plain text version of your email..."
-                className="text-xs h-28"
-              />
-            </CardContent>
-          </Card>
-        </div>
+        <div className="w-px h-5 bg-border" />
 
-        {/* Right: Editor / Preview */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Tabs */}
-          <div className="flex border-b bg-card px-4">
-            {[
-              { key: 'html', label: 'HTML Editor', icon: Code },
-              { key: 'preview', label: 'Preview', icon: Eye },
-            ].map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => key === 'preview' ? generatePreview() : setTab(key as any)}
-                className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  tab === key
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'html' ? (
-            <div className="flex-1 overflow-hidden">
-              <MonacoEditor
-                height="100%"
-                language="html"
-                value={html}
-                onChange={v => setHtml(v || '')}
-                theme="vs-dark"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  wordWrap: 'on',
-                  scrollBeyondLastLine: false,
-                  lineNumbers: 'on',
-                  folding: true,
-                  formatOnPaste: true,
-                }}
-              />
-            </div>
-          ) : (
-            <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900">
-              <div className="max-w-2xl mx-auto my-6 bg-white shadow-lg rounded-lg overflow-hidden">
-                <iframe
-                  srcDoc={previewHtml || html}
-                  className="w-full"
-                  style={{ height: '600px', border: 'none' }}
-                  title="Email Preview"
-                />
-              </div>
-            </div>
+        {/* Name */}
+        <div className="flex flex-col min-w-0">
+          <Input
+            {...register('name')}
+            placeholder="Template name…"
+            className="h-8 text-sm font-medium border-0 shadow-none px-0 focus-visible:ring-0 w-44"
+          />
+          {errors.name && (
+            <p className="text-xs text-destructive leading-none mt-0.5">{errors.name.message}</p>
           )}
         </div>
+
+        {/* Subject */}
+        <div className="flex flex-col flex-1 min-w-0 max-w-xs">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground shrink-0">Subject:</span>
+            <Input
+              {...register('subject')}
+              placeholder="Email subject…"
+              className="h-8 text-sm border-0 shadow-none px-1 focus-visible:ring-0"
+            />
+          </div>
+          {errors.subject && (
+            <p className="text-xs text-destructive leading-none mt-0.5">{errors.subject.message}</p>
+          )}
+        </div>
+
+        {/* Preview text */}
+        <div className="flex items-center gap-1 max-w-48 hidden xl:flex">
+          <span className="text-xs text-muted-foreground shrink-0">Preview:</span>
+          <Input
+            {...register('preview_text')}
+            placeholder="Inbox preview…"
+            className="h-8 text-sm border-0 shadow-none px-1 focus-visible:ring-0"
+          />
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Active toggle */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground">Active</span>
+          <Switch
+            checked={isActive}
+            onCheckedChange={v => setValue('is_active', v)}
+            className="scale-90"
+          />
+        </div>
+
+        <div className="w-px h-5 bg-border" />
+
+        {/* Select template */}
+        <ImportTemplateDialog
+          onImport={html => editorRef.current?.loadHtml(html)}
+        />
+
+        {/* Settings popover */}
+        <SettingsPopover
+          variables={variables}
+          onVariablesChange={setVariables}
+          textContent={textContent}
+          onTextContentChange={setTextContent}
+        />
+
+        {/* Save */}
+        <Button size="sm" onClick={handleSubmit(d => mutation.mutate(d))} disabled={mutation.isPending}>
+          {mutation.isPending
+            ? <><Loader2 size={14} className="animate-spin" /> Saving…</>
+            : <><Save size={14} /> Save</>}
+        </Button>
+      </div>
+
+      {/* ── GrapesJS full width ── */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <GrapesEmailEditor
+          ref={editorRef}
+          projectData={savedProject}
+          initialHtml={!savedProject && template?.html_content ? template.html_content : null}
+          minHeight="calc(100vh - 112px)"
+        />
       </div>
     </div>
   )

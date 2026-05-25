@@ -23,6 +23,8 @@ class SendLog(models.Model):
         'smtp_accounts.SMTPAccount', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='send_logs'
     )
+    contact_email = models.EmailField(blank=True)
+    contact_name = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     sent_at = models.DateTimeField(null=True, blank=True)
     opened_at = models.DateTimeField(null=True, blank=True)

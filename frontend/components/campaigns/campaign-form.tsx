@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, Save, Send } from 'lucide-react'
+import { ArrowLeft, Save, Send, Variable, Loader2, Calendar, X } from 'lucide-react'
+import { formatDateTime } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 
@@ -33,6 +34,14 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
+const CONTACT_VARS = new Set(['first_name', 'last_name', 'full_name', 'email', 'phone', 'company'])
+
+function detectCustomVars(html: string): string[] {
+  const matches = [...html.matchAll(/\{\{\s*(\w+)\s*\}\}/g)]
+  const unique = [...new Set(matches.map(m => m[1]))]
+  return unique.filter(v => !CONTACT_VARS.has(v))
+}
+
 interface Props {
   campaign?: Campaign
 }
@@ -42,6 +51,12 @@ export function CampaignForm({ campaign }: Props) {
   const [tab, setTab] = useState<'details' | 'content' | 'smtp'>('details')
   const [htmlContent, setHtmlContent] = useState(campaign?.html_content || '')
   const [smtpRoutes, setSmtpRoutes] = useState<{ smtp_account: number; weight: number }[]>([])
+  const [campaignVariables, setCampaignVariables] = useState<Record<string, string>>(
+    campaign?.campaign_variables ?? {}
+  )
+  const [varsLoading, setVarsLoading] = useState(false)
+  const [scheduleMode, setScheduleMode] = useState(false)
+  const [scheduledAt, setScheduledAt] = useState('')
 
   const { data: lists } = useQuery({
     queryKey: ['lists-all'],
@@ -83,17 +98,28 @@ export function CampaignForm({ campaign }: Props) {
   const useCustomSMTP = watch('use_custom_smtp_routing')
 
   useEffect(() => {
-    if (selectedTemplate && templates) {
-      const tpl = templates.find((t: any) => t.id === selectedTemplate)
-      if (tpl) {
-        setValue('subject', tpl.subject)
-      }
+    if (!selectedTemplate) {
+      setCampaignVariables({})
+      return
     }
-  }, [selectedTemplate, templates, setValue])
+    const listTpl = templates?.find((t: any) => t.id === selectedTemplate)
+    if (listTpl) setValue('subject', listTpl.subject)
+
+    setVarsLoading(true)
+    templatesApi.get(selectedTemplate).then(res => {
+      const tpl = res.data
+      const vars = detectCustomVars(tpl.html_content || '')
+      setCampaignVariables(prev => {
+        const next: Record<string, string> = {}
+        vars.forEach((v: string) => { next[v] = prev[v] ?? '' })
+        return next
+      })
+    }).finally(() => setVarsLoading(false))
+  }, [selectedTemplate])
 
   const saveMut = useMutation({
     mutationFn: async (data: FormData) => {
-      const payload = { ...data, html_content: htmlContent }
+      const payload = { ...data, html_content: htmlContent, campaign_variables: campaignVariables }
       const res = campaign
         ? await campaignsApi.update(campaign.id, payload)
         : await campaignsApi.create(payload)
@@ -112,7 +138,7 @@ export function CampaignForm({ campaign }: Props) {
 
   const sendMut = useMutation({
     mutationFn: async (data: FormData) => {
-      const payload = { ...data, html_content: htmlContent }
+      const payload = { ...data, html_content: htmlContent, campaign_variables: campaignVariables }
       const res = campaign
         ? await campaignsApi.update(campaign.id, payload)
         : await campaignsApi.create(payload)
@@ -124,6 +150,22 @@ export function CampaignForm({ campaign }: Props) {
       router.push(`/campaigns/${data.id}`)
     },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to send'),
+  })
+
+  const scheduleMut = useMutation({
+    mutationFn: async (data: FormData) => {
+      const payload = { ...data, html_content: htmlContent, campaign_variables: campaignVariables }
+      const res = campaign
+        ? await campaignsApi.update(campaign.id, payload)
+        : await campaignsApi.create(payload)
+      await campaignsApi.send(res.data.id, { scheduled_at: new Date(scheduledAt).toISOString() })
+      return res.data
+    },
+    onSuccess: (data) => {
+      toast.success(`Campaign scheduled for ${formatDateTime(scheduledAt)}`)
+      router.push(`/campaigns/${data.id}`)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to schedule'),
   })
 
   const toggleList = (id: number) => {
@@ -155,11 +197,53 @@ export function CampaignForm({ campaign }: Props) {
           <Button variant="outline" onClick={handleSubmit(d => saveMut.mutate(d))} loading={saveMut.isPending}>
             <Save size={15} /> Save Draft
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setScheduleMode(m => !m)}
+            className={scheduleMode ? 'border-primary text-primary' : ''}
+          >
+            <Calendar size={15} /> Schedule
+          </Button>
           <Button onClick={handleSubmit(d => sendMut.mutate(d))} loading={sendMut.isPending}>
-            <Send size={15} /> Save & Send
+            <Send size={15} /> Send Now
           </Button>
         </div>
       </div>
+
+      {/* Schedule popover */}
+      {scheduleMode && (
+        <div className="border-b bg-blue-50 dark:bg-blue-950/20 px-6 py-4">
+          <div className="max-w-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <Calendar size={14} className="text-primary" /> Schedule Send Time
+              </p>
+              <button onClick={() => setScheduleMode(false)} className="text-muted-foreground hover:text-foreground">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Choose a future date and time. The campaign will send automatically at that time.
+            </p>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
+              onChange={e => setScheduledAt(e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!scheduledAt || scheduleMut.isPending}
+              loading={scheduleMut.isPending}
+              onClick={handleSubmit(d => scheduleMut.mutate(d))}
+            >
+              <Calendar size={13} /> Confirm Schedule
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b bg-card px-6">
@@ -287,11 +371,50 @@ export function CampaignForm({ campaign }: Props) {
                 </select>
                 {selectedTemplate && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    Template content will be used. You can override the HTML below.
+                    Template content will be used. Fill in any custom variables below.
                   </p>
                 )}
               </CardContent>
             </Card>
+
+            {/* Campaign variable fill-in */}
+            {varsLoading && (
+              <Card>
+                <CardContent className="py-5 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 size={14} className="animate-spin" /> Detecting template variables…
+                </CardContent>
+              </Card>
+            )}
+            {!varsLoading && Object.keys(campaignVariables).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Variable size={14} />
+                    Template Variables
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    These placeholders are in your template. Fill them in — they'll be the same for every recipient.
+                    <br />
+                    <span className="text-primary font-medium">Contact variables</span> like{' '}
+                    <code className="bg-muted px-1 rounded text-[11px]">{'{{first_name}}'}</code>{' '}
+                    are filled automatically from your contact list.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {Object.keys(campaignVariables).map(varName => (
+                    <div key={varName}>
+                      <Label className="text-xs font-mono text-primary">{`{{${varName}}}`}</Label>
+                      <Input
+                        value={campaignVariables[varName]}
+                        onChange={e => setCampaignVariables(prev => ({ ...prev, [varName]: e.target.value }))}
+                        placeholder={`Value for {{${varName}}}…`}
+                        className="mt-1 text-sm"
+                      />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {!selectedTemplate && (
               <Card>
