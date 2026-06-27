@@ -44,6 +44,19 @@ class SMTPAccount(models.Model):
     )
     last_tested_at = models.DateTimeField(null=True, blank=True)
     last_test_success = models.BooleanField(null=True, blank=True)
+
+    # IMAP / reply detection (optional — same mailbox used to send, polled for replies)
+    imap_enabled = models.BooleanField(default=False)
+    imap_host = models.CharField(max_length=255, blank=True)
+    imap_port = models.PositiveIntegerField(default=993)
+    imap_username = models.CharField(max_length=255, blank=True)
+    _imap_password = models.TextField(db_column='imap_password', blank=True)
+    imap_use_ssl = models.BooleanField(default=True)
+    last_imap_uid = models.PositiveIntegerField(default=0)
+    last_imap_checked_at = models.DateTimeField(null=True, blank=True)
+    last_imap_tested_at = models.DateTimeField(null=True, blank=True)
+    last_imap_test_success = models.BooleanField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -78,3 +91,21 @@ class SMTPAccount(models.Model):
     @property
     def use_ssl(self):
         return self.security == 'ssl'
+
+    @property
+    def imap_password(self):
+        if not self._imap_password:
+            return ''
+        try:
+            f = get_fernet()
+            return f.decrypt(self._imap_password.encode()).decode()
+        except Exception:
+            return self._imap_password
+
+    @imap_password.setter
+    def imap_password(self, value):
+        if value:
+            f = get_fernet()
+            self._imap_password = f.encrypt(value.encode()).decode()
+        else:
+            self._imap_password = ''

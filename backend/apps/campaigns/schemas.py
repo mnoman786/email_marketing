@@ -77,6 +77,7 @@ class CampaignOut(Schema):
     open_count: int
     click_count: int
     bounce_count: int
+    reply_count: int
     campaign_variables: Dict[str, str]
     use_custom_smtp_routing: bool
     smtp_routes: List[SMTPRouteOut]

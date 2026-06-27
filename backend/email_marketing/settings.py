@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'apps.smtp_accounts',
     'apps.campaigns',
     'apps.analytics',
+    'apps.sequences',
 ]
 
 MIDDLEWARE = [
@@ -118,6 +119,18 @@ CELERY_BEAT_SCHEDULE = {
     'recover-stuck-campaigns': {
         'task': 'apps.campaigns.tasks.recover_stuck_campaigns',
         'schedule': 300.0,  # every 5 minutes
+    },
+    'enroll-due-contacts': {
+        'task': 'apps.sequences.tasks.enroll_due_contacts',
+        'schedule': 300.0,  # every 5 minutes
+    },
+    'process-due-sequence-steps': {
+        'task': 'apps.sequences.tasks.process_due_sequence_steps',
+        'schedule': 60.0,
+    },
+    'poll-imap-replies': {
+        'task': 'apps.smtp_accounts.tasks.poll_imap_replies',
+        'schedule': 180.0,
     },
 }
 

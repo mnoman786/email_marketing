@@ -20,12 +20,25 @@ class SMTPAccountOut(Schema):
     hourly_limit: int
     last_tested_at: Optional[datetime] = None
     last_test_success: Optional[bool] = None
+    imap_enabled: bool
+    imap_host: str
+    imap_port: int
+    imap_username: str
+    has_imap_password: bool
+    imap_use_ssl: bool
+    last_imap_checked_at: Optional[datetime] = None
+    last_imap_tested_at: Optional[datetime] = None
+    last_imap_test_success: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
 
     @staticmethod
     def resolve_has_password(obj):
         return bool(obj._password)
+
+    @staticmethod
+    def resolve_has_imap_password(obj):
+        return bool(obj._imap_password)
 
 
 class SMTPAccountIn(Schema):
@@ -41,6 +54,12 @@ class SMTPAccountIn(Schema):
     is_active: bool = True
     daily_limit: int = 0
     hourly_limit: int = 0
+    imap_enabled: bool = False
+    imap_host: str = ''
+    imap_port: int = 993
+    imap_username: str = ''
+    imap_password: str = ''
+    imap_use_ssl: bool = True
 
 
 class SMTPAccountUpdateIn(Schema):
@@ -56,10 +75,26 @@ class SMTPAccountUpdateIn(Schema):
     is_active: Optional[bool] = None
     daily_limit: Optional[int] = None
     hourly_limit: Optional[int] = None
+    imap_enabled: Optional[bool] = None
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_username: Optional[str] = None
+    imap_password: Optional[str] = None
+    imap_use_ssl: Optional[bool] = None
 
 
 class SMTPTestIn(Schema):
     test_email: EmailStr
+
+
+class IMAPTestIn(Schema):
+    """All fields optional: a saved account's stored values are used as fallback
+    for any field omitted (e.g. an untouched password field)."""
+    imap_host: Optional[str] = None
+    imap_port: Optional[int] = None
+    imap_username: Optional[str] = None
+    imap_password: Optional[str] = None
+    imap_use_ssl: Optional[bool] = None
 
 
 class SMTPStatOut(Schema):

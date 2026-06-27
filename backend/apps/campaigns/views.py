@@ -169,7 +169,7 @@ def campaign_stats(request, campaign_id: int):
                 smtp_stats[key] = {
                     'smtp_id': key, 'smtp_name': log.smtp_account.name, 'sent': 0, 'failed': 0
                 }
-            if log.status in ('sent', 'opened', 'clicked'):
+            if log.status in ('sent', 'opened', 'clicked', 'replied'):
                 smtp_stats[key]['sent'] += 1
             elif log.status == 'failed':
                 smtp_stats[key]['failed'] += 1
@@ -184,6 +184,7 @@ def campaign_stats(request, campaign_id: int):
         'open_count': campaign.open_count,
         'click_count': campaign.click_count,
         'bounce_count': campaign.bounce_count,
+        'reply_count': campaign.reply_count,
         'delivery_rate': campaign.delivery_rate,
         'failure_rate': campaign.failure_rate,
         'smtp_performance': list(smtp_stats.values()),

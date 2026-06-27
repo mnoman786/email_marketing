@@ -12,7 +12,7 @@ import { formatDateTime, formatNumber, formatPercent } from '@/lib/utils'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { ArrowLeft, Send, Pause, XCircle, RefreshCw, Users, Mail, AlertTriangle, CheckCircle, Clock, MousePointerClick } from 'lucide-react'
+import { ArrowLeft, Send, Pause, XCircle, RefreshCw, Users, Mail, AlertTriangle, CheckCircle, Clock, MousePointerClick, Reply } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -140,13 +140,14 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         {[
           { label: 'Total Recipients', value: formatNumber(campaign.total_recipients), icon: Users, color: 'text-blue-600' },
           { label: 'Delivered', value: formatNumber(campaign.sent_count), icon: CheckCircle, color: 'text-green-600', sub: formatPercent(campaign.delivery_rate) },
           { label: 'Failed', value: formatNumber(campaign.failed_count), icon: AlertTriangle, color: 'text-red-500', sub: formatPercent(campaign.failure_rate) },
           { label: 'Opens', value: formatNumber(campaign.open_count), icon: Mail, color: 'text-purple-600' },
           { label: 'Clicks', value: formatNumber(campaign.click_count), icon: MousePointerClick, color: 'text-orange-500' },
+          { label: 'Replies', value: formatNumber(campaign.reply_count), icon: Reply, color: 'text-green-600' },
         ].map(kpi => (
           <Card key={kpi.label}>
             <CardContent className="p-5">

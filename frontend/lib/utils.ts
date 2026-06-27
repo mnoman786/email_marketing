@@ -46,6 +46,9 @@ export function getStatusColor(status: string): string {
     opened:       'badge-purple',
     clicked:      'badge-blue',
     complained:   'badge-red',
+    completed:    'badge-green',
+    stopped:      'badge-gray',
+    replied:      'badge-green',
   }
   return map[status] || 'badge-gray'
 }

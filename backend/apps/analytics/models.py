@@ -11,10 +11,16 @@ class SendLog(models.Model):
         ('clicked', 'Clicked'),
         ('unsubscribed', 'Unsubscribed'),
         ('complained', 'Complained'),
+        ('replied', 'Replied'),
     ]
 
     campaign = models.ForeignKey(
-        'campaigns.Campaign', on_delete=models.CASCADE, related_name='send_logs'
+        'campaigns.Campaign', on_delete=models.CASCADE, related_name='send_logs',
+        null=True, blank=True
+    )
+    sequence_step = models.ForeignKey(
+        'sequences.SequenceStep', on_delete=models.SET_NULL, related_name='send_logs',
+        null=True, blank=True
     )
     contact = models.ForeignKey(
         'contacts.Contact', on_delete=models.SET_NULL, null=True, related_name='send_logs'
@@ -29,6 +35,8 @@ class SendLog(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     opened_at = models.DateTimeField(null=True, blank=True)
     clicked_at = models.DateTimeField(null=True, blank=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+    message_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
     error_message = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -44,4 +52,5 @@ class SendLog(models.Model):
         ]
 
     def __str__(self):
-        return f'[{self.status}] {self.campaign.name} -> {self.contact.email if self.contact else "N/A"}'
+        source = self.campaign.name if self.campaign else f'sequence step {self.sequence_step_id}'
+        return f'[{self.status}] {source} -> {self.contact.email if self.contact else "N/A"}'

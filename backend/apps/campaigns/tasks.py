@@ -76,7 +76,7 @@ def send_campaign_task(self, campaign_id):
                 contact_name=contact.full_name,
             )
 
-        success, smtp_used, error = send_campaign_email(
+        success, smtp_used, error, message_id = send_campaign_email(
             campaign, contact, smtp_accounts, sendlog_id=sendlog.id
         )
 
@@ -85,10 +85,11 @@ def send_campaign_task(self, campaign_id):
             sendlog.status = 'sent' if success else 'failed'
             sendlog.sent_at = timezone.now() if success else None
             sendlog.error_message = error or ''
+            sendlog.message_id = message_id or ''
             sendlog.contact_email = contact.email
             sendlog.contact_name = contact.full_name
             sendlog.save(update_fields=[
-                'smtp_account', 'status', 'sent_at', 'error_message',
+                'smtp_account', 'status', 'sent_at', 'error_message', 'message_id',
                 'contact_email', 'contact_name',
             ])
 
@@ -157,7 +158,7 @@ def send_single_email_task(self, campaign_id, contact_id):
         }
     )
 
-    success, smtp_used, error = send_campaign_email(
+    success, smtp_used, error, message_id = send_campaign_email(
         campaign, contact, smtp_accounts, sendlog_id=sendlog.id
     )
 
@@ -165,10 +166,11 @@ def send_single_email_task(self, campaign_id, contact_id):
     sendlog.status = 'sent' if success else 'failed'
     sendlog.sent_at = timezone.now() if success else None
     sendlog.error_message = error or ''
+    sendlog.message_id = message_id or ''
     sendlog.contact_email = contact.email
     sendlog.contact_name = contact.full_name
     sendlog.save(update_fields=[
-        'smtp_account', 'status', 'sent_at', 'error_message',
+        'smtp_account', 'status', 'sent_at', 'error_message', 'message_id',
         'contact_email', 'contact_name',
     ])
 

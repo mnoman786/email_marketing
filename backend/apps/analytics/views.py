@@ -154,8 +154,9 @@ def track_open(request, log_id: int):
             log.status = 'opened'
             log.opened_at = timezone.now()
             log.save(update_fields=['status', 'opened_at'])
-            from apps.campaigns.models import Campaign
-            Campaign.objects.filter(id=log.campaign_id).update(open_count=F('open_count') + 1)
+            if log.campaign_id:
+                from apps.campaigns.models import Campaign
+                Campaign.objects.filter(id=log.campaign_id).update(open_count=F('open_count') + 1)
     except SendLog.DoesNotExist:
         pass
     return HttpResponse(_PIXEL_GIF, content_type='image/gif')
@@ -178,8 +179,9 @@ def track_click(request, log_id: int, url: str = ''):
             log.status = 'clicked'
             log.clicked_at = timezone.now()
             log.save(update_fields=['status', 'clicked_at'])
-            from apps.campaigns.models import Campaign
-            Campaign.objects.filter(id=log.campaign_id).update(click_count=F('click_count') + 1)
+            if log.campaign_id:
+                from apps.campaigns.models import Campaign
+                Campaign.objects.filter(id=log.campaign_id).update(click_count=F('click_count') + 1)
     except SendLog.DoesNotExist:
         pass
 

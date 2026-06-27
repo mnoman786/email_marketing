@@ -11,7 +11,8 @@ const statusLabels: Record<string, string> = {
   sent: 'Sent', failed: 'Failed', paused: 'Paused', cancelled: 'Cancelled',
   active: 'Active', unsubscribed: 'Unsubscribed', bounced: 'Bounced',
   complained: 'Complained', pending: 'Pending', opened: 'Opened',
-  clicked: 'Clicked',
+  clicked: 'Clicked', completed: 'Completed', stopped: 'Stopped',
+  replied: 'Replied',
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {

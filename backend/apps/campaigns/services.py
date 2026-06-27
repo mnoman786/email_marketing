@@ -6,6 +6,7 @@ import smtplib
 import random
 import logging
 import urllib.parse
+import uuid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -77,7 +78,7 @@ def inject_tracking(html, campaign, sendlog_id):
 
 
 def build_email_message(smtp_account, to_email, subject, html_content, text_content='',
-                         from_name=None, from_email=None, reply_to=None):
+                         from_name=None, from_email=None, reply_to=None, message_id=None):
     """Build a MIME email message."""
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -89,6 +90,8 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
 
     if reply_to:
         msg['Reply-To'] = reply_to
+    if message_id:
+        msg['Message-ID'] = message_id
 
     if text_content:
         msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
@@ -128,6 +131,16 @@ def send_via_smtp(smtp_account, msg, to_email):
         return False, f'Unexpected error: {e}'
 
 
+def make_message_id(sendlog_id, sender_email):
+    """
+    Deterministic Message-ID embedding the SendLog id, so a reply's
+    In-Reply-To/References header can be matched straight back to it.
+    Uses the sender's own domain to avoid any spam-score concern from a fake one.
+    """
+    domain = (sender_email or '').split('@')[-1].strip() or 'mailflow.local'
+    return f'<sendlog-{sendlog_id}.{uuid.uuid4().hex[:8]}@{domain}>'
+
+
 def render_template_for_contact(html_content, contact, campaign_variables=None):
     """Render template variables: campaign-level vars first, then per-contact vars override."""
     try:
@@ -151,7 +164,7 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     """
     Send a single campaign email to one contact.
     Uses weighted SMTP selection with fallback on failure.
-    Returns (success, smtp_account_used, error_message).
+    Returns (success, smtp_account_used, error_message, message_id).
     """
     available = list(smtp_accounts)
     attempted = []
@@ -167,6 +180,8 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     # Inject tracking pixel / rewrite links if tracking is enabled and we have a log ID
     if sendlog_id and (campaign.track_opens or campaign.track_clicks):
         html = inject_tracking(html, campaign, sendlog_id)
+
+    message_id = make_message_id(sendlog_id, campaign.from_email) if sendlog_id else None
 
     for attempt in range(max_retries):
         remaining = [s for s in available if s not in attempted]
@@ -188,17 +203,21 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
             from_name=campaign.from_name or None,
             from_email=campaign.from_email or None,
             reply_to=campaign.reply_to or None,
+            message_id=message_id,
         )
 
         success, error = send_via_smtp(smtp_account, msg, contact.email)
 
         if success:
             logger.info(f'[Campaign {campaign.id}] Sent to {contact.email} via {smtp_account.name}')
-            return True, smtp_account, None
+            return True, smtp_account, None, message_id
         else:
             logger.warning(
                 f'[Campaign {campaign.id}] Failed to send to {contact.email} via {smtp_account.name}: {error}'
                 f' (attempt {attempt + 1}/{max_retries})'
             )
 
-    return False, attempted[-1] if attempted else None, error if 'error' in dir() else 'No SMTP accounts available'
+    return (
+        False, attempted[-1] if attempted else None,
+        error if 'error' in dir() else 'No SMTP accounts available', message_id,
+    )

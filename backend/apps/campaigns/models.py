@@ -40,6 +40,7 @@ class Campaign(models.Model):
     open_count = models.PositiveIntegerField(default=0)
     click_count = models.PositiveIntegerField(default=0)
     bounce_count = models.PositiveIntegerField(default=0)
+    reply_count = models.PositiveIntegerField(default=0)
 
     # SMTP routing override (if empty, use all active user SMTP accounts)
     use_custom_smtp_routing = models.BooleanField(default=False)

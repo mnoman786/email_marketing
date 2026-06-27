@@ -1,3 +1,4 @@
+import imaplib
 import smtplib
 from email.mime.text import MIMEText
 from ninja import Router
@@ -8,7 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 from typing import Optional, List
 from .models import SMTPAccount
-from .schemas import SMTPAccountOut, SMTPAccountIn, SMTPAccountUpdateIn, SMTPTestIn, SMTPStatOut
+from .schemas import SMTPAccountOut, SMTPAccountIn, SMTPAccountUpdateIn, SMTPTestIn, SMTPStatOut, IMAPTestIn
 from apps.accounts.auth import auth
 
 router = Router(tags=['SMTP'])
@@ -34,6 +35,46 @@ def smtp_stats(request):
     return result
 
 
+def _check_imap_login(host, port, username, password, use_ssl):
+    """Raw IMAP login check. Returns nothing; raises on failure."""
+    if use_ssl:
+        conn = imaplib.IMAP4_SSL(host, port, timeout=15)
+    else:
+        conn = imaplib.IMAP4(host, port, timeout=15)
+    try:
+        conn.login(username, password)
+        conn.select('INBOX')
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+@router.post('/test-imap/', auth=auth)
+def test_imap_unsaved(request, data: IMAPTestIn):
+    """
+    Test IMAP credentials directly from the form, without saving anything first.
+    NOTE: must stay registered before '/{smtp_id}/' below — Django Ninja's
+    {smtp_id} path segment isn't digit-constrained at the URL-matching level
+    (int validation happens after routing), so a literal route declared after
+    it would never be reached; 'test-imap' would match {smtp_id} first.
+    """
+    if not data.imap_host or not data.imap_username or not data.imap_password:
+        raise HttpError(400, 'IMAP host, username and password are required.')
+
+    try:
+        _check_imap_login(
+            data.imap_host, data.imap_port or 993, data.imap_username,
+            data.imap_password, data.imap_use_ssl if data.imap_use_ssl is not None else True,
+        )
+        return {'success': True, 'message': 'IMAP connection successful.'}
+    except imaplib.IMAP4.error as e:
+        raise HttpError(400, f'IMAP authentication/connection failed: {e}')
+    except Exception as e:
+        raise HttpError(400, str(e))
+
+
 @router.get('/', response=List[SMTPAccountOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
 def list_smtp_accounts(request, search: Optional[str] = None, is_active: Optional[bool] = None):
@@ -51,10 +92,13 @@ def list_smtp_accounts(request, search: Optional[str] = None, is_active: Optiona
 def create_smtp_account(request, data: SMTPAccountIn):
     payload = data.dict()
     password = payload.pop('password', '')
+    imap_password = payload.pop('imap_password', '')
     payload['user'] = request.auth
     instance = SMTPAccount(**payload)
     if password:
         instance.password = password
+    if imap_password:
+        instance.imap_password = imap_password
     instance.save()
     return instance
 
@@ -69,10 +113,13 @@ def update_smtp_account(request, smtp_id: int, data: SMTPAccountUpdateIn):
     instance = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
     payload = data.dict(exclude_none=True)
     password = payload.pop('password', None)
+    imap_password = payload.pop('imap_password', None)
     for field, value in payload.items():
         setattr(instance, field, value)
     if password:
         instance.password = password
+    if imap_password:
+        instance.imap_password = imap_password
     instance.save()
     return instance
 
@@ -123,4 +170,40 @@ def test_smtp_account(request, smtp_id: int, data: SMTPTestIn):
         raise HttpError(400, 'Cannot connect to SMTP server. Check host/port.')
     except Exception as e:
         _save_test_result(False)
+        raise HttpError(400, str(e))
+
+
+@router.post('/{smtp_id}/test-imap/', auth=auth)
+def test_imap_account(request, smtp_id: int, data: IMAPTestIn):
+    """
+    Test IMAP credentials for an existing account. Any field provided in the
+    request body overrides the saved value (e.g. unsaved edits in the form);
+    omitted fields fall back to what's already stored, so leaving the
+    password blank reuses the saved one.
+    """
+    smtp_account = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
+
+    host = data.imap_host or smtp_account.imap_host
+    port = data.imap_port or smtp_account.imap_port
+    username = data.imap_username or smtp_account.imap_username
+    password = data.imap_password or smtp_account.imap_password
+    use_ssl = data.imap_use_ssl if data.imap_use_ssl is not None else smtp_account.imap_use_ssl
+
+    def _save_result(success: bool):
+        smtp_account.last_imap_tested_at = timezone.now()
+        smtp_account.last_imap_test_success = success
+        smtp_account.save(update_fields=['last_imap_tested_at', 'last_imap_test_success'])
+
+    if not host:
+        raise HttpError(400, 'IMAP host is not configured.')
+
+    try:
+        _check_imap_login(host, port, username, password, use_ssl)
+        _save_result(True)
+        return {'success': True, 'message': 'IMAP connection successful.'}
+    except imaplib.IMAP4.error as e:
+        _save_result(False)
+        raise HttpError(400, f'IMAP authentication/connection failed: {e}')
+    except Exception as e:
+        _save_result(False)
         raise HttpError(400, str(e))

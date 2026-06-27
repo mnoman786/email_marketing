@@ -68,6 +68,15 @@ export interface SMTPAccount {
   hourly_limit: number
   last_tested_at: string | null
   last_test_success: boolean | null
+  imap_enabled: boolean
+  imap_host: string
+  imap_port: number
+  imap_username: string
+  has_imap_password: boolean
+  imap_use_ssl: boolean
+  last_imap_checked_at: string | null
+  last_imap_tested_at: string | null
+  last_imap_test_success: boolean | null
   created_at: string
   updated_at: string
 }
@@ -105,6 +114,7 @@ export interface Campaign {
   open_count: number
   click_count: number
   bounce_count: number
+  reply_count: number
   campaign_variables: Record<string, string>
   use_custom_smtp_routing: boolean
   smtp_routes: CampaignSMTPRoute[]
@@ -116,6 +126,70 @@ export interface Campaign {
   updated_at: string
 }
 
+export interface SequenceSMTPRoute {
+  id: number
+  smtp_account: number
+  smtp_name: string
+  weight: number
+  is_active: boolean
+}
+
+export interface SequenceStep {
+  id: number
+  sequence: number
+  order: number
+  subject: string
+  template: number | null
+  html_content: string
+  text_content: string
+  campaign_variables: Record<string, string>
+  delay_days: number
+  delay_hours: number
+  stop_on_open: boolean
+  stop_on_click: boolean
+}
+
+export interface Sequence {
+  id: number
+  name: string
+  contact_list_ids: number[]
+  contact_lists_detail: ContactList[]
+  from_name: string
+  from_email: string
+  reply_to: string
+  status: 'draft' | 'active' | 'paused' | 'completed'
+  use_custom_smtp_routing: boolean
+  smtp_routes: SequenceSMTPRoute[]
+  track_opens: boolean
+  track_clicks: boolean
+  stop_on_reply: boolean
+  steps: SequenceStep[]
+  created_at: string
+  updated_at: string
+}
+
+export interface SequenceListItem {
+  id: number
+  name: string
+  status: 'draft' | 'active' | 'paused' | 'completed'
+  contact_list_count: number
+  step_count: number
+  enrollment_count: number
+  created_at: string
+}
+
+export interface SequenceEnrollment {
+  id: number
+  contact: number
+  contact_email: string
+  contact_name: string
+  current_step_order: number | null
+  status: 'active' | 'completed' | 'stopped' | 'unsubscribed' | 'bounced'
+  next_send_at: string | null
+  enrolled_at: string
+  completed_at: string | null
+}
+
 export interface SendLog {
   id: number
   campaign: number
@@ -125,10 +199,11 @@ export interface SendLog {
   contact_name: string
   smtp_account: number | null
   smtp_name: string
-  status: 'pending' | 'sent' | 'failed' | 'bounced' | 'opened' | 'clicked' | 'unsubscribed'
+  status: 'pending' | 'sent' | 'failed' | 'bounced' | 'opened' | 'clicked' | 'unsubscribed' | 'replied'
   sent_at: string | null
   opened_at: string | null
   clicked_at: string | null
+  replied_at: string | null
   error_message: string
   created_at: string
 }
@@ -153,4 +228,5 @@ export interface DashboardStats {
 export interface PaginatedResponse<T> {
   count: number
   items: T[]
+  next?: string | null
 }
