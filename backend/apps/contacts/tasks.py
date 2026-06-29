@@ -3,8 +3,11 @@ from django.db import transaction
 from .models import ContactList, Contact
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, ignore_result=False)
 def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
+    # Explicit opt-in: CELERY_TASK_IGNORE_RESULT=True is the project-wide
+    # default, but this task's progress/result IS read back via AsyncResult
+    # in apps/contacts/views.py:import_status, so it needs to keep storing one.
     from apps.accounts.models import User
     user = User.objects.get(id=user_id)
 

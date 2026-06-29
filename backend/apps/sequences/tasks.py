@@ -129,16 +129,21 @@ def process_due_sequence_steps():
             contact_name=enrollment.contact.full_name,
         )
 
-        success, smtp_used, error, message_id = send_campaign_email(
-            next_step, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id
-        )
+        result = send_campaign_email(next_step, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id)
 
-        sendlog.smtp_account = smtp_used
-        sendlog.status = 'sent' if success else 'failed'
-        sendlog.sent_at = timezone.now() if success else None
-        sendlog.error_message = error or ''
-        sendlog.message_id = message_id or ''
+        sendlog.smtp_account = result.smtp_account
+        sendlog.status = 'sent' if result.success else 'failed'
+        sendlog.sent_at = timezone.now() if result.success else None
+        sendlog.error_message = result.error or ''
+        sendlog.message_id = result.message_id or ''
         sendlog.save(update_fields=['smtp_account', 'status', 'sent_at', 'error_message', 'message_id'])
+
+        if result.success and result.smtp_account:
+            from apps.inbox.services import log_outbound_message
+            log_outbound_message(
+                sendlog, result.smtp_account, enrollment.contact,
+                result.subject, result.html, result.text, result.message_id,
+            )
 
         enrollment.current_step = next_step
         following = [s for s in steps if s.order > next_step.order]

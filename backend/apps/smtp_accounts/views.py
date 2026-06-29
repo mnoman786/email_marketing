@@ -4,6 +4,7 @@ from email.mime.text import MIMEText
 from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
+from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
@@ -15,8 +16,17 @@ from apps.accounts.auth import auth
 router = Router(tags=['SMTP'])
 
 
+def _invalidate_stats_cache(user_id):
+    cache.delete(f'smtp-stats-{user_id}')
+
+
 @router.get('/stats/', response=List[SMTPStatOut], auth=auth)
 def smtp_stats(request):
+    cache_key = f'smtp-stats-{request.auth.id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     accounts = SMTPAccount.objects.filter(user=request.auth)
     total_weight = sum(a.weight for a in accounts if a.is_active)
     result = []
@@ -32,6 +42,7 @@ def smtp_stats(request):
             'last_tested_at': account.last_tested_at,
             'last_test_success': account.last_test_success,
         })
+    cache.set(cache_key, result, timeout=30)
     return result
 
 
@@ -100,6 +111,7 @@ def create_smtp_account(request, data: SMTPAccountIn):
     if imap_password:
         instance.imap_password = imap_password
     instance.save()
+    _invalidate_stats_cache(request.auth.id)
     return instance
 
 
@@ -121,12 +133,14 @@ def update_smtp_account(request, smtp_id: int, data: SMTPAccountUpdateIn):
     if imap_password:
         instance.imap_password = imap_password
     instance.save()
+    _invalidate_stats_cache(request.auth.id)
     return instance
 
 
 @router.delete('/{smtp_id}/', auth=auth)
 def delete_smtp_account(request, smtp_id: int):
     get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth).delete()
+    _invalidate_stats_cache(request.auth.id)
     return {'detail': 'Deleted.'}
 
 
@@ -138,6 +152,7 @@ def test_smtp_account(request, smtp_id: int, data: SMTPTestIn):
         smtp_account.last_tested_at = timezone.now()
         smtp_account.last_test_success = success
         smtp_account.save(update_fields=['last_tested_at', 'last_test_success'])
+        _invalidate_stats_cache(request.auth.id)
 
     try:
         msg = MIMEText(

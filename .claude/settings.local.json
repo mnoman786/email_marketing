@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./venv/Scripts/python.exe manage.py makemigrations analytics --name snapshot_contact_on_sendlog)"
+      "Bash(./venv/Scripts/python.exe manage.py makemigrations analytics --name snapshot_contact_on_sendlog)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'fix: add default='\\\\'''\\\\'' to contact_email/contact_name to prevent NOT NULL error *)"
     ]
   }
 }

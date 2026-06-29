@@ -76,16 +76,14 @@ def send_campaign_task(self, campaign_id):
                 contact_name=contact.full_name,
             )
 
-        success, smtp_used, error, message_id = send_campaign_email(
-            campaign, contact, smtp_accounts, sendlog_id=sendlog.id
-        )
+        result = send_campaign_email(campaign, contact, smtp_accounts, sendlog_id=sendlog.id)
 
         with transaction.atomic():
-            sendlog.smtp_account = smtp_used
-            sendlog.status = 'sent' if success else 'failed'
-            sendlog.sent_at = timezone.now() if success else None
-            sendlog.error_message = error or ''
-            sendlog.message_id = message_id or ''
+            sendlog.smtp_account = result.smtp_account
+            sendlog.status = 'sent' if result.success else 'failed'
+            sendlog.sent_at = timezone.now() if result.success else None
+            sendlog.error_message = result.error or ''
+            sendlog.message_id = result.message_id or ''
             sendlog.contact_email = contact.email
             sendlog.contact_name = contact.full_name
             sendlog.save(update_fields=[
@@ -93,8 +91,14 @@ def send_campaign_task(self, campaign_id):
                 'contact_email', 'contact_name',
             ])
 
-        if success:
+        if result.success:
             sent += 1
+            if result.smtp_account:
+                from apps.inbox.services import log_outbound_message
+                log_outbound_message(
+                    sendlog, result.smtp_account, contact,
+                    result.subject, result.html, result.text, result.message_id,
+                )
         else:
             failed += 1
 
@@ -158,15 +162,13 @@ def send_single_email_task(self, campaign_id, contact_id):
         }
     )
 
-    success, smtp_used, error, message_id = send_campaign_email(
-        campaign, contact, smtp_accounts, sendlog_id=sendlog.id
-    )
+    result = send_campaign_email(campaign, contact, smtp_accounts, sendlog_id=sendlog.id)
 
-    sendlog.smtp_account = smtp_used
-    sendlog.status = 'sent' if success else 'failed'
-    sendlog.sent_at = timezone.now() if success else None
-    sendlog.error_message = error or ''
-    sendlog.message_id = message_id or ''
+    sendlog.smtp_account = result.smtp_account
+    sendlog.status = 'sent' if result.success else 'failed'
+    sendlog.sent_at = timezone.now() if result.success else None
+    sendlog.error_message = result.error or ''
+    sendlog.message_id = result.message_id or ''
     sendlog.contact_email = contact.email
     sendlog.contact_name = contact.full_name
     sendlog.save(update_fields=[
@@ -174,4 +176,11 @@ def send_single_email_task(self, campaign_id, contact_id):
         'contact_email', 'contact_name',
     ])
 
-    return {'success': success, 'error': error}
+    if result.success and result.smtp_account:
+        from apps.inbox.services import log_outbound_message
+        log_outbound_message(
+            sendlog, result.smtp_account, contact,
+            result.subject, result.html, result.text, result.message_id,
+        )
+
+    return {'success': result.success, 'error': result.error}

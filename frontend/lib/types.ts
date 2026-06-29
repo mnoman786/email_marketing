@@ -225,6 +225,38 @@ export interface DashboardStats {
   smtp_performance: { id: number; name: string; sent: number; failed: number }[]
 }
 
+export interface InboxMessage {
+  id: number
+  direction: 'inbound' | 'outbound'
+  from_email: string
+  to_email: string
+  subject: string
+  body_html: string
+  body_text: string
+  occurred_at: string
+}
+
+export interface Thread {
+  id: number
+  contact: number
+  contact_email: string
+  contact_name: string
+  smtp_account: number
+  smtp_account_name: string
+  subject: string
+  last_message_at: string | null
+  is_unread: boolean
+  created_at: string
+}
+
+export interface ThreadListItem extends Thread {
+  last_message_preview: string
+}
+
+export interface ThreadDetail extends Thread {
+  messages: InboxMessage[]
+}
+
 export interface PaginatedResponse<T> {
   count: number
   items: T[]

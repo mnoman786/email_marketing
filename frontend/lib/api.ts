@@ -136,6 +136,15 @@ export const sequencesApi = {
   deleteStep: (id: number, stepId: number) => api.delete(`/api/sequences/${id}/steps/${stepId}/`),
 }
 
+// Inbox
+export const inboxApi = {
+  threads: (params?: any) => api.get('/api/inbox/threads/', { params }),
+  getThread: (id: number) => api.get(`/api/inbox/threads/${id}/`),
+  reply: (id: number, data: { html_content: string; text_content?: string }) =>
+    api.post(`/api/inbox/threads/${id}/reply/`, data),
+  unreadCount: () => api.get('/api/inbox/unread-count/'),
+}
+
 // Analytics
 export const analyticsApi = {
   dashboard: () => api.get('/api/analytics/dashboard/'),

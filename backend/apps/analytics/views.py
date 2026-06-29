@@ -2,6 +2,7 @@ import base64
 from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
+from django.core.cache import cache
 from django.db.models import Count, Q, F
 from django.http import HttpResponse, HttpResponseRedirect
 from django.utils import timezone
@@ -26,6 +27,15 @@ def dashboard_stats(request):
     from apps.smtp_accounts.models import SMTPAccount
 
     user = request.auth
+
+    # This view does ~20 separate count/aggregate queries (the 7-day trend
+    # loop alone is 14). It's a dashboard summary, not a transactional view,
+    # so a short cache window trades a little staleness for a lot less load.
+    cache_key = f'dashboard-stats-{user.id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     now = timezone.now()
     last_30 = now - timedelta(days=30)
 
@@ -70,7 +80,7 @@ def dashboard_stats(request):
         elif item['status'] == 'failed':
             smtp_summary[aid]['failed'] += item['count']
 
-    return {
+    result = {
         'contacts': {'total': total_contacts, 'active': active_contacts, 'lists': total_lists},
         'campaigns': {'total': total_campaigns, 'active': active_campaigns, 'statuses': campaign_statuses},
         'emails': {
@@ -87,6 +97,8 @@ def dashboard_stats(request):
         'trend': trend,
         'smtp_performance': list(smtp_summary.values()),
     }
+    cache.set(cache_key, result, timeout=30)
+    return result
 
 
 @router.get('/logs/', response=List[SendLogOut], auth=auth)

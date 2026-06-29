@@ -7,6 +7,7 @@ import random
 import logging
 import urllib.parse
 import uuid
+from collections import namedtuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -15,6 +16,8 @@ from django.utils import timezone
 from django.template import Template, Context
 
 logger = logging.getLogger(__name__)
+
+SendResult = namedtuple('SendResult', ['success', 'smtp_account', 'error', 'message_id', 'html', 'text', 'subject'])
 
 
 def pick_smtp_by_weight(smtp_accounts):
@@ -78,7 +81,7 @@ def inject_tracking(html, campaign, sendlog_id):
 
 
 def build_email_message(smtp_account, to_email, subject, html_content, text_content='',
-                         from_name=None, from_email=None, reply_to=None, message_id=None):
+                         from_name=None, from_email=None, reply_to=None, message_id=None, in_reply_to=None):
     """Build a MIME email message."""
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -92,6 +95,9 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
         msg['Reply-To'] = reply_to
     if message_id:
         msg['Message-ID'] = message_id
+    if in_reply_to:
+        msg['In-Reply-To'] = in_reply_to
+        msg['References'] = in_reply_to
 
     if text_content:
         msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
@@ -164,7 +170,7 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     """
     Send a single campaign email to one contact.
     Uses weighted SMTP selection with fallback on failure.
-    Returns (success, smtp_account_used, error_message, message_id).
+    Returns a SendResult(success, smtp_account, error, message_id, html, text, subject).
     """
     available = list(smtp_accounts)
     attempted = []
@@ -210,14 +216,14 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
 
         if success:
             logger.info(f'[Campaign {campaign.id}] Sent to {contact.email} via {smtp_account.name}')
-            return True, smtp_account, None, message_id
+            return SendResult(True, smtp_account, None, message_id, html, text, subject)
         else:
             logger.warning(
                 f'[Campaign {campaign.id}] Failed to send to {contact.email} via {smtp_account.name}: {error}'
                 f' (attempt {attempt + 1}/{max_retries})'
             )
 
-    return (
+    return SendResult(
         False, attempted[-1] if attempted else None,
-        error if 'error' in dir() else 'No SMTP accounts available', message_id,
+        error if 'error' in dir() else 'No SMTP accounts available', message_id, html, text, subject,
     )

@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'apps.campaigns',
     'apps.analytics',
     'apps.sequences',
+    'apps.inbox',
 ]
 
 MIDDLEWARE = [
@@ -104,7 +105,15 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Celery
 CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = 'django-db'
+# Redis instead of django-db: every task run (sends, IMAP polls, sequence
+# steps) used to write a result row to the relational DB even though almost
+# nothing ever reads it back. Redis + a TTL means results just expire instead
+# of accumulating, and CELERY_TASK_IGNORE_RESULT below means most tasks skip
+# writing a result at all — only ones that explicitly opt back in (e.g. the
+# contact bulk-import task, polled via AsyncResult for progress) store one.
+CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_EXPIRES = 3600
+CELERY_TASK_IGNORE_RESULT = True
 CELERY_CACHE_BACKEND = 'default'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
@@ -140,8 +149,14 @@ ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='')
 # Public base URL used to build tracking pixel / click-redirect URLs in emails
 SITE_URL = config('SITE_URL', default='http://localhost:8000')
 
+# Redis-backed cache (was LocMemCache — per-process, so it neither shared
+# data across worker processes nor actually reduced DB load across them).
+# This also makes the IMAP poll-overlap lock in apps/smtp_accounts/tasks.py
+# correctly shared across multiple worker processes, not just one.
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/0'),
+        'KEY_PREFIX': 'mailflow',
     }
 }

@@ -1,15 +1,18 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { inboxApi } from '@/lib/api'
 import {
   LayoutDashboard, Users, Mail, Server, Megaphone, BarChart3, Settings,
-  ChevronLeft, ChevronRight, Zap, ListFilter, Workflow
+  ChevronLeft, ChevronRight, Zap, ListFilter, Workflow, Inbox
 } from 'lucide-react'
 import { useState } from 'react'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/contacts', label: 'Contacts', icon: Users },
   { href: '/lists', label: 'Lists', icon: ListFilter },
   { href: '/templates', label: 'Templates', icon: Mail },
@@ -26,6 +29,13 @@ const bottomItems = [
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+
+  const { data: unreadData } = useQuery({
+    queryKey: ['inbox-unread-count'],
+    queryFn: () => inboxApi.unreadCount().then(r => r.data as { count: number }),
+    refetchInterval: 30000,
+  })
+  const unreadCount = unreadData?.count || 0
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
@@ -59,7 +69,15 @@ export function Sidebar() {
               title={collapsed ? label : undefined}
             >
               <Icon className="w-4.5 h-4.5 shrink-0" size={18} />
-              {!collapsed && <span>{label}</span>}
+              {!collapsed && <span className="flex-1">{label}</span>}
+              {href === '/inbox' && unreadCount > 0 && (
+                <span className={cn(
+                  'flex items-center justify-center text-[10px] font-semibold rounded-full bg-primary text-primary-foreground',
+                  collapsed ? 'absolute top-1 right-1 w-2 h-2' : 'min-w-4.5 h-4.5 px-1'
+                )}>
+                  {!collapsed && (unreadCount > 99 ? '99+' : unreadCount)}
+                </span>
+              )}
             </div>
           </Link>
         ))}
