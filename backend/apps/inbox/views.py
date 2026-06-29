@@ -1,20 +1,22 @@
 import uuid
+from datetime import timedelta
 from ninja import Router, Form, File as NinjaFile
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
 from django.db.models import Q
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from typing import Optional, List
-from .models import Thread, InboxMessage, ReplyTemplate
+from .models import Thread, InboxMessage, Attachment, ReplyTemplate
 from .schemas import (
     ThreadListOut, ThreadDetailOut, InboxMessageOut,
     ThreadStatusIn, ThreadReadIn, ThreadArchiveIn, ThreadSnoozeIn,
     BulkActionIn, ComposeIn, ReplyTemplateOut, ReplyTemplateIn, ContactStatsOut,
 )
-from .services import log_outbound_message, unread_count_cache_key
+from .services import log_outbound_message, unread_count_cache_key, generate_followup_draft, FOLLOW_UP_DAYS, NO_FOLLOW_UP_STATUSES
 from apps.accounts.auth import auth
 
 router = Router(tags=['Inbox'])
@@ -66,6 +68,7 @@ def list_threads(
     lead_status: Optional[str] = None,
     is_archived: bool = False,
     snoozed: bool = False,
+    due_followup: bool = False,
     search: Optional[str] = None,
 ):
     now = timezone.now()
@@ -80,6 +83,9 @@ def list_threads(
         qs = qs.filter(smtp_account_id=smtp_account_id)
     if lead_status is not None:
         qs = qs.filter(lead_status=lead_status)
+    if due_followup:
+        cutoff = now - timedelta(days=FOLLOW_UP_DAYS)
+        qs = qs.filter(last_message_direction='outbound', last_message_at__lte=cutoff).exclude(lead_status__in=NO_FOLLOW_UP_STATUSES)
     if search:
         qs = qs.filter(
             Q(contact__email__icontains=search)
@@ -122,6 +128,35 @@ def thread_contact_stats(request, thread_id: int):
             logs.exclude(campaign__isnull=True).values_list('campaign__name', flat=True).distinct()
         ),
     }
+
+
+@router.get('/threads/{thread_id}/followup-draft/', auth=auth)
+def thread_followup_draft(request, thread_id: int):
+    thread = get_object_or_404(
+        Thread.objects.select_related('contact'), id=thread_id, user=request.auth
+    )
+    html, text = generate_followup_draft(thread)
+    return {'html_content': html, 'text_content': text}
+
+
+@router.get('/attachments/{attachment_id}/download/', auth=auth)
+def download_attachment(request, attachment_id: int):
+    attachment = get_object_or_404(
+        Attachment.objects.select_related('message__thread'),
+        id=attachment_id, message__thread__user=request.auth,
+    )
+    # Force a download rather than letting the browser render the file inline —
+    # an inline HTML/SVG attachment with embedded script would otherwise execute
+    # in this app's origin. application/octet-stream + nosniff blocks that
+    # regardless of what the sender claimed the content-type was.
+    response = FileResponse(
+        attachment.file.open('rb'),
+        as_attachment=True,
+        filename=attachment.filename or 'attachment',
+        content_type='application/octet-stream',
+    )
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @router.patch('/threads/{thread_id}/status/', response=ThreadDetailOut, auth=auth)

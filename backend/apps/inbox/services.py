@@ -50,6 +50,27 @@ MEETING_BOOKED_PATTERNS = [
 ]
 
 
+# Rule-based follow-up suggestion — no AI/LLM call, just a templated nudge for
+# threads where we sent last and got no reply for FOLLOW_UP_DAYS. The user
+# reviews/edits the draft in the composer before sending; nothing is auto-sent.
+FOLLOW_UP_DAYS = 3
+NO_FOLLOW_UP_STATUSES = ['not_interested', 'meeting_booked']
+
+
+def generate_followup_draft(thread):
+    contact = thread.contact
+    name = contact.first_name or contact.full_name or 'there'
+    days = (timezone.now() - thread.last_message_at).days if thread.last_message_at else 0
+    text = (
+        f"Hi {name},\n\n"
+        f"Just wanted to follow up on my previous email from {days} day{'s' if days != 1 else ''} ago — "
+        "wondering if you had a chance to take a look. Happy to answer any questions.\n\n"
+        "Let me know your thoughts!"
+    )
+    html = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    return html, text
+
+
 def classify_reply_status(text):
     """Return a Thread.LEAD_STATUS_CHOICES value, or None if no keyword matched."""
     if not text:
@@ -82,12 +103,13 @@ def log_outbound_message(send_log, smtp_account, contact, subject, html, text, m
     _save_attachments(message, attachments)
     thread.subject = subject or thread.subject
     thread.last_message_at = now
-    thread.save(update_fields=['subject', 'last_message_at'])
+    thread.last_message_direction = 'outbound'
+    thread.save(update_fields=['subject', 'last_message_at', 'last_message_direction'])
     return message
 
 
 def log_inbound_message(send_log, smtp_account, contact, from_email, subject, html, text, message_id, in_reply_to,
-                         attachments=None):
+                         attachments=None, is_cold_lead=False):
     """Record an incoming reply into its thread."""
     from .models import InboxMessage
 
@@ -102,8 +124,13 @@ def log_inbound_message(send_log, smtp_account, contact, from_email, subject, ht
     _save_attachments(message, attachments)
     thread.subject = subject or thread.subject
     thread.last_message_at = now
+    thread.last_message_direction = 'inbound'
     thread.is_unread = True
-    update_fields = ['subject', 'last_message_at', 'is_unread']
+    update_fields = ['subject', 'last_message_at', 'last_message_direction', 'is_unread']
+
+    if is_cold_lead and not thread.is_cold_lead:
+        thread.is_cold_lead = True
+        update_fields.append('is_cold_lead')
 
     if thread.lead_status == 'none':
         auto_status = classify_reply_status(text or html)

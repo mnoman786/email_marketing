@@ -1,5 +1,10 @@
 from django.db import models
 from django.conf import settings
+from django.core.files.storage import FileSystemStorage
+
+# Never wired into urls.py's static() mount — only reachable through the
+# authenticated, ownership-checked download view, not as a public file path.
+private_storage = FileSystemStorage(location=str(settings.PRIVATE_MEDIA_ROOT), base_url=None)
 
 
 class Thread(models.Model):
@@ -9,6 +14,10 @@ class Thread(models.Model):
         ('interested', 'Interested'),
         ('not_interested', 'Not Interested'),
         ('meeting_booked', 'Meeting Booked'),
+    ]
+    DIRECTION_CHOICES = [
+        ('inbound', 'Inbound'),
+        ('outbound', 'Outbound'),
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='inbox_threads')
@@ -21,6 +30,14 @@ class Thread(models.Model):
     lead_status = models.CharField(max_length=20, choices=LEAD_STATUS_CHOICES, default='none')
     lead_status_auto = models.BooleanField(default=False, help_text='True if lead_status was set by the keyword heuristic, not a manual click.')
     snoozed_until = models.DateTimeField(null=True, blank=True)
+    # Denormalized from the latest InboxMessage so "you sent last, no reply yet"
+    # follow-up candidates can be filtered with a plain indexed query instead of
+    # a per-thread subquery against InboxMessage.
+    last_message_direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES, blank=True)
+    # True when this thread started from someone emailing in first, with no prior
+    # campaign/sequence/manual send to them — surfaced as "New sender" in the UI
+    # since it bypassed the usual SendLog/Thread matching entirely.
+    is_cold_lead = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -31,6 +48,7 @@ class Thread(models.Model):
             models.Index(fields=['user', 'lead_status']),
             models.Index(fields=['user', 'is_archived']),
             models.Index(fields=['user', 'snoozed_until']),
+            models.Index(fields=['user', 'last_message_direction', 'last_message_at']),
         ]
 
     def __str__(self):
@@ -71,7 +89,7 @@ def attachment_upload_path(instance, filename):
 
 class Attachment(models.Model):
     message = models.ForeignKey(InboxMessage, on_delete=models.CASCADE, related_name='attachments')
-    file = models.FileField(upload_to=attachment_upload_path)
+    file = models.FileField(upload_to=attachment_upload_path, storage=private_storage)
     filename = models.CharField(max_length=255, blank=True)
     content_type = models.CharField(max_length=255, blank=True)
     size = models.PositiveIntegerField(default=0)

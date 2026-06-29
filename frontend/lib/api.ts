@@ -162,6 +162,7 @@ export const inboxApi = {
   bulkAction: (ids: number[], action: string, lead_status?: string) =>
     api.post('/api/inbox/threads/bulk/', { ids, action, lead_status }),
   contactStats: (id: number) => api.get(`/api/inbox/threads/${id}/contact-stats/`),
+  followupDraft: (id: number) => api.get(`/api/inbox/threads/${id}/followup-draft/`),
   compose: (data: {
     contact_id: number; smtp_account_id: number; subject: string
     html_content: string; text_content?: string; include_signature?: boolean; files?: File[]
@@ -181,6 +182,7 @@ export const inboxApi = {
     api.post('/api/inbox/templates/', data),
   deleteTemplate: (id: number) => api.delete(`/api/inbox/templates/${id}/`),
   unreadCount: () => api.get('/api/inbox/unread-count/'),
+  downloadAttachment: (id: number) => api.get(`/api/inbox/attachments/${id}/download/`, { responseType: 'blob' }),
 }
 
 // Analytics

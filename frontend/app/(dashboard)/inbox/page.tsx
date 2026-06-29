@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { addDays, addHours, set } from 'date-fns'
-import { inboxApi, smtpApi, API_URL } from '@/lib/api'
+import { inboxApi, smtpApi } from '@/lib/api'
 import { ThreadListItem, ThreadDetail, PaginatedResponse, SMTPAccount, ReplyTemplate } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,14 +11,15 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { Skeleton } from '@/components/shared/loading-skeleton'
 import { cn, formatDateTime, formatRelativeTime, avatarColor, initials } from '@/lib/utils'
 import {
-  Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox, ChevronDown, ChevronRight,
+  Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox,
   Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, Info, X, FileText, Plus,
-  Square, CheckSquare, Download,
+  Square, CheckSquare, UserPlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { RichTextEditor, RichTextEditorHandle } from './rich-text-editor'
 import { ComposeModal } from './compose-modal'
 import { ContactStatsPanel } from './contact-stats-panel'
+import { MessageBubble } from './message-bubble'
 
 const LEAD_STATUSES = [
   { value: 'none', label: 'No status', dot: 'bg-muted-foreground/40', badge: 'bg-muted text-muted-foreground' },
@@ -31,49 +32,16 @@ function leadStatusMeta(status: string) {
   return LEAD_STATUSES.find(s => s.value === status) || LEAD_STATUSES[0]
 }
 
-function attachmentUrl(url: string) {
-  return url.startsWith('http') ? url : `${API_URL}${url}`
-}
+// Mirrors the backend's FOLLOW_UP_DAYS/NO_FOLLOW_UP_STATUSES in apps/inbox/services.py —
+// used only to render the row badge instantly; the actual filter is server-side.
+const FOLLOW_UP_DAYS = 3
+const NO_FOLLOW_UP_STATUSES = new Set(['not_interested', 'meeting_booked'])
 
-// Messages can come from external senders — never render their HTML directly.
-// Strip tags and display as plain text so nothing can execute in the page.
-function toPlainText(html: string, text: string): string {
-  if (text) return text
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|tr)>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
-// Email replies append the entire previous message below the new text
-// ("On ... wrote:" + ">"-quoted lines, or "----- Original Message -----").
-// Split that off so the chat view shows just the new reply by default.
-function splitQuotedReply(text: string): { main: string; quoted: string } {
-  const markers = [
-    /\n?On .{1,120}wrote:\s*\n/i,
-    /\n?-{2,}\s*Original Message\s*-{2,}/i,
-    /\n?_{5,}\s*\nFrom:/i,
-  ]
-  for (const m of markers) {
-    const match = text.match(m)
-    if (match && match.index && match.index > 0) {
-      return { main: text.slice(0, match.index).trim(), quoted: text.slice(match.index).trim() }
-    }
-  }
-  const lines = text.split('\n')
-  const quoteStart = lines.findIndex(l => l.trim().startsWith('>'))
-  if (quoteStart > 0) {
-    return { main: lines.slice(0, quoteStart).join('\n').trim(), quoted: lines.slice(quoteStart).join('\n').trim() }
-  }
-  return { main: text.trim(), quoted: '' }
+function isDueFollowup(t: { last_message_direction: string; last_message_at: string | null; lead_status: string }) {
+  if (t.last_message_direction !== 'outbound' || !t.last_message_at) return false
+  if (NO_FOLLOW_UP_STATUSES.has(t.lead_status)) return false
+  const days = (Date.now() - new Date(t.last_message_at).getTime()) / (1000 * 60 * 60 * 24)
+  return days >= FOLLOW_UP_DAYS
 }
 
 function Avatar({ name, size = 36 }: { name: string; size?: number }) {
@@ -85,12 +53,6 @@ function Avatar({ name, size = 36 }: { name: string; size?: number }) {
       {initials(name)}
     </div>
   )
-}
-
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const SNOOZE_OPTIONS = [
@@ -107,6 +69,7 @@ export default function InboxPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [accountFilter, setAccountFilter] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [dueFollowupOnly, setDueFollowupOnly] = useState(false)
   const [view, setView] = useState<ViewTab>('inbox')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -119,7 +82,7 @@ export default function InboxPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false)
   const [composeOpen, setComposeOpen] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<RichTextEditorHandle>(null)
   const replyFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -142,11 +105,12 @@ export default function InboxPage() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inbox-threads', accountFilter, statusFilter, view, debouncedSearch],
+    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch],
     queryFn: () => inboxApi.threads({
       page_size: 50,
       smtp_account_id: accountFilter || undefined,
       lead_status: statusFilter || undefined,
+      due_followup: dueFollowupOnly || undefined,
       is_archived: view === 'archived',
       snoozed: view === 'snoozed',
       search: debouncedSearch || undefined,
@@ -167,9 +131,15 @@ export default function InboxPage() {
 
   const threads = data?.items || []
 
+  // scrollHeight read synchronously here can be stale — a message's image/
+  // attachment chip may not have finished laying out yet, undershooting the
+  // scroll target. requestAnimationFrame defers until after that layout pass.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [thread?.messages?.length])
+    const frame = requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ block: 'end' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [thread?.id, thread?.messages?.length])
 
   // Opening a thread marks it read on the backend — reflect that instantly
   // in the list and the sidebar badge instead of waiting for the next poll.
@@ -334,6 +304,19 @@ export default function InboxPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reply-templates'] }),
   })
 
+  const followupDraftMut = useMutation({
+    mutationFn: () => inboxApi.followupDraft(selectedId as number),
+    onSuccess: (res) => {
+      const { html_content, text_content } = res.data as { html_content: string; text_content: string }
+      editorRef.current?.clear()
+      editorRef.current?.insertHTML(html_content)
+      setReplyHtml(html_content)
+      setReplyText(text_content)
+      toast.success('Follow-up draft inserted — review before sending')
+    },
+    onError: () => toast.error('Failed to generate follow-up draft'),
+  })
+
   const toggleSelected = (id: number) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -374,9 +357,9 @@ export default function InboxPage() {
   const smtpAccount = smtpAccounts?.find((a: SMTPAccount) => a.id === thread?.smtp_account)
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-muted/20">
+    <div className="flex h-full min-h-0 overflow-hidden bg-muted/20">
       {/* Thread list */}
-      <div className="w-[340px] border-r bg-card flex flex-col shrink-0">
+      <div className="w-[340px] border-r bg-card flex flex-col shrink-0 min-h-0">
         <div className="p-4 border-b space-y-3">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-bold">Inbox</h1>
@@ -451,6 +434,19 @@ export default function InboxPage() {
                 {s.label}
               </button>
             ))}
+            {view === 'inbox' && (
+              <button
+                onClick={() => setDueFollowupOnly(v => !v)}
+                className={cn(
+                  'text-[11px] px-2 py-1 rounded-full border flex items-center gap-1 transition-colors',
+                  dueFollowupOnly ? 'bg-amber-50 text-amber-700 border-transparent' : 'text-muted-foreground hover:bg-muted'
+                )}
+                title={`Sent by you, no reply for ${FOLLOW_UP_DAYS}+ days`}
+              >
+                <Clock size={11} />
+                Needs follow-up
+              </button>
+            )}
           </div>
         </div>
 
@@ -481,7 +477,7 @@ export default function InboxPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {isLoading ? (
             <div className="p-3 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -497,10 +493,17 @@ export default function InboxPage() {
           ) : threads.length === 0 ? (
             <EmptyState
               icon={InboxIcon}
-              title={debouncedSearch ? 'No matches' : view !== 'inbox' ? `No ${view} conversations` : 'No conversations yet'}
+              title={
+                debouncedSearch ? 'No matches'
+                  : dueFollowupOnly ? 'Nothing needs a follow-up'
+                  : view !== 'inbox' ? `No ${view} conversations`
+                  : 'No conversations yet'
+              }
               description={
                 debouncedSearch
                   ? 'No conversations match your search.'
+                  : dueFollowupOnly
+                  ? `Threads you sent last with no reply for ${FOLLOW_UP_DAYS}+ days will show up here.`
                   : view === 'archived'
                   ? 'Conversations you archive will show up here.'
                   : view === 'snoozed'
@@ -546,10 +549,25 @@ export default function InboxPage() {
                           {t.smtp_account_name}
                         </span>
                       )}
+                      {t.is_cold_lead && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700"
+                          title="Emailed in first — no prior campaign, sequence, or manual send to this contact"
+                        >
+                          <UserPlus size={9} />
+                          New sender
+                        </span>
+                      )}
                       {t.lead_status !== 'none' && (
                         <span className={cn('inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded', leadStatusMeta(t.lead_status).badge)}>
                           <span className={cn('w-1.5 h-1.5 rounded-full', leadStatusMeta(t.lead_status).dot)} />
                           {leadStatusMeta(t.lead_status).label}
+                        </span>
+                      )}
+                      {isDueFollowup(t) && (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+                          <Clock size={9} />
+                          Needs follow-up
                         </span>
                       )}
                     </div>
@@ -589,7 +607,7 @@ export default function InboxPage() {
       </div>
 
       {/* Conversation panel */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
             <EmptyState icon={MessageSquare} title="Select a conversation" description="Pick a thread from the left to view the full conversation." />
@@ -603,7 +621,18 @@ export default function InboxPage() {
             <div className="px-5 py-3.5 border-b bg-card flex items-center gap-2">
               <Avatar name={thread.contact_name || thread.contact_email} size={32} />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-sm truncate">{thread.contact_name || thread.contact_email}</p>
+                <p className="font-semibold text-sm truncate flex items-center gap-1.5">
+                  {thread.contact_name || thread.contact_email}
+                  {thread.is_cold_lead && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[10px] font-normal px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 shrink-0"
+                      title="Emailed in first — no prior campaign, sequence, or manual send to this contact"
+                    >
+                      <UserPlus size={9} />
+                      New sender
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
                   <span>{thread.contact_email}</span>
                   <span className="opacity-50">•</span>
@@ -688,76 +717,18 @@ export default function InboxPage() {
               </Button>
             </div>
 
-            <div className="flex-1 flex min-w-0">
-              <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-w-0">
-                {thread.messages.map(m => {
-                  const { main, quoted } = splitQuotedReply(toPlainText(m.body_html, m.body_text))
-                  const expanded = expandedQuotes.has(m.id)
-                  return (
-                    <div key={m.id} className={cn('flex gap-2', m.direction === 'outbound' ? 'justify-end' : 'justify-start')}>
-                      {m.direction === 'inbound' && <Avatar name={thread.contact_name || thread.contact_email} size={28} />}
-                      <div className={cn(
-                        'max-w-[65%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
-                        m.direction === 'outbound'
-                          ? 'bg-primary text-primary-foreground rounded-br-md'
-                          : 'bg-card border rounded-bl-md'
-                      )}>
-                        {m.subject && (
-                          <p className={cn('text-[11px] font-medium mb-1 opacity-70')}>{m.subject}</p>
-                        )}
-                        <div className="whitespace-pre-wrap break-words leading-relaxed">
-                          {main || <span className="opacity-60 italic">(no content)</span>}
-                        </div>
-                        {m.attachments.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {m.attachments.map(att => (
-                              <a
-                                key={att.id}
-                                href={attachmentUrl(att.url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={cn(
-                                  'inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border',
-                                  m.direction === 'outbound' ? 'border-primary-foreground/30 hover:bg-primary-foreground/10' : 'border-border hover:bg-muted'
-                                )}
-                              >
-                                <Paperclip size={11} />
-                                <span className="truncate max-w-[140px]">{att.filename}</span>
-                                <span className="opacity-60">{formatBytes(att.size)}</span>
-                                <Download size={10} />
-                              </a>
-                            ))}
-                          </div>
-                        )}
-                        {quoted && (
-                          <>
-                            <button
-                              onClick={() => toggleQuote(m.id)}
-                              className={cn(
-                                'flex items-center gap-1 text-[11px] mt-1.5 opacity-70 hover:opacity-100 transition-opacity',
-                                m.direction === 'outbound' ? 'text-primary-foreground' : 'text-muted-foreground'
-                              )}
-                            >
-                              {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                              {expanded ? 'Hide quoted text' : 'Show quoted text'}
-                            </button>
-                            {expanded && (
-                              <div className={cn(
-                                'whitespace-pre-wrap break-words leading-relaxed mt-1.5 pt-1.5 border-t text-[12px] opacity-70',
-                                m.direction === 'outbound' ? 'border-primary-foreground/20' : 'border-border'
-                              )}>
-                                {quoted}
-                              </div>
-                            )}
-                          </>
-                        )}
-                        <p className={cn('text-[10px] mt-1.5', m.direction === 'outbound' ? 'opacity-70' : 'text-muted-foreground')}>
-                          {formatDateTime(m.occurred_at)}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
+            <div className="flex-1 flex min-w-0 min-h-0">
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-w-0 min-h-0">
+                {thread.messages.map(m => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    contactName={thread.contact_name || thread.contact_email}
+                    expanded={expandedQuotes.has(m.id)}
+                    onToggleQuote={() => toggleQuote(m.id)}
+                  />
+                ))}
+                <div ref={bottomRef} />
               </div>
               {showStats && <ContactStatsPanel threadId={thread.id} />}
             </div>
@@ -846,6 +817,16 @@ export default function InboxPage() {
                       </div>
                     )}
                   </div>
+                  {thread.last_message_direction === 'outbound' && (
+                    <button
+                      type="button"
+                      onClick={() => followupDraftMut.mutate()}
+                      disabled={followupDraftMut.isPending}
+                      className="text-xs text-amber-700 hover:text-amber-800 flex items-center gap-1 disabled:opacity-60"
+                    >
+                      <Clock size={13} /> {followupDraftMut.isPending ? 'Generating…' : 'Suggest follow-up'}
+                    </button>
+                  )}
                   {smtpAccount?.signature_html && (
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <input type="checkbox" checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} />

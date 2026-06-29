@@ -12,7 +12,10 @@ class AttachmentOut(Schema):
 
     @staticmethod
     def resolve_url(obj):
-        return obj.file.url
+        # Never the raw storage path — attachments live outside the public
+        # media mount and are only served through this authenticated,
+        # ownership-checked endpoint.
+        return f'/api/inbox/attachments/{obj.id}/download/'
 
 
 class InboxMessageOut(Schema):
@@ -40,8 +43,10 @@ class ThreadOut(Schema):
     smtp_account_name: str
     subject: str
     last_message_at: Optional[datetime] = None
+    last_message_direction: str
     is_unread: bool
     is_archived: bool
+    is_cold_lead: bool
     lead_status: str
     lead_status_auto: bool
     snoozed_until: Optional[datetime] = None

@@ -92,6 +92,11 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Outside MEDIA_ROOT on purpose — never reachable through the public /media/
+# static mount. Inbox attachments live here and are only ever served through
+# the authenticated, ownership-checked download endpoint in apps.inbox.views.
+PRIVATE_MEDIA_ROOT = BASE_DIR / 'private_media'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -119,6 +124,20 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+# Long-running tasks (campaign batches) shouldn't be prefetched ahead of
+# shorter ones (IMAP polls, tracking) — prefetch=1 means a worker only grabs
+# its next task once it's actually free, instead of hoarding several
+# long batch jobs while short ones queue up behind them.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Recycle worker child processes periodically — long sending sessions can
+# accumulate memory (SMTP connection objects, etc.) that a single process
+# would otherwise hold for the lifetime of the worker.
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 100
+# Backstop so a hung SMTP connection or runaway task can't block a worker
+# indefinitely; individual tasks (e.g. the batch sender) can set a tighter
+# limit themselves, as send_campaign_batch_task does.
+CELERY_TASK_TIME_LIMIT = 1800
+CELERY_TASK_SOFT_TIME_LIMIT = 1700
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SCHEDULE = {
     'process-scheduled-campaigns': {

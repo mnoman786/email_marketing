@@ -13,8 +13,16 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FlaskConical, CheckCircle, XCircle } from 'lucide-react'
+import { FlaskConical, CheckCircle, XCircle, Send, Inbox, PenLine, ArrowRight, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { cn } from '@/lib/utils'
+
+const STEPS = [
+  { key: 'sending', label: 'Sending', icon: Send },
+  { key: 'imap', label: 'Reply Detection', icon: Inbox },
+  { key: 'signature', label: 'Signature', icon: PenLine },
+] as const
+type StepKey = typeof STEPS[number]['key']
 
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
@@ -48,9 +56,12 @@ interface Props {
 }
 
 export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
-  const [tab, setTab] = useState<'sending' | 'imap' | 'signature'>('sending')
-  const { register, handleSubmit, reset, setValue, watch, getValues, formState: { errors } } = useForm<FormData>({
+  const [tab, setTab] = useState<StepKey>('sending')
+  const stepIndex = STEPS.findIndex(s => s.key === tab)
+  const isLastStep = stepIndex === STEPS.length - 1
+  const { register, handleSubmit, reset, setValue, watch, getValues, trigger, formState: { errors, isValid } } = useForm<FormData>({
     resolver: zodResolver(schema),
+    mode: 'onChange',
     defaultValues: {
       security: 'tls',
       weight: 10,
@@ -68,6 +79,13 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
   const security = watch('security')
   const isActive = watch('is_active')
   const imapEnabled = watch('imap_enabled')
+  const imapHostVal = watch('imap_host')
+  const imapUsernameVal = watch('imap_username')
+  const imapPasswordVal = watch('imap_password')
+  // Zod only enforces the always-required Sending fields — IMAP fields are
+  // conditionally required (only when the toggle is on), so factor that in
+  // separately rather than baking optional-until-enabled fields into the schema.
+  const canSubmit = isValid && (!imapEnabled || (!!imapHostVal && !!imapUsernameVal && (!!account || !!imapPasswordVal)))
 
   useEffect(() => {
     if (!open) return
@@ -112,6 +130,24 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
     else setValue('port', 25)
   }
 
+  const goToStep = (key: StepKey) => setTab(key)
+
+  const handleNext = async () => {
+    if (tab === 'sending') {
+      const ok = await trigger(['name', 'host', 'port', 'username', 'from_email', 'from_name'])
+      if (ok) goToStep('imap')
+      return
+    }
+    if (tab === 'imap') {
+      const v = getValues()
+      if (v.imap_enabled && (!v.imap_host || !v.imap_username || (!account && !v.imap_password))) {
+        toast.error('Fill in IMAP host, username, and password — or turn off Reply Detection to skip this step.')
+        return
+      }
+      goToStep('signature')
+    }
+  }
+
   const mutation = useMutation({
     mutationFn: (data: FormData) => account
       ? smtpApi.update(account.id, data)
@@ -146,31 +182,41 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl max-h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle>{account ? 'Edit SMTP Account' : 'Add SMTP Account'}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex border-b px-6 mt-3">
-          {[
-            { key: 'sending', label: 'Sending' },
-            { key: 'imap', label: 'Reply Detection (IMAP)' },
-            { key: 'signature', label: 'Signature' },
-          ].map(t => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key as any)}
-              className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t.label}
-              {t.key === 'imap' && imapEnabled && (
-                <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
-              )}
-            </button>
-          ))}
+        <div className="flex items-center px-6 mt-4 mb-1">
+          {STEPS.map((s, i) => {
+            const isActive = tab === s.key
+            const isDone = i < stepIndex
+            return (
+              <div key={s.key} className={cn('flex items-center', i < STEPS.length - 1 && 'flex-1')}>
+                <button
+                  type="button"
+                  onClick={() => goToStep(s.key)}
+                  className="flex items-center gap-2 shrink-0"
+                >
+                  <span className={cn(
+                    'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold border-2 shrink-0 transition-colors',
+                    isActive ? 'border-primary bg-primary text-primary-foreground'
+                      : isDone ? 'border-primary text-primary'
+                      : 'border-muted-foreground/30 text-muted-foreground'
+                  )}>
+                    {isDone ? <Check size={14} /> : <s.icon size={13} />}
+                  </span>
+                  <span className={cn('text-sm font-medium hidden sm:inline', isActive ? 'text-foreground' : 'text-muted-foreground')}>
+                    {s.label}
+                  </span>
+                  {s.key === 'imap' && (
+                    <span className={cn('inline-block w-1.5 h-1.5 rounded-full', imapEnabled ? 'bg-green-500' : 'bg-muted-foreground/30')} />
+                  )}
+                </button>
+                {i < STEPS.length - 1 && <div className={cn('flex-1 h-px mx-3', isDone ? 'bg-primary' : 'bg-border')} />}
+              </div>
+            )
+          })}
         </div>
 
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="flex flex-col flex-1 min-h-0">
@@ -179,13 +225,13 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <Label>Account Name *</Label>
-                  <Input {...register('name')} placeholder="Primary Gmail" className="mt-1" />
+                  <Input {...register('name')} placeholder="Primary Gmail" className="mt-1" autoComplete="off" />
                   {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
                 </div>
 
                 <div>
                   <Label>SMTP Host *</Label>
-                  <Input {...register('host')} placeholder="smtp.gmail.com" className="mt-1" />
+                  <Input {...register('host')} placeholder="smtp.gmail.com" className="mt-1" autoComplete="off" />
                   {errors.host && <p className="text-xs text-destructive mt-1">{errors.host.message}</p>}
                 </div>
                 <div>
@@ -226,7 +272,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
                 <div>
                   <Label>Username *</Label>
-                  <Input {...register('username')} placeholder="you@gmail.com" className="mt-1" />
+                  <Input {...register('username')} placeholder="you@gmail.com" className="mt-1" autoComplete="username" />
                 </div>
                 <div>
                   <Label>{account ? 'Password (leave blank to keep)' : 'Password *'}</Label>
@@ -235,17 +281,18 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                     type="password"
                     placeholder="App password"
                     className="mt-1"
+                    autoComplete="current-password"
                   />
                 </div>
 
                 <div>
                   <Label>From Email *</Label>
-                  <Input {...register('from_email')} placeholder="noreply@yourdomain.com" className="mt-1" />
+                  <Input {...register('from_email')} placeholder="noreply@yourdomain.com" className="mt-1" autoComplete="email" />
                   {errors.from_email && <p className="text-xs text-destructive mt-1">{errors.from_email.message}</p>}
                 </div>
                 <div>
                   <Label>From Name *</Label>
-                  <Input {...register('from_name')} placeholder="Your Company" className="mt-1" />
+                  <Input {...register('from_name')} placeholder="Your Company" className="mt-1" autoComplete="name" />
                 </div>
 
                 <div>
@@ -278,19 +325,19 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>IMAP Host *</Label>
-                      <Input {...register('imap_host')} placeholder="imap.gmail.com" className="mt-1" />
+                      <Input {...register('imap_host')} placeholder="imap.gmail.com" className="mt-1" autoComplete="off" />
                     </div>
                     <div>
                       <Label>IMAP Port *</Label>
-                      <Input {...register('imap_port', { valueAsNumber: true })} type="number" placeholder="993" className="mt-1" />
+                      <Input {...register('imap_port', { valueAsNumber: true })} type="number" placeholder="993" className="mt-1" autoComplete="off" />
                     </div>
                     <div>
                       <Label>IMAP Username *</Label>
-                      <Input {...register('imap_username')} placeholder="you@gmail.com" className="mt-1" />
+                      <Input {...register('imap_username')} placeholder="you@gmail.com" className="mt-1" autoComplete="username" />
                     </div>
                     <div>
                       <Label>{account ? 'IMAP Password (leave blank to keep)' : 'IMAP Password *'}</Label>
-                      <Input {...register('imap_password')} type="password" placeholder="App password" className="mt-1" />
+                      <Input {...register('imap_password')} type="password" placeholder="App password" className="mt-1" autoComplete="current-password" />
                     </div>
                     <div className="col-span-2 flex items-center justify-between">
                       <Label>Use SSL (port 993)</Label>
@@ -343,9 +390,20 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
           <DialogFooter className="px-6 py-4 border-t">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={mutation.isPending}>
-              {account ? 'Update' : 'Create'}
-            </Button>
+            {stepIndex > 0 && (
+              <Button type="button" variant="outline" onClick={() => goToStep(STEPS[stepIndex - 1].key)}>
+                Back
+              </Button>
+            )}
+            {!isLastStep ? (
+              <Button type="button" onClick={handleNext}>
+                Next <ArrowRight size={14} />
+              </Button>
+            ) : (
+              <Button type="submit" loading={mutation.isPending} disabled={!canSubmit}>
+                {account ? 'Update' : 'Create'}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

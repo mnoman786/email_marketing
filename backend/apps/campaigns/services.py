@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from email.utils import formataddr
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 from django.template import Template, Context
 
@@ -152,6 +153,77 @@ def send_via_smtp(smtp_account, msg, to_email):
         return False, f'Unexpected error: {e}'
 
 
+def open_smtp_connection(smtp_account):
+    """Open and authenticate one SMTP connection, meant to be reused across many
+    sends instead of reconnecting per email (which is what made bulk sends take
+    hours — handshake+TLS+auth alone is ~1-3s, paid on every single message)."""
+    if smtp_account.use_ssl:
+        server = smtplib.SMTP_SSL(smtp_account.host, smtp_account.port, timeout=30)
+    else:
+        server = smtplib.SMTP(smtp_account.host, smtp_account.port, timeout=30)
+        if smtp_account.use_tls:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+
+    if smtp_account.username and smtp_account.password:
+        server.login(smtp_account.username, smtp_account.password)
+    return server
+
+
+def send_via_open_connection(server, msg, from_email, to_email):
+    """Send one message over an already-open/authenticated connection (see
+    open_smtp_connection). Raises smtplib.SMTPServerDisconnected/OSError on a
+    dead connection so the caller can reconnect — everything else resolves to
+    a (success, error) pair like send_via_smtp."""
+    try:
+        server.sendmail(from_email, [to_email], msg.as_string())
+        return True, None
+    except smtplib.SMTPRecipientsRefused as e:
+        return False, f'Recipient refused: {e}'
+    except smtplib.SMTPAuthenticationError:
+        return False, 'SMTP authentication failed'
+    except (smtplib.SMTPServerDisconnected, OSError):
+        raise
+    except smtplib.SMTPException as e:
+        return False, f'SMTP error: {e}'
+    except Exception as e:
+        return False, f'Unexpected error: {e}'
+
+
+def reserve_send_slot(smtp_account):
+    """
+    Atomically check-and-reserve one send against this account's configured
+    hourly/daily limits using Redis-backed cache counters (cache.add + incr
+    are both atomic at the backend level, so concurrent batch tasks sending
+    through the same account can't race past the limit).
+    Returns True if the send is allowed (counters are now incremented to
+    reflect it), False if either window is already at capacity.
+    """
+    now = timezone.now()
+    hour_key = f'smtp-rate-{smtp_account.id}-hour-{now.strftime("%Y%m%d%H")}'
+    day_key = f'smtp-rate-{smtp_account.id}-day-{now.strftime("%Y%m%d")}'
+
+    if smtp_account.hourly_limit and (cache.get(hour_key) or 0) >= smtp_account.hourly_limit:
+        return False
+    if smtp_account.daily_limit and (cache.get(day_key) or 0) >= smtp_account.daily_limit:
+        return False
+
+    if smtp_account.hourly_limit:
+        cache.add(hour_key, 0, timeout=3600)
+        if cache.incr(hour_key) > smtp_account.hourly_limit:
+            cache.decr(hour_key)
+            return False
+    if smtp_account.daily_limit:
+        cache.add(day_key, 0, timeout=86400)
+        if cache.incr(day_key) > smtp_account.daily_limit:
+            cache.decr(day_key)
+            if smtp_account.hourly_limit:
+                cache.decr(hour_key)
+            return False
+    return True
+
+
 def make_message_id(sendlog_id, sender_email):
     """
     Deterministic Message-ID embedding the SendLog id, so a reply's
@@ -214,6 +286,11 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
             break
 
         attempted.append(smtp_account)
+
+        if not reserve_send_slot(smtp_account):
+            error = f'{smtp_account.name} is at its hourly/daily send limit'
+            logger.warning(f'[Campaign {campaign.id}] Skipping {smtp_account.name} for {contact.email}: {error}')
+            continue
 
         msg = build_email_message(
             smtp_account=smtp_account,

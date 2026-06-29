@@ -255,8 +255,10 @@ export interface Thread {
   smtp_account_name: string
   subject: string
   last_message_at: string | null
+  last_message_direction: 'inbound' | 'outbound' | ''
   is_unread: boolean
   is_archived: boolean
+  is_cold_lead: boolean
   lead_status: 'none' | 'interested' | 'not_interested' | 'meeting_booked'
   lead_status_auto: boolean
   snoozed_until: string | null

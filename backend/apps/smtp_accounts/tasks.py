@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 MESSAGE_ID_RE = re.compile(r'sendlog-(\d+)')
 LOCK_TIMEOUT = 170  # just under the 180s poll interval — a stuck/slow poll won't block the next one forever
+MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024  # matches the outbound upload cap — a malicious sender
+MAX_ATTACHMENTS_PER_MESSAGE = 10          # could otherwise exhaust disk via unbounded inbound attachments
 
 # NOTE: the lock below uses Django's default cache (LocMemCache — in-process
 # memory). That's correct as long as the worker runs a single process sharing
@@ -91,6 +93,58 @@ def _match_inbox_contact(from_email, account):
     return thread.contact if thread else None
 
 
+# Local-part patterns for clearly-automated senders — never worth creating a
+# "lead" for these even if nothing else filters them out.
+NOREPLY_LOCAL_RE = re.compile(r'^(no.?reply|do.?not.?reply|notifications?|mailer-daemon|postmaster|bounces?|daemon)$', re.I)
+
+
+def _is_noreply_address(email):
+    if not email or '@' not in email:
+        return True
+    local = email.split('@', 1)[0]
+    return bool(NOREPLY_LOCAL_RE.match(local))
+
+
+def _looks_like_bulk_mail(parsed):
+    """
+    Heuristics for marketing/newsletter/automated mail. Cold-inbound capture
+    should only create leads for actual people emailing in — without this,
+    every newsletter or notification landing in the mailbox would silently
+    become a fake "lead" thread.
+    """
+    if parsed.get('List-Unsubscribe') or parsed.get('List-Id'):
+        return True
+    precedence = _header_str(parsed.get('Precedence', '')).lower()
+    if precedence in ('bulk', 'list', 'junk'):
+        return True
+    auto_submitted = _header_str(parsed.get('Auto-Submitted', '')).lower()
+    if auto_submitted and auto_submitted != 'no':
+        return True
+    return False
+
+
+def _create_cold_contact(from_email, from_name, account):
+    """
+    A genuinely new sender — no SendLog, no existing Thread. Creates (or
+    reuses) a Contact under the mailbox's owner so the reply still surfaces
+    in the inbox instead of being silently dropped.
+    """
+    from apps.contacts.models import Contact
+
+    if _is_noreply_address(from_email):
+        return None
+
+    contact = Contact.objects.filter(user=account.user, email__iexact=from_email).first()
+    if contact:
+        return contact
+
+    first_name, _, last_name = (from_name or '').partition(' ')
+    return Contact.objects.create(
+        user=account.user, email=from_email,
+        first_name=first_name[:100], last_name=last_name[:100],
+    )
+
+
 def _extract_body(msg):
     """Pull the text/html, text/plain, and attachment parts out of a parsed email.message.Message."""
     html, text = '', ''
@@ -101,13 +155,13 @@ def _extract_body(msg):
             disposition = part.get_content_disposition()
             filename = part.get_filename()
             if disposition == 'attachment' or (disposition is None and filename):
-                if not filename:
+                if not filename or len(attachments) >= MAX_ATTACHMENTS_PER_MESSAGE:
                     continue
                 try:
                     payload = part.get_payload(decode=True)
                 except Exception:
                     continue
-                if payload:
+                if payload and len(payload) <= MAX_ATTACHMENT_BYTES:
                     attachments.append({
                         'filename': _header_str(filename),
                         'content': payload,
@@ -202,12 +256,16 @@ def poll_account_replies(account_id):
                     continue
                 raw_message = msg_data[0][1] if isinstance(msg_data[0], tuple) else msg_data[0]
                 parsed = message_from_bytes(raw_message)
-                _, from_email = parseaddr(_header_str(parsed.get('From', '')))
+                from_name, from_email = parseaddr(_header_str(parsed.get('From', '')))
 
                 log = _match_sendlog(parsed, from_email, account)
                 contact = log.contact if log and log.contact_id else None
+                is_cold_lead = False
                 if not contact:
                     contact = _match_inbox_contact(from_email, account)
+                if not contact and not _looks_like_bulk_mail(parsed):
+                    contact = _create_cold_contact(from_email, from_name, account)
+                    is_cold_lead = bool(contact)
                 if not contact:
                     continue
 
@@ -226,7 +284,7 @@ def poll_account_replies(account_id):
                 log_inbound_message(
                     log, account, contact, from_email, _header_str(parsed.get('Subject', '')),
                     html, text, _header_str(parsed.get('Message-ID', '')), _header_str(parsed.get('In-Reply-To', '')),
-                    attachments=attachments,
+                    attachments=attachments, is_cold_lead=is_cold_lead,
                 )
             except Exception as e:
                 logger.warning(f'Failed processing IMAP UID {uid} for SMTPAccount {account.id}: {e}')
