@@ -280,8 +280,13 @@ export function CampaignForm({ campaign }: Props) {
                 </div>
                 <div>
                   <Label>Email Subject *</Label>
-                  <Input {...register('subject')} placeholder="Your exclusive summer offer 🌟" className="mt-1" />
+                  <Input {...register('subject')} placeholder="{Quick|Fast} question about {{company}}" className="mt-1" />
                   {errors.subject && <p className="text-xs text-destructive mt-1">{errors.subject.message}</p>}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Personalize with <code className="px-1 rounded bg-muted">{'{{first_name}}'}</code>,{' '}
+                    <code className="px-1 rounded bg-muted">{'{{company}}'}</code> and spin wording with{' '}
+                    <code className="px-1 rounded bg-muted">{'{Hi|Hey|Hello}'}</code> — each send picks a variant.
+                  </p>
                 </div>
                 <div>
                   <Label>Preview Text</Label>

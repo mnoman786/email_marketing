@@ -234,8 +234,43 @@ def make_message_id(sendlog_id, sender_email):
     return f'<sendlog-{sendlog_id}.{uuid.uuid4().hex[:8]}@{domain}>'
 
 
+# Spintax: {a|b|c} → one option chosen at random, nesting allowed. Each send
+# resolves independently, so the same campaign goes out with varied wording —
+# a basic but effective spam-filter / pattern-detection dodge for cold email.
+_SPINTAX_RE = re.compile(r'\{([^{}]+?)\}')
+_DJANGO_TAG_RE = re.compile(r'\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}', re.DOTALL)
+
+
+def spin(text):
+    """Resolve spintax {a|b|c}, leaving Django template tags ({{…}}, {%…%}) untouched."""
+    if not text or '|' not in text:
+        return text
+
+    # Mask Django constructs so a pipe inside e.g. {{ name|default:"x" }} is never
+    # mistaken for a spintax separator.
+    masks = []
+
+    def _mask(m):
+        masks.append(m.group(0))
+        return f'\x00{len(masks) - 1}\x00'
+
+    masked = _DJANGO_TAG_RE.sub(_mask, text)
+
+    def _pick(m):
+        body = m.group(1)
+        return random.choice(body.split('|')) if '|' in body else m.group(0)
+
+    for _ in range(12):  # repeated passes resolve nested groups inside-out
+        new = _SPINTAX_RE.sub(_pick, masked)
+        if new == masked:
+            break
+        masked = new
+
+    return re.sub(r'\x00(\d+)\x00', lambda m: masks[int(m.group(1))], masked)
+
+
 def render_template_for_contact(html_content, contact, campaign_variables=None):
-    """Render template variables: campaign-level vars first, then per-contact vars override."""
+    """Resolve spintax, then merge variables: campaign-level vars first, then per-contact vars override."""
     try:
         context = {
             **(campaign_variables or {}),
@@ -247,7 +282,7 @@ def render_template_for_contact(html_content, contact, campaign_variables=None):
             'phone': contact.phone,
             'company': contact.company,
         }
-        t = Template(html_content)
+        t = Template(spin(html_content))
         return t.render(Context(context))
     except Exception:
         return html_content
@@ -262,13 +297,18 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     available = list(smtp_accounts)
     attempted = []
 
+    campaign_vars = campaign.campaign_variables or {}
     html = render_template_for_contact(
         campaign.html_content or (campaign.template.html_content if campaign.template else ''),
         contact,
-        campaign_variables=campaign.campaign_variables or {},
+        campaign_variables=campaign_vars,
     )
-    text = campaign.text_content or (campaign.template.text_content if campaign.template else '')
-    subject = campaign.subject
+    # Subject and plaintext get the same spintax + variable treatment as the body.
+    text = render_template_for_contact(
+        campaign.text_content or (campaign.template.text_content if campaign.template else ''),
+        contact, campaign_variables=campaign_vars,
+    )
+    subject = render_template_for_contact(campaign.subject, contact, campaign_variables=campaign_vars)
 
     # Inject tracking pixel / rewrite links if tracking is enabled and we have a log ID
     if sendlog_id and (campaign.track_opens or campaign.track_clicks):
