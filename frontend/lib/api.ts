@@ -99,6 +99,8 @@ export const smtpApi = {
   testImap: (id: number, data?: any) => api.post(`/api/smtp/${id}/test-imap/`, data || {}),
   testImapUnsaved: (data: any) => api.post('/api/smtp/test-imap/', data),
   stats: () => api.get('/api/smtp/stats/'),
+  getWarmup: (id: number) => api.get(`/api/smtp/${id}/warmup/`),
+  updateWarmup: (id: number, data: any) => api.patch(`/api/smtp/${id}/warmup/`, data),
 }
 
 // Campaigns

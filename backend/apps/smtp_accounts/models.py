@@ -115,3 +115,61 @@ class SMTPAccount(models.Model):
             self._imap_password = f.encrypt(value.encode()).decode()
         else:
             self._imap_password = ''
+
+
+class WarmupSettings(models.Model):
+    """Per-mailbox warmup config. Warmup-enabled mailboxes form a mesh that
+    send benign mail to each other (and auto-reply), gradually ramping daily
+    volume to build sender reputation — the core of cold-email deliverability.
+    Requires IMAP enabled so the mailbox can receive/recognise warmup mail."""
+    account = models.OneToOneField(
+        SMTPAccount, on_delete=models.CASCADE, related_name='warmup'
+    )
+    enabled = models.BooleanField(default=False)
+    # Volume at full ramp; the daily allowance climbs to this over time.
+    target_daily = models.PositiveIntegerField(
+        default=40, help_text='Warmup emails per day once fully ramped.'
+    )
+    # How much the daily allowance grows each day (e.g. 4 → 4,8,12,…,target).
+    ramp_step = models.PositiveIntegerField(
+        default=4, help_text='Daily increase in warmup volume during ramp-up.'
+    )
+    # Probability (0-100) of auto-replying to a received warmup email — two-way
+    # conversation looks far more like real mail than one-way sends.
+    reply_rate = models.PositiveIntegerField(
+        default=35, help_text='Percent of received warmup emails to auto-reply to.'
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Warmup for {self.account_id} ({"on" if self.enabled else "off"})'
+
+    def todays_target(self):
+        """Ramped daily allowance: grows by ramp_step each day up to target_daily."""
+        if not self.enabled or not self.started_at:
+            return 0
+        from django.utils import timezone
+        days = (timezone.now().date() - self.started_at.date()).days
+        return min(self.target_daily, self.ramp_step * (days + 1))
+
+
+class WarmupActivity(models.Model):
+    """One warmup message sent (an initial send or an auto-reply)."""
+    from_account = models.ForeignKey(
+        SMTPAccount, on_delete=models.CASCADE, related_name='warmup_sent'
+    )
+    to_account = models.ForeignKey(
+        SMTPAccount, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='warmup_received'
+    )
+    to_email = models.EmailField()
+    subject = models.CharField(max_length=255, blank=True)
+    message_id = models.CharField(max_length=255, blank=True)
+    is_reply = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-sent_at']
+        indexes = [models.Index(fields=['from_account', 'sent_at'])]

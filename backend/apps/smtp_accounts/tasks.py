@@ -295,6 +295,17 @@ def poll_account_replies(account_id):
                 parsed = message_from_bytes(raw_message)
                 from_name, from_email = parseaddr(_header_str(parsed.get('From', '')))
 
+                # Warmup mail never becomes a lead/reply — recognise it by its
+                # header, mark it read, maybe auto-reply, and move on.
+                from apps.smtp_accounts.warmup import WARMUP_HEADER, handle_received_warmup
+                if parsed.get(WARMUP_HEADER):
+                    try:
+                        conn.uid('STORE', str(uid), '+FLAGS', '(\\Seen)')
+                    except Exception:
+                        pass
+                    handle_received_warmup(account, parsed, from_email)
+                    continue
+
                 log = _match_sendlog(parsed, from_email, account)
                 contact = log.contact if log and log.contact_id else None
                 is_cold_lead = False
@@ -342,3 +353,34 @@ def poll_account_replies(account_id):
         cache.delete(lock_key)
 
     return f'Matched {matched_total} reply(ies).'
+
+
+@shared_task
+def run_warmup():
+    """Periodic dispatcher (Celery Beat): each enabled mailbox sends its due
+    slice of warmup emails for this run. Fans out one task per mailbox."""
+    from apps.smtp_accounts.models import WarmupSettings
+
+    account_ids = list(
+        WarmupSettings.objects.filter(enabled=True, account__is_active=True)
+        .values_list('account_id', flat=True)
+    )
+    for account_id in account_ids:
+        run_account_warmup_task.delay(account_id)
+    return f'Dispatched warmup for {len(account_ids)} mailbox(es).'
+
+
+@shared_task
+def run_account_warmup_task(account_id):
+    from apps.smtp_accounts.models import SMTPAccount
+    from apps.smtp_accounts.warmup import run_account_warmup
+
+    try:
+        account = SMTPAccount.objects.select_related('warmup').get(id=account_id, is_active=True)
+    except SMTPAccount.DoesNotExist:
+        return 'Account no longer eligible.'
+    settings_obj = getattr(account, 'warmup', None)
+    if not settings_obj or not settings_obj.enabled:
+        return 'Warmup disabled.'
+    sent = run_account_warmup(account, settings_obj)
+    return f'Sent {sent} warmup email(s) from {account.from_email}.'

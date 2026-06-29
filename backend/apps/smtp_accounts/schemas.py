@@ -112,3 +112,23 @@ class SMTPStatOut(Schema):
     is_active: bool
     last_tested_at: Optional[datetime] = None
     last_test_success: Optional[bool] = None
+
+
+class WarmupOut(Schema):
+    enabled: bool
+    target_daily: int
+    ramp_step: int
+    reply_rate: int
+    started_at: Optional[datetime] = None
+    # Live stats
+    todays_target: int
+    sent_today: int
+    sent_total: int
+    pool_size: int
+
+
+class WarmupUpdateIn(Schema):
+    enabled: Optional[bool] = None
+    target_daily: Optional[int] = None
+    ramp_step: Optional[int] = None
+    reply_rate: Optional[int] = None

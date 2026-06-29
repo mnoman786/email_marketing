@@ -160,6 +160,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.smtp_accounts.tasks.poll_imap_replies',
         'schedule': 180.0,
     },
+    'run-warmup': {
+        'task': 'apps.smtp_accounts.tasks.run_warmup',
+        'schedule': 900.0,  # every 15 min — volume is spread across the day
+    },
 }
 
 # Encryption key for SMTP passwords

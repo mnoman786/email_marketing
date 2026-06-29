@@ -9,8 +9,11 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
 from typing import Optional, List
-from .models import SMTPAccount
-from .schemas import SMTPAccountOut, SMTPAccountIn, SMTPAccountUpdateIn, SMTPTestIn, SMTPStatOut, IMAPTestIn
+from .models import SMTPAccount, WarmupSettings, WarmupActivity
+from .schemas import (
+    SMTPAccountOut, SMTPAccountIn, SMTPAccountUpdateIn, SMTPTestIn, SMTPStatOut,
+    IMAPTestIn, WarmupOut, WarmupUpdateIn,
+)
 from apps.accounts.auth import auth
 
 router = Router(tags=['SMTP'])
@@ -222,3 +225,47 @@ def test_imap_account(request, smtp_id: int, data: IMAPTestIn):
     except Exception as e:
         _save_result(False)
         raise HttpError(400, str(e))
+
+
+def _warmup_payload(account, settings_obj):
+    from .warmup import sent_today, warmup_pool
+    return {
+        'enabled': settings_obj.enabled,
+        'target_daily': settings_obj.target_daily,
+        'ramp_step': settings_obj.ramp_step,
+        'reply_rate': settings_obj.reply_rate,
+        'started_at': settings_obj.started_at,
+        'todays_target': settings_obj.todays_target(),
+        'sent_today': sent_today(account),
+        'sent_total': WarmupActivity.objects.filter(from_account=account).count(),
+        'pool_size': len(warmup_pool(exclude_account=account)),
+    }
+
+
+@router.get('/{smtp_id}/warmup/', response=WarmupOut, auth=auth)
+def get_warmup(request, smtp_id: int):
+    account = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
+    settings_obj, _ = WarmupSettings.objects.get_or_create(account=account)
+    return _warmup_payload(account, settings_obj)
+
+
+@router.patch('/{smtp_id}/warmup/', response=WarmupOut, auth=auth)
+def update_warmup(request, smtp_id: int, data: WarmupUpdateIn):
+    account = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
+    settings_obj, _ = WarmupSettings.objects.get_or_create(account=account)
+
+    if data.enabled is not None:
+        if data.enabled and not account.imap_enabled:
+            raise HttpError(400, 'Enable IMAP for this mailbox first — warmup needs to receive mail.')
+        # Stamp the ramp start the first time it's switched on.
+        if data.enabled and not settings_obj.enabled:
+            settings_obj.started_at = timezone.now()
+        settings_obj.enabled = data.enabled
+    if data.target_daily is not None:
+        settings_obj.target_daily = max(1, min(data.target_daily, 200))
+    if data.ramp_step is not None:
+        settings_obj.ramp_step = max(1, min(data.ramp_step, 50))
+    if data.reply_rate is not None:
+        settings_obj.reply_rate = max(0, min(data.reply_rate, 100))
+    settings_obj.save()
+    return _warmup_payload(account, settings_obj)

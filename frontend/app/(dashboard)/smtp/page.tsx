@@ -11,11 +11,12 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDateTime } from '@/lib/utils'
 import {
-  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle
+  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { SMTPFormDialog } from '@/components/smtp/smtp-form-dialog'
 import { SMTPTestDialog } from '@/components/smtp/smtp-test-dialog'
+import { WarmupDialog } from '@/components/smtp/warmup-dialog'
 
 export default function SMTPPage() {
   const qc = useQueryClient()
@@ -23,6 +24,7 @@ export default function SMTPPage() {
   const [editAccount, setEditAccount] = useState<SMTPAccount | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [testAccount, setTestAccount] = useState<SMTPAccount | null>(null)
+  const [warmupAccount, setWarmupAccount] = useState<SMTPAccount | null>(null)
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['smtp-accounts'],
@@ -174,6 +176,14 @@ export default function SMTPPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        onClick={() => setWarmupAccount(account)}
+                        title="Warmup"
+                      >
+                        <Flame size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         onClick={() => { setEditAccount(account); setShowForm(true) }}
                       >
                         <Edit size={14} />
@@ -213,6 +223,11 @@ export default function SMTPPage() {
           qc.invalidateQueries({ queryKey: ['smtp-accounts'] })
           qc.invalidateQueries({ queryKey: ['smtp-stats'] })
         }}
+      />
+      <WarmupDialog
+        open={!!warmupAccount}
+        onClose={() => setWarmupAccount(null)}
+        account={warmupAccount}
       />
       <ConfirmDialog
         open={!!deleteId}
