@@ -53,6 +53,11 @@ class SMTPAccount(models.Model):
     imap_username = models.CharField(max_length=255, blank=True)
     _imap_password = models.TextField(db_column='imap_password', blank=True)
     imap_use_ssl = models.BooleanField(default=True)
+    # Off by default: the inbox shows replies to mail you actually sent. When a
+    # stranger emails this mailbox out of the blue (no prior send/thread), only
+    # turn them into a lead thread if this is enabled — otherwise every password
+    # reset, OTP, receipt, and newsletter would become a fake "lead".
+    capture_cold_leads = models.BooleanField(default=False)
     last_imap_uid = models.PositiveIntegerField(default=0)
     last_imap_checked_at = models.DateTimeField(null=True, blank=True)
     last_imap_tested_at = models.DateTimeField(null=True, blank=True)

@@ -26,6 +26,7 @@ class SMTPAccountOut(Schema):
     imap_username: str
     has_imap_password: bool
     imap_use_ssl: bool
+    capture_cold_leads: bool
     last_imap_checked_at: Optional[datetime] = None
     last_imap_tested_at: Optional[datetime] = None
     last_imap_test_success: Optional[bool] = None
@@ -61,6 +62,7 @@ class SMTPAccountIn(Schema):
     imap_username: str = ''
     imap_password: str = ''
     imap_use_ssl: bool = True
+    capture_cold_leads: bool = False
     signature_html: str = ''
 
 
@@ -83,6 +85,7 @@ class SMTPAccountUpdateIn(Schema):
     imap_username: Optional[str] = None
     imap_password: Optional[str] = None
     imap_use_ssl: Optional[bool] = None
+    capture_cold_leads: Optional[bool] = None
     signature_html: Optional[str] = None
 
 

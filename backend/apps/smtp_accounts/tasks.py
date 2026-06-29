@@ -93,33 +93,70 @@ def _match_inbox_contact(from_email, account):
     return thread.contact if thread else None
 
 
-# Local-part patterns for clearly-automated senders — never worth creating a
-# "lead" for these even if nothing else filters them out.
-NOREPLY_LOCAL_RE = re.compile(r'^(no.?reply|do.?not.?reply|notifications?|mailer-daemon|postmaster|bounces?|daemon)$', re.I)
+# Sender local-parts that are role/automated addresses, not a real person we'd
+# ever want to treat as a lead. Broadened well beyond just "noreply" because a
+# real mailbox is full of support@/security@/billing@/notifications@ senders.
+ROLE_LOCAL_RE = re.compile(
+    r'^(no.?reply|do.?not.?reply|notifications?|notify|mailer-daemon|postmaster|'
+    r'bounces?|daemon|support|security|accounts?|account-security|alerts?|alert|'
+    r'info|hello|team|billing|invoices?|receipts?|news|newsletter|updates?|'
+    r'system|verify|verification|auth|noreply-\w+|mailer|email|notif|service)$',
+    re.I,
+)
+
+# Subject-line markers of transactional/automated mail (password resets, OTPs,
+# verification codes, receipts, security alerts). These rarely carry the bulk
+# headers below — Gmail/MEGA/etc. send them as ordinary 1:1 mail — so a subject
+# check is the only thing that catches them.
+TRANSACTIONAL_SUBJECT_RE = re.compile(
+    r'(password reset|reset your password|verify your|verification code|'
+    r'one[\s-]?time|\bOTP\b|your code|security (alert|code)|sign[\s-]?in|'
+    r'log[\s-]?in attempt|confirm your|email confirmation|2[\s-]?(step|factor)|'
+    r'two[\s-]?factor|account (security|verification)|new device|'
+    r'unusual (activity|sign)|recover your|your receipt|order confirmation|'
+    r'invoice|payment (received|confirmation)|welcome to)',
+    re.I,
+)
 
 
-def _is_noreply_address(email):
+def _is_role_address(email):
     if not email or '@' not in email:
         return True
     local = email.split('@', 1)[0]
-    return bool(NOREPLY_LOCAL_RE.match(local))
+    return bool(ROLE_LOCAL_RE.match(local))
 
 
-def _looks_like_bulk_mail(parsed):
+def _is_automated_mail(parsed, from_email):
     """
-    Heuristics for marketing/newsletter/automated mail. Cold-inbound capture
-    should only create leads for actual people emailing in — without this,
-    every newsletter or notification landing in the mailbox would silently
-    become a fake "lead" thread.
+    True for any mail that isn't a real person writing to you: marketing,
+    newsletters, notifications, and transactional mail (resets/OTPs/receipts).
+    Cold-inbound capture should only ever create a lead for genuine human
+    email — without this, a real mailbox fills up with junk "leads".
     """
-    if parsed.get('List-Unsubscribe') or parsed.get('List-Id'):
+    # Bulk / list / marketing headers (RFC 2369 / 8058, ESP markers).
+    if parsed.get('List-Unsubscribe') or parsed.get('List-Id') or parsed.get('Feedback-ID') \
+            or parsed.get('X-Auto-Response-Suppress') or parsed.get('X-Campaign') \
+            or parsed.get('X-Mailgun-Sid') or parsed.get('X-SES-Outgoing'):
         return True
+
     precedence = _header_str(parsed.get('Precedence', '')).lower()
-    if precedence in ('bulk', 'list', 'junk'):
+    if precedence in ('bulk', 'list', 'junk', 'auto_reply'):
         return True
+
+    # RFC 3834: anything machine-generated should set this to a non-"no" value.
     auto_submitted = _header_str(parsed.get('Auto-Submitted', '')).lower()
     if auto_submitted and auto_submitted != 'no':
         return True
+
+    # Role/automated sender address (support@, security@, no-reply@, ...).
+    if _is_role_address(from_email):
+        return True
+
+    # Transactional subject (password reset / OTP / receipt / security alert).
+    subject = _header_str(parsed.get('Subject', ''))
+    if subject and TRANSACTIONAL_SUBJECT_RE.search(subject):
+        return True
+
     return False
 
 
@@ -131,7 +168,7 @@ def _create_cold_contact(from_email, from_name, account):
     """
     from apps.contacts.models import Contact
 
-    if _is_noreply_address(from_email):
+    if not from_email or '@' not in from_email:
         return None
 
     contact = Contact.objects.filter(user=account.user, email__iexact=from_email).first()
@@ -263,7 +300,9 @@ def poll_account_replies(account_id):
                 is_cold_lead = False
                 if not contact:
                     contact = _match_inbox_contact(from_email, account)
-                if not contact and not _looks_like_bulk_mail(parsed):
+                # Cold capture is opt-in per mailbox AND only for genuine human
+                # mail — never password resets, OTPs, receipts, or newsletters.
+                if not contact and account.capture_cold_leads and not _is_automated_mail(parsed, from_email):
                     contact = _create_cold_contact(from_email, from_name, account)
                     is_cold_lead = bool(contact)
                 if not contact:

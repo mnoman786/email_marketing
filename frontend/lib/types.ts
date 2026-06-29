@@ -74,6 +74,7 @@ export interface SMTPAccount {
   imap_username: string
   has_imap_password: boolean
   imap_use_ssl: boolean
+  capture_cold_leads: boolean
   last_imap_checked_at: string | null
   last_imap_tested_at: string | null
   last_imap_test_success: boolean | null

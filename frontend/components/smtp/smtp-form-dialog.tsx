@@ -43,6 +43,7 @@ const schema = z.object({
   imap_username: z.string().optional(),
   imap_password: z.string().optional(),
   imap_use_ssl: z.boolean().optional(),
+  capture_cold_leads: z.boolean().optional(),
   signature_html: z.string().optional(),
 })
 
@@ -72,6 +73,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
       imap_enabled: false,
       imap_port: 993,
       imap_use_ssl: true,
+      capture_cold_leads: false,
       signature_html: '',
     },
   })
@@ -110,6 +112,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
         imap_username: account.imap_username,
         imap_password: '',
         imap_use_ssl: account.imap_use_ssl,
+        capture_cold_leads: account.capture_cold_leads,
         signature_html: account.signature_html,
       })
     } else {
@@ -117,7 +120,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
         name: '', host: '', port: 587, username: '', password: '', from_email: '', from_name: '',
         security: 'tls', weight: 10, is_active: true, daily_limit: 0, hourly_limit: 0,
         imap_enabled: false, imap_host: '', imap_port: 993, imap_username: '', imap_password: '', imap_use_ssl: true,
-        signature_html: '',
+        capture_cold_leads: false, signature_html: '',
       })
     }
   }, [account, open, reset])
@@ -344,6 +347,21 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                       <Switch
                         checked={watch('imap_use_ssl') ?? true}
                         onCheckedChange={v => setValue('imap_use_ssl', v)}
+                      />
+                    </div>
+
+                    <div className="col-span-2 flex items-start justify-between gap-3">
+                      <div>
+                        <Label>Capture cold inbound leads</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          When someone you&rsquo;ve never emailed writes in, create a new lead thread.
+                          Off by default — automated mail (password resets, OTPs, receipts, newsletters)
+                          is always ignored, but leaving this off keeps the inbox to replies on mail you sent.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={watch('capture_cold_leads') ?? false}
+                        onCheckedChange={v => setValue('capture_cold_leads', v)}
                       />
                     </div>
 
