@@ -106,9 +106,18 @@ def create_contact(request, data: ContactIn):
     list_ids = data.list_ids
     payload = data.dict(exclude={'list_ids'})
     payload['user'] = request.auth
-    contact = Contact.objects.create(**payload)
+
+    # Idempotent on (user, email): re-adding someone you already have (e.g. from
+    # the inbox compose "Add new contact" shortcut) reuses the existing record
+    # instead of raising a unique-constraint error.
+    existing = Contact.objects.filter(user=request.auth, email__iexact=payload['email']).first()
+    if existing:
+        contact = existing
+    else:
+        contact = Contact.objects.create(**payload)
+
     if list_ids:
-        contact.lists.set(ContactList.objects.filter(user=request.auth, id__in=list_ids))
+        contact.lists.add(*ContactList.objects.filter(user=request.auth, id__in=list_ids))
     return contact
 
 

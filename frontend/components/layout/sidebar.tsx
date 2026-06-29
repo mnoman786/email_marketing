@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 import { inboxApi } from '@/lib/api'
 import {
   LayoutDashboard, Users, Mail, Server, Megaphone, BarChart3, Settings,
-  ChevronLeft, ChevronRight, Zap, ListFilter, Workflow, Inbox
+  ChevronLeft, ChevronRight, Zap, ListFilter, Workflow, Inbox, Bell, BellOff
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,6 +36,31 @@ export function Sidebar() {
     refetchInterval: 30000,
   })
   const unreadCount = unreadData?.count || 0
+
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(
+    () => (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : null)
+  )
+  const prevUnreadRef = useRef<number | null>(null)
+
+  // Fire a desktop notification whenever unread count rises — covers replies
+  // landing while the user is on any page, not just the inbox.
+  useEffect(() => {
+    if (unreadData === undefined) return
+    const count = unreadData.count
+    if (
+      prevUnreadRef.current !== null && count > prevUnreadRef.current &&
+      typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
+    ) {
+      const diff = count - prevUnreadRef.current
+      new Notification('New inbox reply', { body: `You have ${diff} new repl${diff > 1 ? 'ies' : 'y'} waiting.` })
+    }
+    prevUnreadRef.current = count
+  }, [unreadData])
+
+  const requestNotifPermission = () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    Notification.requestPermission().then(setNotifPermission)
+  }
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
@@ -85,6 +110,16 @@ export function Sidebar() {
 
       {/* Bottom nav */}
       <div className="py-4 px-2 border-t space-y-1">
+        {notifPermission && notifPermission !== 'granted' && (
+          <button
+            onClick={requestNotifPermission}
+            className={cn('sidebar-item w-full', collapsed && 'justify-center px-0')}
+            title={collapsed ? 'Enable reply notifications' : undefined}
+          >
+            {notifPermission === 'denied' ? <BellOff size={18} className="shrink-0" /> : <Bell size={18} className="shrink-0" />}
+            {!collapsed && <span>{notifPermission === 'denied' ? 'Notifications blocked' : 'Enable notifications'}</span>}
+          </button>
+        )}
         {bottomItems.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href}>
             <div

@@ -76,13 +76,43 @@ def _match_sendlog(headers, from_email, account):
     return None
 
 
+def _match_inbox_contact(from_email, account):
+    """
+    Fallback for replies with no matching SendLog — e.g. a reply to an email
+    sent through the inbox composer or a manual reply, neither of which create
+    a SendLog (that's campaign/sequence-only). Any prior outbound message to
+    this mailbox already created a Thread for the contact, so reuse that.
+    """
+    from apps.inbox.models import Thread
+
+    if not from_email:
+        return None
+    thread = Thread.objects.filter(smtp_account=account, contact__email__iexact=from_email).select_related('contact').first()
+    return thread.contact if thread else None
+
+
 def _extract_body(msg):
-    """Pull the text/html and text/plain parts out of a parsed email.message.Message."""
+    """Pull the text/html, text/plain, and attachment parts out of a parsed email.message.Message."""
     html, text = '', ''
+    attachments = []
     if msg.is_multipart():
         for part in msg.walk():
             ctype = part.get_content_type()
-            if part.get_content_disposition() == 'attachment':
+            disposition = part.get_content_disposition()
+            filename = part.get_filename()
+            if disposition == 'attachment' or (disposition is None and filename):
+                if not filename:
+                    continue
+                try:
+                    payload = part.get_payload(decode=True)
+                except Exception:
+                    continue
+                if payload:
+                    attachments.append({
+                        'filename': _header_str(filename),
+                        'content': payload,
+                        'content_type': ctype,
+                    })
                 continue
             try:
                 payload = part.get_payload(decode=True)
@@ -106,7 +136,7 @@ def _extract_body(msg):
                 html = decoded
             else:
                 text = decoded
-    return html, text
+    return html, text, attachments
 
 
 @shared_task
@@ -175,10 +205,13 @@ def poll_account_replies(account_id):
                 _, from_email = parseaddr(_header_str(parsed.get('From', '')))
 
                 log = _match_sendlog(parsed, from_email, account)
-                if not log or not log.contact_id:
+                contact = log.contact if log and log.contact_id else None
+                if not contact:
+                    contact = _match_inbox_contact(from_email, account)
+                if not contact:
                     continue
 
-                if log.status != 'replied':
+                if log and log.status != 'replied':
                     log.status = 'replied'
                     log.replied_at = now
                     log.save(update_fields=['status', 'replied_at'])
@@ -188,11 +221,12 @@ def poll_account_replies(account_id):
                         )
                     matched_total += 1
 
-                html, text = _extract_body(parsed)
+                html, text, attachments = _extract_body(parsed)
                 from apps.inbox.services import log_inbound_message
                 log_inbound_message(
-                    log, account, log.contact, from_email, _header_str(parsed.get('Subject', '')),
+                    log, account, contact, from_email, _header_str(parsed.get('Subject', '')),
                     html, text, _header_str(parsed.get('Message-ID', '')), _header_str(parsed.get('In-Reply-To', '')),
+                    attachments=attachments,
                 )
             except Exception as e:
                 logger.warning(f'Failed processing IMAP UID {uid} for SMTPAccount {account.id}: {e}')

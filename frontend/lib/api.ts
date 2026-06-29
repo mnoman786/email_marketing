@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -137,11 +137,49 @@ export const sequencesApi = {
 }
 
 // Inbox
+function replyFormData(data: { html_content: string; text_content?: string; include_signature?: boolean; files?: File[] }) {
+  const form = new FormData()
+  form.append('html_content', data.html_content)
+  form.append('text_content', data.text_content || '')
+  form.append('include_signature', String(data.include_signature ?? true))
+  ;(data.files || []).forEach(f => form.append('files', f))
+  return form
+}
+
 export const inboxApi = {
   threads: (params?: any) => api.get('/api/inbox/threads/', { params }),
   getThread: (id: number) => api.get(`/api/inbox/threads/${id}/`),
-  reply: (id: number, data: { html_content: string; text_content?: string }) =>
-    api.post(`/api/inbox/threads/${id}/reply/`, data),
+  reply: (id: number, data: { html_content: string; text_content?: string; include_signature?: boolean; files?: File[] }) =>
+    api.post(`/api/inbox/threads/${id}/reply/`, replyFormData(data), { headers: { 'Content-Type': undefined } }),
+  setStatus: (id: number, lead_status: string) =>
+    api.patch(`/api/inbox/threads/${id}/status/`, { lead_status }),
+  setRead: (id: number, is_unread: boolean) =>
+    api.patch(`/api/inbox/threads/${id}/read/`, { is_unread }),
+  setArchived: (id: number, is_archived: boolean) =>
+    api.patch(`/api/inbox/threads/${id}/archive/`, { is_archived }),
+  setSnooze: (id: number, snoozed_until: string | null) =>
+    api.patch(`/api/inbox/threads/${id}/snooze/`, { snoozed_until }),
+  bulkAction: (ids: number[], action: string, lead_status?: string) =>
+    api.post('/api/inbox/threads/bulk/', { ids, action, lead_status }),
+  contactStats: (id: number) => api.get(`/api/inbox/threads/${id}/contact-stats/`),
+  compose: (data: {
+    contact_id: number; smtp_account_id: number; subject: string
+    html_content: string; text_content?: string; include_signature?: boolean; files?: File[]
+  }) => {
+    const form = new FormData()
+    form.append('contact_id', String(data.contact_id))
+    form.append('smtp_account_id', String(data.smtp_account_id))
+    form.append('subject', data.subject)
+    form.append('html_content', data.html_content)
+    form.append('text_content', data.text_content || '')
+    form.append('include_signature', String(data.include_signature ?? true))
+    ;(data.files || []).forEach(f => form.append('files', f))
+    return api.post('/api/inbox/compose/', form, { headers: { 'Content-Type': undefined } })
+  },
+  templates: () => api.get('/api/inbox/templates/'),
+  createTemplate: (data: { name: string; body_html?: string; body_text?: string }) =>
+    api.post('/api/inbox/templates/', data),
+  deleteTemplate: (id: number) => api.delete(`/api/inbox/templates/${id}/`),
   unreadCount: () => api.get('/api/inbox/unread-count/'),
 }
 

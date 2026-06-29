@@ -1,6 +1,18 @@
 from ninja import Schema
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+class AttachmentOut(Schema):
+    id: int
+    filename: str
+    content_type: str
+    size: int
+    url: str
+
+    @staticmethod
+    def resolve_url(obj):
+        return obj.file.url
 
 
 class InboxMessageOut(Schema):
@@ -12,6 +24,11 @@ class InboxMessageOut(Schema):
     body_html: str
     body_text: str
     occurred_at: datetime
+    attachments: List[AttachmentOut] = []
+
+    @staticmethod
+    def resolve_attachments(obj):
+        return list(obj.attachments.all())
 
 
 class ThreadOut(Schema):
@@ -24,6 +41,10 @@ class ThreadOut(Schema):
     subject: str
     last_message_at: Optional[datetime] = None
     is_unread: bool
+    is_archived: bool
+    lead_status: str
+    lead_status_auto: bool
+    snoozed_until: Optional[datetime] = None
     created_at: datetime
 
     @staticmethod
@@ -70,3 +91,56 @@ class ThreadDetailOut(ThreadOut):
 class ReplyIn(Schema):
     html_content: str
     text_content: str = ''
+
+
+class ThreadStatusIn(Schema):
+    lead_status: str
+
+
+class ThreadReadIn(Schema):
+    is_unread: bool
+
+
+class ThreadArchiveIn(Schema):
+    is_archived: bool
+
+
+class ThreadSnoozeIn(Schema):
+    snoozed_until: Optional[datetime] = None
+
+
+class BulkActionIn(Schema):
+    ids: List[int]
+    action: str  # archive | unarchive | mark_read | mark_unread | set_status
+    lead_status: Optional[str] = None
+
+
+class ComposeIn(Schema):
+    contact_id: int
+    smtp_account_id: int
+    subject: str
+    html_content: str
+    text_content: str = ''
+
+
+class ReplyTemplateOut(Schema):
+    id: int
+    name: str
+    body_html: str
+    body_text: str
+    created_at: datetime
+
+
+class ReplyTemplateIn(Schema):
+    name: str
+    body_html: str = ''
+    body_text: str = ''
+
+
+class ContactStatsOut(Schema):
+    total_sent: int
+    opened: int
+    clicked: int
+    replied: int
+    bounced: int
+    campaigns: List[str]

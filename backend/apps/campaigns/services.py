@@ -10,6 +10,7 @@ import uuid
 from collections import namedtuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from email.utils import formataddr
 from django.conf import settings
 from django.utils import timezone
@@ -81,9 +82,11 @@ def inject_tracking(html, campaign, sendlog_id):
 
 
 def build_email_message(smtp_account, to_email, subject, html_content, text_content='',
-                         from_name=None, from_email=None, reply_to=None, message_id=None, in_reply_to=None):
-    """Build a MIME email message."""
-    msg = MIMEMultipart('alternative')
+                         from_name=None, from_email=None, reply_to=None, message_id=None, in_reply_to=None,
+                         attachments=None):
+    """Build a MIME email message. `attachments` is an optional list of
+    (filename, content_bytes, content_type) tuples."""
+    msg = MIMEMultipart('mixed') if attachments else MIMEMultipart('alternative')
     msg['Subject'] = subject
     msg['From'] = formataddr((
         from_name or smtp_account.from_name,
@@ -99,9 +102,21 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
         msg['In-Reply-To'] = in_reply_to
         msg['References'] = in_reply_to
 
-    if text_content:
-        msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
-    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+    if attachments:
+        body = MIMEMultipart('alternative')
+        if text_content:
+            body.attach(MIMEText(text_content, 'plain', 'utf-8'))
+        body.attach(MIMEText(html_content, 'html', 'utf-8'))
+        msg.attach(body)
+        for filename, content, content_type in attachments:
+            maintype, _, subtype = (content_type or 'application/octet-stream').partition('/')
+            part = MIMEApplication(content, _subtype=subtype or 'octet-stream')
+            part.add_header('Content-Disposition', 'attachment', filename=filename)
+            msg.attach(part)
+    else:
+        if text_content:
+            msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
+        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
 
     return msg
 

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FlaskConical, CheckCircle, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -34,6 +35,7 @@ const schema = z.object({
   imap_username: z.string().optional(),
   imap_password: z.string().optional(),
   imap_use_ssl: z.boolean().optional(),
+  signature_html: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -46,7 +48,7 @@ interface Props {
 }
 
 export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
-  const [tab, setTab] = useState<'sending' | 'imap'>('sending')
+  const [tab, setTab] = useState<'sending' | 'imap' | 'signature'>('sending')
   const { register, handleSubmit, reset, setValue, watch, getValues, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -59,6 +61,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
       imap_enabled: false,
       imap_port: 993,
       imap_use_ssl: true,
+      signature_html: '',
     },
   })
 
@@ -89,12 +92,14 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
         imap_username: account.imap_username,
         imap_password: '',
         imap_use_ssl: account.imap_use_ssl,
+        signature_html: account.signature_html,
       })
     } else {
       reset({
         name: '', host: '', port: 587, username: '', password: '', from_email: '', from_name: '',
         security: 'tls', weight: 10, is_active: true, daily_limit: 0, hourly_limit: 0,
         imap_enabled: false, imap_host: '', imap_port: 993, imap_username: '', imap_password: '', imap_use_ssl: true,
+        signature_html: '',
       })
     }
   }, [account, open, reset])
@@ -150,6 +155,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
           {[
             { key: 'sending', label: 'Sending' },
             { key: 'imap', label: 'Reply Detection (IMAP)' },
+            { key: 'signature', label: 'Signature' },
           ].map(t => (
             <button
               key={t.key}
@@ -317,6 +323,20 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {tab === 'signature' && (
+              <div className="space-y-2">
+                <Label>Signature (HTML)</Label>
+                <Textarea
+                  {...register('signature_html')}
+                  placeholder="Best,&#10;Jane Doe&#10;Acme Inc."
+                  className="h-40 font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Appended to replies and new emails sent from this mailbox when &ldquo;Include signature&rdquo; is checked in the inbox composer.
+                </p>
               </div>
             )}
           </div>

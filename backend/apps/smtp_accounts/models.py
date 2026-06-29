@@ -44,6 +44,7 @@ class SMTPAccount(models.Model):
     )
     last_tested_at = models.DateTimeField(null=True, blank=True)
     last_test_success = models.BooleanField(null=True, blank=True)
+    signature_html = models.TextField(blank=True, help_text='Appended to outgoing replies/compose when enabled.')
 
     # IMAP / reply detection (optional — same mailbox used to send, polled for replies)
     imap_enabled = models.BooleanField(default=False)

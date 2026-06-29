@@ -77,6 +77,7 @@ export interface SMTPAccount {
   last_imap_checked_at: string | null
   last_imap_tested_at: string | null
   last_imap_test_success: boolean | null
+  signature_html: string
   created_at: string
   updated_at: string
 }
@@ -225,6 +226,14 @@ export interface DashboardStats {
   smtp_performance: { id: number; name: string; sent: number; failed: number }[]
 }
 
+export interface InboxAttachment {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  url: string
+}
+
 export interface InboxMessage {
   id: number
   direction: 'inbound' | 'outbound'
@@ -234,6 +243,7 @@ export interface InboxMessage {
   body_html: string
   body_text: string
   occurred_at: string
+  attachments: InboxAttachment[]
 }
 
 export interface Thread {
@@ -246,7 +256,28 @@ export interface Thread {
   subject: string
   last_message_at: string | null
   is_unread: boolean
+  is_archived: boolean
+  lead_status: 'none' | 'interested' | 'not_interested' | 'meeting_booked'
+  lead_status_auto: boolean
+  snoozed_until: string | null
   created_at: string
+}
+
+export interface ReplyTemplate {
+  id: number
+  name: string
+  body_html: string
+  body_text: string
+  created_at: string
+}
+
+export interface ContactStats {
+  total_sent: number
+  opened: number
+  clicked: number
+  replied: number
+  bounced: number
+  campaigns: string[]
 }
 
 export interface ThreadListItem extends Thread {
