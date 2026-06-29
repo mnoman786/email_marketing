@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  MailFlow — Full Production Setup Script
-#  Backend:  Gunicorn + Django  → systemd → port 9001
-#  Frontend: Next.js            → systemd → port 3000
+#  Backend:  Gunicorn + Django  → systemd → port 9006
+#  Frontend: Next.js            → systemd → port 4001
+#  Celery:   worker + beat      → systemd → Redis DB > 10
 #  Proxy:    Nginx (optional)   → port 80 / 443
 # =============================================================================
 set -e
@@ -15,10 +16,16 @@ success() { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERR]${NC}   $*"; exit 1; }
 
-# ─── Configuration (edit before running) ─────────────────────────────────────
-BACKEND_PORT=9001
-FRONTEND_PORT=3000
-DOMAIN=""                        # e.g. "mail.example.com" — leave blank to skip nginx
+# ─── Configuration (edit before running, or override via env vars) ──────────
+BACKEND_PORT="${BACKEND_PORT:-9006}"
+FRONTEND_PORT="${FRONTEND_PORT:-4001}"
+DOMAIN="${DOMAIN:-}"              # e.g. "mail.example.com" — leave blank to skip nginx
+# Kept above 10 on purpose so this app's queue/cache doesn't collide with
+# other apps' DB 0-10 on a shared Redis instance. Broker, result backend, and
+# Django's cache all read this same REDIS_URL today.
+REDIS_DB="${REDIS_DB:-11}"
+REDIS_URL="redis://localhost:6379/${REDIS_DB}"
+CELERY_CONCURRENCY="${CELERY_CONCURRENCY:-4}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
@@ -103,13 +110,39 @@ if [ "$PKG_MGR" = "apt-get" ]; then
     sudo apt-get install -y build-essential libssl-dev libffi-dev python3-dev git curl --no-install-recommends -qq
 fi
 
+# ── Auto-install Redis ─────────────────────────────────────────────────────
+# Celery (campaign sending, sequence steps, IMAP polling) and Django's cache
+# both depend on this — install and enable it rather than just detecting it.
+if ! command -v redis-cli >/dev/null 2>&1; then
+    warn "Redis not found — installing..."
+    if [ "$PKG_MGR" = "apt-get" ]; then
+        sudo apt-get install -y redis-server -qq
+    elif [ "$PKG_MGR" = "dnf" ] || [ "$PKG_MGR" = "yum" ]; then
+        sudo $PKG_MGR install -y redis
+    else
+        error "Cannot auto-install Redis. Please install it manually and re-run."
+    fi
+fi
+# Ubuntu/Debian's package installs the unit as "redis-server"; RHEL-based
+# distros name it "redis" — try the Debian name first since that's the
+# primary target here, fall back to the other if it doesn't exist.
+if systemctl list-unit-files redis-server.service >/dev/null 2>&1; then
+    REDIS_SERVICE="redis-server"
+else
+    REDIS_SERVICE="redis"
+fi
+sudo systemctl enable --now "$REDIS_SERVICE"
+command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1 \
+    && success "Redis running (${REDIS_SERVICE}.service), using DB index ${REDIS_DB}." \
+    || error "Redis installed but not responding to ping — check: sudo systemctl status ${REDIS_SERVICE}"
+
 PYTHON_VER=$($PYTHON_BIN -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 NODE_VER=$($NODE_BIN -e "process.stdout.write(process.version)")
 info "Python $PYTHON_VER  |  Node $NODE_VER  |  npm $(npm -v)"
 
 # ─── 1. Backend — Python virtual environment ──────────────────────────────────
 echo ""
-info "━━━ [1/7] Setting up Python virtual environment..."
+info "━━━ [1/8] Setting up Python virtual environment..."
 # Ensure python3-venv is available (Ubuntu splits it into a separate package)
 if ! $PYTHON_BIN -m venv --help >/dev/null 2>&1; then
     warn "python3-venv missing — installing..."
@@ -123,19 +156,22 @@ success "Python dependencies installed."
 
 # ─── 2. Backend — Environment file ───────────────────────────────────────────
 echo ""
-info "━━━ [2/7] Configuring backend environment..."
+info "━━━ [2/8] Configuring backend environment..."
 ENV_FILE="$BACKEND_DIR/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
     ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    SITE_URL="http://localhost:${BACKEND_PORT}"
+    [ -n "$DOMAIN" ] && SITE_URL="https://${DOMAIN}"
     cat > "$ENV_FILE" <<EOF
 SECRET_KEY=${SECRET_KEY}
 DEBUG=False
 ALLOWED_HOSTS=localhost,127.0.0.1,${DOMAIN}
 DATABASE_URL=sqlite:///db.sqlite3
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL=${REDIS_URL}
 CORS_ALLOWED_ORIGINS=http://localhost:${FRONTEND_PORT}$([ -n "$DOMAIN" ] && echo ",https://${DOMAIN}")
+SITE_URL=${SITE_URL}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 EOF
     success "Created .env with generated keys."
@@ -145,7 +181,7 @@ fi
 
 # ─── 3. Backend — Migrations & static files ──────────────────────────────────
 echo ""
-info "━━━ [3/7] Running database migrations..."
+info "━━━ [3/8] Running database migrations..."
 cd "$BACKEND_DIR"
 python manage.py makemigrations --no-input 2>/dev/null || true
 python manage.py migrate --no-input
@@ -161,7 +197,7 @@ fi
 
 # ─── 4. Backend — systemd service (Gunicorn) ─────────────────────────────────
 echo ""
-info "━━━ [4/7] Creating systemd service for backend (port ${BACKEND_PORT})..."
+info "━━━ [4/8] Creating systemd service for backend (port ${BACKEND_PORT})..."
 
 sudo tee /etc/systemd/system/mailflow-backend.service > /dev/null <<EOF
 [Unit]
@@ -205,7 +241,7 @@ fi
 
 # ─── 5. Frontend — install & build ───────────────────────────────────────────
 echo ""
-info "━━━ [5/7] Installing frontend dependencies..."
+info "━━━ [5/8] Installing frontend dependencies..."
 cd "$FRONTEND_DIR"
 
 # Point frontend at the backend
@@ -222,7 +258,7 @@ success "Frontend built."
 
 # ─── 6. Frontend — systemd service (Next.js) ─────────────────────────────────
 echo ""
-info "━━━ [6/7] Creating systemd service for frontend (port ${FRONTEND_PORT})..."
+info "━━━ [6/8] Creating systemd service for frontend (port ${FRONTEND_PORT})..."
 
 sudo tee /etc/systemd/system/mailflow-frontend.service > /dev/null <<EOF
 [Unit]
@@ -259,7 +295,7 @@ fi
 # ─── 7. Nginx reverse proxy (optional) ───────────────────────────────────────
 if [ -n "$DOMAIN" ] && command -v nginx >/dev/null 2>&1; then
     echo ""
-    info "━━━ [7/7] Configuring Nginx reverse proxy for ${DOMAIN}..."
+    info "━━━ [7/8] Configuring Nginx reverse proxy for ${DOMAIN}..."
 
     sudo tee /etc/nginx/sites-available/mailflow > /dev/null <<EOF
 upstream mailflow_backend  { server 127.0.0.1:${BACKEND_PORT}; }
@@ -327,23 +363,23 @@ EOF
         warn "certbot not found — skipping SSL. Install with: sudo apt install certbot python3-certbot-nginx"
     fi
 else
-    info "━━━ [7/7] Skipping Nginx (DOMAIN not set or nginx not installed)."
+    info "━━━ [7/8] Skipping Nginx (DOMAIN not set or nginx not installed)."
 fi
 
-# ─── Celery worker (optional) ────────────────────────────────────────────────
-if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
-    info "Redis detected — creating Celery worker service..."
+# ─── Celery worker + beat ─────────────────────────────────────────────────────
+echo ""
+info "━━━ [8/8] Creating Celery worker + beat services..."
 
-    sudo tee /etc/systemd/system/mailflow-celery.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/mailflow-celery.service > /dev/null <<EOF
 [Unit]
 Description=MailFlow Celery Worker
-After=network.target redis.service
+After=network.target ${REDIS_SERVICE}.service
 
 [Service]
 Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${BACKEND_DIR}
-ExecStart=${VENV_DIR}/bin/celery -A email_marketing worker -l info --concurrency=2
+ExecStart=${VENV_DIR}/bin/celery -A email_marketing worker -l info --concurrency=${CELERY_CONCURRENCY}
 EnvironmentFile=${ENV_FILE}
 Restart=on-failure
 RestartSec=10s
@@ -354,10 +390,10 @@ StandardError=append:${BACKEND_DIR}/logs/celery-err.log
 WantedBy=multi-user.target
 EOF
 
-    sudo tee /etc/systemd/system/mailflow-beat.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/mailflow-beat.service > /dev/null <<EOF
 [Unit]
 Description=MailFlow Celery Beat (Scheduler)
-After=network.target redis.service
+After=network.target ${REDIS_SERVICE}.service mailflow-celery.service
 
 [Service]
 Type=simple
@@ -368,18 +404,22 @@ ExecStart=${VENV_DIR}/bin/celery -A email_marketing beat -l info \
 EnvironmentFile=${ENV_FILE}
 Restart=on-failure
 RestartSec=10s
+StandardOutput=append:${BACKEND_DIR}/logs/celery-beat.log
+StandardError=append:${BACKEND_DIR}/logs/celery-beat-err.log
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable mailflow-celery mailflow-beat
-    sudo systemctl restart mailflow-celery mailflow-beat
-    success "Celery worker + beat scheduler started."
+sudo systemctl daemon-reload
+sudo systemctl enable mailflow-celery mailflow-beat
+sudo systemctl restart mailflow-celery mailflow-beat
+sleep 2
+
+if systemctl is-active --quiet mailflow-celery && systemctl is-active --quiet mailflow-beat; then
+    success "Celery worker (concurrency=${CELERY_CONCURRENCY}) + beat scheduler running."
 else
-    warn "Redis not running — Celery (campaign sending) will be synchronous."
-    warn "Install Redis: sudo apt install redis-server && sudo systemctl start redis"
+    warn "Celery may not have started. Check: sudo journalctl -u mailflow-celery -u mailflow-beat -n 30"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
@@ -393,16 +433,23 @@ echo -e "  ${CYAN}Backend API${NC} →  http://localhost:${BACKEND_PORT}/api/"
 echo -e "  ${CYAN}Django Admin${NC}→  http://localhost:${BACKEND_PORT}/admin/"
 [ -n "$DOMAIN" ] && echo -e "  ${CYAN}Domain${NC}     →  https://${DOMAIN}"
 echo ""
+echo -e "  ${YELLOW}Redis${NC}      →  DB index ${REDIS_DB} (${REDIS_URL})"
+echo ""
 echo -e "  ${YELLOW}Manage services:${NC}"
 echo -e "    sudo systemctl status  mailflow-backend"
 echo -e "    sudo systemctl restart mailflow-backend"
 echo -e "    sudo systemctl status  mailflow-frontend"
 echo -e "    sudo systemctl restart mailflow-frontend"
+echo -e "    sudo systemctl status  mailflow-celery"
+echo -e "    sudo systemctl status  mailflow-beat"
+echo -e "    sudo systemctl restart mailflow-celery mailflow-beat"
 echo -e "    sudo journalctl -u mailflow-backend  -f   # live logs"
 echo -e "    sudo journalctl -u mailflow-frontend -f   # live logs"
+echo -e "    sudo journalctl -u mailflow-celery   -f   # live logs"
 echo ""
 echo -e "  ${YELLOW}Logs:${NC}"
 echo -e "    ${BACKEND_DIR}/logs/access.log"
 echo -e "    ${BACKEND_DIR}/logs/error.log"
 echo -e "    ${BACKEND_DIR}/logs/celery.log"
+echo -e "    ${BACKEND_DIR}/logs/celery-beat.log"
 echo ""
