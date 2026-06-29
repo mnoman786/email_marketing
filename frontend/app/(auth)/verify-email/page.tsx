@@ -3,7 +3,8 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { authApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Zap, CheckCircle2, XCircle, Loader2, MailCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -71,9 +72,7 @@ function VerifyEmailInner() {
             <p className="text-muted-foreground text-sm mb-6">
               Your email address has been confirmed. You can now sign in.
             </p>
-            <Button asChild className="w-full">
-              <Link href="/login">Sign in</Link>
-            </Button>
+            <Link href="/login" className={cn(buttonVariants(), 'w-full')}>Sign in</Link>
           </>
         )}
 
