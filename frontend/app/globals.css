@@ -133,6 +133,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Tailwind v4 dropped the default pointer cursor on buttons — restore it for
+   all interactive elements so anything clickable shows a pointer. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+label[for],
+select:not(:disabled),
+summary,
+[tabindex]:not([tabindex="-1"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
