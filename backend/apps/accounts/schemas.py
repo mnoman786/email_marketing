@@ -58,6 +58,19 @@ class TokenRefreshOut(Schema):
     access: str
 
 
+class RegisterOut(Schema):
+    detail: str
+    email: str
+
+
+class VerifyEmailIn(Schema):
+    token: str
+
+
+class ResendVerificationIn(Schema):
+    email: EmailStr
+
+
 class ProfileUpdateIn(Schema):
     first_name: Optional[str] = None
     last_name: Optional[str] = None

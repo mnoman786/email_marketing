@@ -168,6 +168,28 @@ ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='')
 # Public base URL used to build tracking pixel / click-redirect URLs in emails
 SITE_URL = config('SITE_URL', default='http://localhost:8000')
 
+# Frontend base URL — used to build links (e.g. email verification) that the
+# user clicks and that resolve to a page in the Next.js app, not the API.
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+# Transactional email (account verification, etc.). Distinct from the per-user
+# SMTP accounts used to send campaigns — this is the system's own mailbox.
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.smtp.EmailBackend',
+)
+EMAIL_HOST = config('EMAIL_HOST', default='')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='no-reply@mailflow.local')
+
+# Token lifetime (hours) for email-verification links.
+EMAIL_VERIFICATION_TOKEN_HOURS = config(
+    'EMAIL_VERIFICATION_TOKEN_HOURS', default=48, cast=int
+)
+
 # Redis-backed cache (was LocMemCache — per-process, so it neither shared
 # data across worker processes nor actually reduced DB load across them).
 # This also makes the IMAP poll-overlap lock in apps/smtp_accounts/tasks.py

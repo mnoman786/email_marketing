@@ -27,6 +27,25 @@ def decode_refresh_token(token: str) -> int | None:
         return None
 
 
+def create_email_verification_token(user_id: int) -> str:
+    hours = getattr(settings, 'EMAIL_VERIFICATION_TOKEN_HOURS', 48)
+    now = datetime.now(tz=tz.utc)
+    return jwt.encode(
+        {'user_id': user_id, 'type': 'email_verify', 'exp': now + timedelta(hours=hours)},
+        settings.SECRET_KEY, algorithm='HS256'
+    )
+
+
+def decode_email_verification_token(token: str) -> int | None:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+        if payload.get('type') != 'email_verify':
+            return None
+        return payload['user_id']
+    except jwt.InvalidTokenError:
+        return None
+
+
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
         try:

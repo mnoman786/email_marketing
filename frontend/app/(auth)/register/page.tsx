@@ -6,11 +6,10 @@ import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { authApi } from '@/lib/api'
-import { setTokens, setUser } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Zap } from 'lucide-react'
+import { Zap, Mail, Lock, User, Building2, AtSign, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const schema = z.object({
@@ -39,11 +38,9 @@ export default function RegisterPage() {
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     try {
-      const res = await authApi.register(data)
-      setTokens(res.data.access, res.data.refresh)
-      setUser(res.data.user)
-      toast.success('Account created!')
-      router.push('/dashboard')
+      await authApi.register(data)
+      toast.success('Account created! Check your inbox to verify your email.')
+      router.push(`/verify-email?email=${encodeURIComponent(data.email)}`)
     } catch (err: any) {
       const errors = err.response?.data
       const msg = errors?.email?.[0] || errors?.username?.[0] || errors?.detail || 'Registration failed'
@@ -54,64 +51,110 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-8 bg-muted/30">
-      <div className="w-full max-w-md bg-card border rounded-2xl p-8 shadow-sm">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm">
-            <Zap className="w-5 h-5 text-primary-foreground" />
+    <div className="min-h-screen flex">
+      {/* Left: form */}
+      <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+        <div className="w-full max-w-sm py-8">
+          <div className="flex items-center gap-2 mb-8">
+            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm">
+              <Zap className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <span className="font-bold text-xl">MailFlow</span>
           </div>
-          <span className="font-bold text-xl">MailFlow</span>
+
+          <h1 className="text-2xl font-bold mb-1">Create your account</h1>
+          <p className="text-muted-foreground text-sm mb-8">Start sending campaigns in minutes</p>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>First Name</Label>
+                <div className="relative mt-1">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                  <Input {...register('first_name')} placeholder="John" className="pl-9" />
+                </div>
+                {errors.first_name && <p className="text-xs text-destructive mt-1">{errors.first_name.message}</p>}
+              </div>
+              <div>
+                <Label>Last Name</Label>
+                <Input {...register('last_name')} placeholder="Doe" className="mt-1" />
+                {errors.last_name && <p className="text-xs text-destructive mt-1">{errors.last_name.message}</p>}
+              </div>
+            </div>
+            <div>
+              <Label>Email</Label>
+              <div className="relative mt-1">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                <Input {...register('email')} type="email" placeholder="you@company.com" className="pl-9" />
+              </div>
+              {errors.email && <p className="text-xs text-destructive mt-1">{errors.email.message}</p>}
+            </div>
+            <div>
+              <Label>Username</Label>
+              <div className="relative mt-1">
+                <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                <Input {...register('username')} placeholder="johndoe" className="pl-9" />
+              </div>
+              {errors.username && <p className="text-xs text-destructive mt-1">{errors.username.message}</p>}
+            </div>
+            <div>
+              <Label>Company Name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <div className="relative mt-1">
+                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                <Input {...register('company_name')} placeholder="Acme Inc." className="pl-9" />
+              </div>
+            </div>
+            <div>
+              <Label>Password</Label>
+              <div className="relative mt-1">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                <Input {...register('password')} type="password" placeholder="Min. 8 characters" className="pl-9" />
+              </div>
+              {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
+            </div>
+            <div>
+              <Label>Confirm Password</Label>
+              <div className="relative mt-1">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                <Input {...register('password_confirm')} type="password" placeholder="••••••••" className="pl-9" />
+              </div>
+              {errors.password_confirm && <p className="text-xs text-destructive mt-1">{errors.password_confirm.message}</p>}
+            </div>
+            <Button type="submit" className="w-full" loading={loading}>
+              Create Account
+            </Button>
+          </form>
+
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            Already have an account?{' '}
+            <Link href="/login" className="text-primary font-medium hover:underline">Sign in</Link>
+          </p>
         </div>
+      </div>
 
-        <h1 className="text-2xl font-bold mb-1">Create your account</h1>
-        <p className="text-muted-foreground text-sm mb-6">Start sending campaigns in minutes</p>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>First Name *</Label>
-              <Input {...register('first_name')} placeholder="John" className="mt-1" />
-              {errors.first_name && <p className="text-xs text-destructive mt-1">{errors.first_name.message}</p>}
-            </div>
-            <div>
-              <Label>Last Name *</Label>
-              <Input {...register('last_name')} placeholder="Doe" className="mt-1" />
-              {errors.last_name && <p className="text-xs text-destructive mt-1">{errors.last_name.message}</p>}
-            </div>
-          </div>
-          <div>
-            <Label>Email *</Label>
-            <Input {...register('email')} type="email" placeholder="john@company.com" className="mt-1" />
-            {errors.email && <p className="text-xs text-destructive mt-1">{errors.email.message}</p>}
-          </div>
-          <div>
-            <Label>Username *</Label>
-            <Input {...register('username')} placeholder="johndoe" className="mt-1" />
-            {errors.username && <p className="text-xs text-destructive mt-1">{errors.username.message}</p>}
-          </div>
-          <div>
-            <Label>Company Name</Label>
-            <Input {...register('company_name')} placeholder="Acme Inc." className="mt-1" />
-          </div>
-          <div>
-            <Label>Password *</Label>
-            <Input {...register('password')} type="password" placeholder="Min. 8 characters" className="mt-1" />
-            {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
-          </div>
-          <div>
-            <Label>Confirm Password *</Label>
-            <Input {...register('password_confirm')} type="password" placeholder="Repeat password" className="mt-1" />
-            {errors.password_confirm && <p className="text-xs text-destructive mt-1">{errors.password_confirm.message}</p>}
-          </div>
-          <Button type="submit" className="w-full" loading={loading}>
-            Create Account
-          </Button>
-        </form>
-
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          Already have an account?{' '}
-          <Link href="/login" className="text-primary font-medium hover:underline">Sign in</Link>
-        </p>
+      {/* Right: branding */}
+      <div className="hidden lg:flex flex-1 bg-linear-to-br from-blue-600 to-indigo-700 items-center justify-center p-12">
+        <div className="text-white max-w-sm">
+          <h2 className="text-3xl font-bold mb-4">
+            Everything you need to grow
+          </h2>
+          <p className="text-blue-100 leading-relaxed mb-8">
+            Join MailFlow and start delivering campaigns that land in the inbox — with the tools to manage every contact, template, and send.
+          </p>
+          <ul className="space-y-3">
+            {[
+              'Smart SMTP routing with load balancing',
+              'Real-time delivery & open analytics',
+              'Drag-and-drop HTML template editor',
+              'Unlimited contacts, lists & bulk import',
+            ].map(item => (
+              <li key={item} className="flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-blue-200 shrink-0" />
+                <span className="text-sm text-blue-50">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   )

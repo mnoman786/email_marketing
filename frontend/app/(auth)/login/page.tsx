@@ -36,6 +36,11 @@ export default function LoginPage() {
       setUser(res.data.user)
       router.push('/dashboard')
     } catch (err: any) {
+      if (err.response?.status === 403) {
+        toast.error('Please verify your email before signing in.')
+        router.push(`/verify-email?email=${encodeURIComponent(data.email)}`)
+        return
+      }
       toast.error(err.response?.data?.detail || err.response?.data?.non_field_errors?.[0] || 'Login failed')
     } finally {
       setLoading(false)
@@ -89,7 +94,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right: branding */}
-      <div className="hidden lg:flex flex-1 bg-gradient-to-br from-blue-600 to-indigo-700 items-center justify-center p-12">
+      <div className="hidden lg:flex flex-1 bg-linear-to-br from-blue-600 to-indigo-700 items-center justify-center p-12">
         <div className="text-white max-w-sm">
           <h2 className="text-3xl font-bold mb-4">
             Send smarter email campaigns
