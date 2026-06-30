@@ -54,7 +54,15 @@ def unread_count(request):
     cached = cache.get(cache_key)
     if cached is not None:
         return {'count': cached}
-    count = Thread.objects.filter(user=request.auth, is_unread=True).count()
+    # Only count what's actually visible in the default inbox — archived and
+    # currently-snoozed threads are hidden there, so counting them inflates the
+    # badge ("badge says 3 but I see 1").
+    now = timezone.now()
+    count = (
+        Thread.objects.filter(user=request.auth, is_unread=True, is_archived=False)
+        .filter(Q(snoozed_until__isnull=True) | Q(snoozed_until__lte=now))
+        .count()
+    )
     cache.set(cache_key, count, timeout=15)
     return {'count': count}
 
@@ -193,6 +201,8 @@ def set_thread_archived(request, thread_id: int, data: ThreadArchiveIn):
     )
     thread.is_archived = data.is_archived
     thread.save(update_fields=['is_archived'])
+    # Archiving/unarchiving changes the visible-unread set, so refresh the badge.
+    cache.delete(unread_count_cache_key(request.auth.id))
     return thread
 
 
@@ -203,6 +213,8 @@ def snooze_thread(request, thread_id: int, data: ThreadSnoozeIn):
     )
     thread.snoozed_until = data.snoozed_until
     thread.save(update_fields=['snoozed_until'])
+    # Snoozing hides the thread from the inbox (and badge) until it expires.
+    cache.delete(unread_count_cache_key(request.auth.id))
     return thread
 
 
