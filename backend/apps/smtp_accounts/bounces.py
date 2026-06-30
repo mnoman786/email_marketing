@@ -13,7 +13,6 @@ import logging
 import re
 from email.utils import parseaddr
 
-from django.db.models import F
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -133,7 +132,6 @@ def process_bounce(parsed, account):
     """Match the DSN back to a SendLog, mark it bounced, and suppress the
     contact on a hard (permanent) bounce."""
     from apps.analytics.models import SendLog
-    from apps.campaigns.models import Campaign
     from apps.contacts.models import suppress_email
 
     sendlog_id = _find_sendlog_id(parsed)
@@ -158,8 +156,6 @@ def process_bounce(parsed, account):
         log.status = 'bounced'
         log.error_message = (f'{action} {status}'.strip() or 'Bounced')[:500]
         log.save(update_fields=['status', 'error_message'])
-        if log.campaign_id:
-            Campaign.objects.filter(id=log.campaign_id).update(bounce_count=F('bounce_count') + 1)
 
     if is_hard and log.contact_id and log.contact:
         suppress_email(log.contact.user, log.contact.email, reason='bounced', note=(status or action))

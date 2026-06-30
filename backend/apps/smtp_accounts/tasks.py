@@ -6,7 +6,6 @@ from email import message_from_bytes
 from email.utils import parseaddr
 from celery import shared_task
 from django.core.cache import cache
-from django.db.models import F
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -254,7 +253,6 @@ def poll_imap_replies():
 def poll_account_replies(account_id):
     """Check a single IMAP-enabled mailbox for new replies."""
     from apps.smtp_accounts.models import SMTPAccount
-    from apps.campaigns.models import Campaign
 
     lock_key = f'imap-poll-lock-{account_id}'
     if not cache.add(lock_key, 1, timeout=LOCK_TIMEOUT):
@@ -338,10 +336,6 @@ def poll_account_replies(account_id):
                     log.status = 'replied'
                     log.replied_at = now
                     log.save(update_fields=['status', 'replied_at'])
-                    if log.campaign_id:
-                        Campaign.objects.filter(id=log.campaign_id).update(
-                            reply_count=F('reply_count') + 1
-                        )
                     matched_total += 1
 
                 html, text, attachments = _extract_body(parsed)

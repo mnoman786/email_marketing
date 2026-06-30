@@ -1,4 +1,4 @@
-"""Celery tasks for sequence (drip campaign) enrollment and sending."""
+"""Celery tasks for campaign (single + multi-step drip) enrollment and sending."""
 import logging
 from celery import shared_task
 from django.utils import timezone
@@ -6,61 +6,61 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
-def _smtp_accounts_for(sequence):
-    from .models import SequenceSMTPRoute
+def _smtp_accounts_for(campaign):
+    from .models import CampaignSMTPRoute
     from apps.smtp_accounts.models import SMTPAccount
 
-    if sequence.use_custom_smtp_routing:
-        routes = SequenceSMTPRoute.objects.filter(sequence=sequence, is_active=True).select_related('smtp_account')
+    if campaign.use_custom_smtp_routing:
+        routes = CampaignSMTPRoute.objects.filter(campaign=campaign, is_active=True).select_related('smtp_account')
         accounts = []
         for r in routes:
             r.smtp_account.weight = r.weight
             accounts.append(r.smtp_account)
         return accounts
-    return list(SMTPAccount.objects.filter(user=sequence.user, is_active=True))
+    return list(SMTPAccount.objects.filter(user=campaign.user, is_active=True))
 
 
 @shared_task
 def enroll_due_contacts():
-    """Periodic task: auto-enroll new list contacts into active sequences (evergreen)."""
-    from .models import Sequence, SequenceEnrollment
+    """Periodic task: auto-enroll new list contacts into active campaigns (evergreen)."""
+    from .models import Campaign, CampaignEnrollment
     from apps.contacts.models import Contact, Suppression
 
     now = timezone.now()
     enrolled_total = 0
 
-    for sequence in Sequence.objects.filter(status='active'):
-        first_step = sequence.steps.order_by('order').first()
+    for campaign in Campaign.objects.filter(status='active'):
+        first_step = campaign.steps.order_by('order').first()
         if not first_step:
             continue
 
-        suppressed = Suppression.objects.filter(user=sequence.user).values('email')
+        suppressed = Suppression.objects.filter(user=campaign.user).values('email')
         contact_ids = Contact.objects.filter(
-            lists__in=sequence.contact_lists.all(),
+            lists__in=campaign.contact_lists.all(),
             status='active'
         ).exclude(email__in=suppressed).values_list('id', flat=True).distinct()
 
         already_enrolled = set(
-            SequenceEnrollment.objects.filter(sequence=sequence).values_list('contact_id', flat=True)
+            CampaignEnrollment.objects.filter(campaign=campaign).values_list('contact_id', flat=True)
         )
         new_ids = [cid for cid in contact_ids if cid not in already_enrolled]
 
         first_send_at = now + timezone.timedelta(days=first_step.delay_days, hours=first_step.delay_hours)
         for contact_id in new_ids:
-            SequenceEnrollment.objects.create(
-                sequence=sequence, contact_id=contact_id, status='active', next_send_at=first_send_at
+            CampaignEnrollment.objects.create(
+                campaign=campaign, contact_id=contact_id, status='active', next_send_at=first_send_at
             )
         enrolled_total += len(new_ids)
 
     if enrolled_total:
-        logger.info(f'Enrolled {enrolled_total} contact(s) across active sequences.')
+        logger.info(f'Enrolled {enrolled_total} contact(s) across active campaigns.')
     return f'Enrolled {enrolled_total} contacts.'
 
 
 @shared_task
-def process_due_sequence_steps():
+def process_due_campaign_steps():
     """Periodic task: send the next due step for each active enrollment."""
-    from .models import SequenceEnrollment
+    from .models import CampaignEnrollment
     from apps.analytics.models import SendLog
     from apps.campaigns.services import send_campaign_email
     from apps.analytics.tracking import resolve_tracking_base_url
@@ -68,22 +68,22 @@ def process_due_sequence_steps():
     now = timezone.now()
     sent, stopped, completed = 0, 0, 0
 
-    # sequence__user joined so the per-user tracking-domain lookup below doesn't
+    # campaign__user joined so the per-user tracking-domain lookup below doesn't
     # lazy-load the User (and it's Redis-cached on top of that).
-    due = SequenceEnrollment.objects.filter(
+    due = CampaignEnrollment.objects.filter(
         status='active', next_send_at__lte=now
-    ).select_related('sequence', 'sequence__user', 'contact', 'current_step')
+    ).select_related('campaign', 'campaign__user', 'contact', 'current_step')
 
     for enrollment in due:
-        sequence = enrollment.sequence
-        steps = list(sequence.steps.order_by('order'))
+        campaign = enrollment.campaign
+        steps = list(campaign.steps.order_by('order'))
         if not steps:
             continue
 
         # Stop if the contact replied to any step sent so far (checked first — strongest signal)
-        if enrollment.current_step and sequence.stop_on_reply:
+        if enrollment.current_step and campaign.stop_on_reply:
             replied = SendLog.objects.filter(
-                sequence_step__sequence=sequence, contact=enrollment.contact, status='replied'
+                sequence_step__campaign=campaign, contact=enrollment.contact, status='replied'
             ).exists()
             if replied:
                 enrollment.status = 'stopped'
@@ -123,27 +123,28 @@ def process_due_sequence_steps():
         # Safety net: someone may have been suppressed after enrolling. Stop the
         # enrollment instead of sending another step.
         from apps.contacts.models import Suppression
-        if Suppression.objects.filter(user=sequence.user, email__iexact=enrollment.contact.email).exists():
+        if Suppression.objects.filter(user=campaign.user, email__iexact=enrollment.contact.email).exists():
             enrollment.status = 'unsubscribed'
             enrollment.completed_at = now
             enrollment.save(update_fields=['status', 'completed_at'])
             stopped += 1
             continue
 
-        # Outside the sequence's sending window (business hours) — push this
+        # Outside the campaign's sending window (business hours) — push this
         # step out to when the window next opens instead of sending now.
         from apps.campaigns.scheduling import is_within_send_window, next_window_start
-        if not is_within_send_window(sequence):
-            enrollment.next_send_at = next_window_start(sequence)
+        if not is_within_send_window(campaign):
+            enrollment.next_send_at = next_window_start(campaign)
             enrollment.save(update_fields=['next_send_at'])
             continue
 
-        smtp_accounts = _smtp_accounts_for(sequence)
+        smtp_accounts = _smtp_accounts_for(campaign)
         if not smtp_accounts:
-            logger.error(f'Sequence {sequence.id}: no active SMTP accounts, skipping enrollment {enrollment.id}.')
+            logger.error(f'Campaign {campaign.id}: no active SMTP accounts, skipping enrollment {enrollment.id}.')
             continue
 
         sendlog = SendLog.objects.create(
+            campaign=campaign,
             sequence_step=next_step,
             contact=enrollment.contact,
             status='pending',
@@ -151,7 +152,7 @@ def process_due_sequence_steps():
             contact_name=enrollment.contact.full_name,
         )
 
-        tracking_base = resolve_tracking_base_url(enrollment.sequence.user)
+        tracking_base = resolve_tracking_base_url(campaign.user)
         result = send_campaign_email(next_step, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id,
                                      tracking_base_url=tracking_base)
 
@@ -181,3 +182,44 @@ def process_due_sequence_steps():
         sent += 1
 
     return {'sent': sent, 'stopped': stopped, 'completed': completed}
+
+
+@shared_task(bind=True)
+def retry_failed_send_task(self, log_id):
+    """Resend a single failed SendLog (used by the Analytics 'Retry Failed' button)."""
+    from apps.analytics.models import SendLog
+    from apps.campaigns.services import send_campaign_email
+    from apps.analytics.tracking import resolve_tracking_base_url
+
+    log = SendLog.objects.select_related('campaign', 'sequence_step', 'contact').get(id=log_id)
+    if not log.contact:
+        return {'success': False, 'error': 'No contact on this log.'}
+
+    campaign_like = log.sequence_step or log.campaign
+    if campaign_like is None:
+        return {'success': False, 'error': 'No campaign on this log.'}
+
+    user = log.sequence_step.campaign.user if log.sequence_step else log.campaign.user
+    smtp_accounts = _smtp_accounts_for(log.sequence_step.campaign if log.sequence_step else log.campaign)
+    tracking_base = resolve_tracking_base_url(user)
+
+    result = send_campaign_email(campaign_like, log.contact, smtp_accounts, sendlog_id=log.id,
+                                 tracking_base_url=tracking_base)
+
+    log.smtp_account = result.smtp_account
+    log.status = 'sent' if result.success else 'failed'
+    log.sent_at = timezone.now() if result.success else None
+    log.error_message = result.error or ''
+    log.message_id = result.message_id or ''
+    log.save(update_fields=[
+        'smtp_account', 'status', 'sent_at', 'error_message', 'message_id',
+    ])
+
+    if result.success and result.smtp_account:
+        from apps.inbox.services import log_outbound_message
+        log_outbound_message(
+            log, result.smtp_account, log.contact,
+            result.subject, result.html, result.text, result.message_id,
+        )
+
+    return {'success': result.success, 'error': result.error}

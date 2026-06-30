@@ -3,7 +3,7 @@ from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
-from django.db.models import Count, Q, F
+from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -27,7 +27,7 @@ router = Router(tags=['Analytics'])
 
 @router.get('/dashboard/', auth=auth)
 def dashboard_stats(request):
-    from apps.campaigns.models import Campaign
+    from apps.sequences.models import Campaign
     from apps.contacts.models import Contact, ContactList
     from apps.smtp_accounts.models import SMTPAccount
 
@@ -48,7 +48,7 @@ def dashboard_stats(request):
     active_contacts = Contact.objects.filter(user=user, status='active').count()
     total_lists = ContactList.objects.filter(user=user).count()
     total_campaigns = Campaign.objects.filter(user=user).count()
-    active_campaigns = Campaign.objects.filter(user=user, status__in=['sending', 'scheduled']).count()
+    active_campaigns = Campaign.objects.filter(user=user, status='active').count()
     total_smtp = SMTPAccount.objects.filter(user=user, is_active=True).count()
 
     logs = SendLog.objects.filter(campaign__user=user)
@@ -151,11 +151,11 @@ def retry_failed(request, data: RetryFailedIn):
             campaign__user=request.auth, campaign_id=data.campaign_id, status='failed'
         )
 
-    from apps.campaigns.tasks import send_single_email_task
+    from apps.sequences.tasks import retry_failed_send_task
     count = 0
     for log in logs:
         if log.contact:
-            send_single_email_task.delay(log.campaign_id, log.contact_id)
+            retry_failed_send_task.delay(log.id)
             count += 1
 
     return {'queued': count}
@@ -226,9 +226,6 @@ def track_open(request, log_id: int):
             log.status = 'opened'
             log.opened_at = timezone.now()
             log.save(update_fields=['status', 'opened_at'])
-            if log.campaign_id:
-                from apps.campaigns.models import Campaign
-                Campaign.objects.filter(id=log.campaign_id).update(open_count=F('open_count') + 1)
     except SendLog.DoesNotExist:
         pass
     return HttpResponse(_PIXEL_GIF, content_type='image/gif')
@@ -251,9 +248,6 @@ def track_click(request, log_id: int, url: str = ''):
             log.status = 'clicked'
             log.clicked_at = timezone.now()
             log.save(update_fields=['status', 'clicked_at'])
-            if log.campaign_id:
-                from apps.campaigns.models import Campaign
-                Campaign.objects.filter(id=log.campaign_id).update(click_count=F('click_count') + 1)
     except SendLog.DoesNotExist:
         pass
 

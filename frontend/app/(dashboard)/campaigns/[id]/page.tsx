@@ -1,40 +1,31 @@
 'use client'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { campaignsApi, analyticsApi } from '@/lib/api'
+import { campaignsApi } from '@/lib/api'
 import { Campaign } from '@/lib/types'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
-import { formatDateTime, formatNumber, formatPercent } from '@/lib/utils'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
-} from 'recharts'
-import { ArrowLeft, Send, Pause, XCircle, RefreshCw, Users, Mail, AlertTriangle, CheckCircle, Clock, MousePointerClick, Reply } from 'lucide-react'
+import { formatDateTime } from '@/lib/utils'
+import { ArrowLeft, Play, Pause, Pencil, Users, Mail, MousePointerClick, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-
-const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b']
 
 export default function CampaignDetailPage() {
   const { id } = useParams()
   const router = useRouter()
   const qc = useQueryClient()
-  const [showSend, setShowSend] = useState(false)
-  const [showCancel, setShowCancel] = useState(false)
-  const [showSchedule, setShowSchedule] = useState(false)
-  const [scheduleAt, setScheduleAt] = useState('')
+  const [showDelete, setShowDelete] = useState(false)
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ['campaign', id],
     queryFn: () => campaignsApi.get(Number(id)).then(r => r.data as Campaign),
     refetchInterval: (query) => {
       const data = query.state.data as Campaign | undefined
-      return data?.status === 'sending' ? 5000 : false
+      return data?.status === 'active' ? 10000 : false
     },
   })
 
@@ -45,52 +36,41 @@ export default function CampaignDetailPage() {
     refetchInterval: 10000,
   })
 
-  const { data: logs } = useQuery({
-    queryKey: ['campaign-logs', id],
-    queryFn: () => analyticsApi.logs({ campaign_id: id, page_size: 10 }).then(r => r.data),
+  const { data: enrollments } = useQuery({
+    queryKey: ['campaign-enrollments', id],
+    queryFn: () => campaignsApi.enrollments(Number(id), { page_size: 10 }).then(r => r.data),
     enabled: !!id,
   })
 
-  const sendMut = useMutation({
-    mutationFn: () => campaignsApi.send(Number(id)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign sending started!'); setShowSend(false) },
+  const activateMut = useMutation({
+    mutationFn: () => campaignsApi.activate(Number(id)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign activated') },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to activate'),
   })
 
-  const cancelMut = useMutation({
-    mutationFn: () => campaignsApi.cancel(Number(id)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign cancelled'); setShowCancel(false) },
+  const pauseMut = useMutation({
+    mutationFn: () => campaignsApi.pause(Number(id)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign paused') },
   })
 
-  const resetMut = useMutation({
-    mutationFn: () => campaignsApi.reset(Number(id)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign reset — you can retry or reschedule now') },
-    onError: () => toast.error('Could not reset campaign'),
+  const resumeMut = useMutation({
+    mutationFn: () => campaignsApi.resume(Number(id)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaign', id] }); toast.success('Campaign resumed') },
   })
 
-  const scheduleMut = useMutation({
-    mutationFn: () => campaignsApi.send(Number(id), { scheduled_at: new Date(scheduleAt).toISOString() }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['campaign', id] })
-      toast.success('Campaign scheduled!')
-      setShowSchedule(false)
-      setScheduleAt('')
-    },
-    onError: () => toast.error('Could not schedule campaign'),
+  const deleteMut = useMutation({
+    mutationFn: () => campaignsApi.delete(Number(id)),
+    onSuccess: () => { toast.success('Campaign deleted'); router.push('/campaigns') },
   })
 
   if (isLoading) return <PageSkeleton />
   if (!campaign) return <div className="p-6">Campaign not found</div>
 
-  const smtpPerfData = stats?.smtp_performance || []
-  const statusData = [
-    { name: 'Sent', value: campaign.sent_count },
-    { name: 'Failed', value: campaign.failed_count },
-    { name: 'Pending', value: Math.max(0, campaign.total_recipients - campaign.sent_count - campaign.failed_count) },
-  ].filter(d => d.value > 0)
+  const totalEnrolled = stats?.total_enrolled || 0
+  const counts = stats?.enrollment_counts || {}
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="rounded-2xl border bg-card p-5 flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Button variant="ghost" size="icon-sm" onClick={() => router.push('/campaigns')} className="shrink-0">
@@ -101,53 +81,47 @@ export default function CampaignDetailPage() {
               <h1 className="text-xl font-bold truncate">{campaign.name}</h1>
               <StatusBadge status={campaign.status} />
             </div>
-            <p className="text-sm text-muted-foreground truncate mt-0.5">{campaign.subject}</p>
-            {campaign.status === 'scheduled' && campaign.scheduled_at && (
-              <p className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 mt-1">
-                <Clock size={11} />
-                Scheduled for <span className="font-semibold">{formatDateTime(campaign.scheduled_at)}</span>
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground mt-0.5">{campaign.steps.length} step(s)</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {campaign.status === 'draft' && (
+          {(campaign.status === 'draft' || campaign.status === 'paused') && (
             <Link href={`/campaigns/${id}/edit`}>
-              <Button variant="outline" size="sm">Edit</Button>
+              <Button variant="outline" size="sm"><Pencil size={14} /> Edit</Button>
             </Link>
           )}
-          {campaign.status === 'sending' && (
-            <Button variant="outline" size="sm" onClick={() => resetMut.mutate()} disabled={resetMut.isPending}>
-              <RefreshCw size={14} className={resetMut.isPending ? 'animate-spin' : ''} /> Reset Stuck
+          {campaign.status === 'draft' && (
+            <Button size="sm" onClick={() => activateMut.mutate()} disabled={activateMut.isPending}>
+              <Play size={14} /> Activate
             </Button>
           )}
-          {(campaign.status === 'draft' || campaign.status === 'failed' || campaign.status === 'scheduled') && (<>
-            <Button variant="outline" size="sm" onClick={() => setShowSchedule(true)}>
-              <Clock size={14} /> Schedule
+          {campaign.status === 'paused' && (
+            <Button size="sm" onClick={() => resumeMut.mutate()} disabled={resumeMut.isPending}>
+              <Play size={14} /> Resume
             </Button>
-            <Button size="sm" onClick={() => setShowSend(true)}>
-              <Send size={14} /> Send Now
+          )}
+          {campaign.status === 'active' && (
+            <Button variant="outline" size="sm" onClick={() => pauseMut.mutate()} disabled={pauseMut.isPending}>
+              <Pause size={14} /> Pause
             </Button>
-          </>)}
-          {campaign.status !== 'sent' && campaign.status !== 'cancelled' && (
-            <Button variant="destructive" size="sm" onClick={() => setShowCancel(true)}>
-              <XCircle size={14} />
-              {campaign.status === 'scheduled' ? 'Cancel Schedule' : 'Cancel'}
+          )}
+          {campaign.status === 'draft' && (
+            <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)}>
+              <Trash2 size={14} /> Delete
             </Button>
           )}
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Total Recipients', value: formatNumber(campaign.total_recipients), icon: Users, color: 'text-blue-600' },
-          { label: 'Delivered', value: formatNumber(campaign.sent_count), icon: CheckCircle, color: 'text-green-600', sub: formatPercent(campaign.delivery_rate) },
-          { label: 'Failed', value: formatNumber(campaign.failed_count), icon: AlertTriangle, color: 'text-red-500', sub: formatPercent(campaign.failure_rate) },
-          { label: 'Opens', value: formatNumber(campaign.open_count), icon: Mail, color: 'text-purple-600' },
-          { label: 'Clicks', value: formatNumber(campaign.click_count), icon: MousePointerClick, color: 'text-orange-500' },
-          { label: 'Replies', value: formatNumber(campaign.reply_count), icon: Reply, color: 'text-green-600' },
+          { label: 'Enrolled', value: totalEnrolled, icon: Users, color: 'text-blue-600' },
+          { label: 'Active', value: counts.active || 0, icon: Mail, color: 'text-amber-500' },
+          { label: 'Completed', value: counts.completed || 0, icon: Mail, color: 'text-green-600' },
+          { label: 'Stopped (engaged)', value: counts.stopped || 0, icon: MousePointerClick, color: 'text-purple-600' },
+          { label: 'Unsubscribed/Bounced', value: (counts.unsubscribed || 0) + (counts.bounced || 0), icon: Users, color: 'text-red-500' },
         ].map(kpi => (
           <Card key={kpi.label}>
             <CardContent className="p-5">
@@ -156,110 +130,70 @@ export default function CampaignDetailPage() {
                 <kpi.icon className={kpi.color} size={18} />
               </div>
               <p className={`text-3xl font-bold mt-2 ${kpi.color}`}>{kpi.value}</p>
-              {kpi.sub && <p className="text-xs text-muted-foreground mt-0.5">{kpi.sub}</p>}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Progress bar */}
-      {campaign.total_recipients > 0 && (
+      {/* Step funnel */}
+      <Card>
+        <CardHeader><CardTitle>Step Funnel</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/30">
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Step</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Subject</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Sent</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Failed</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Opened</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Clicked</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Replied</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {(stats?.steps || []).map((step: any) => (
+                <tr key={step.step_id}>
+                  <td className="px-4 py-2 font-medium">Step {step.order}</td>
+                  <td className="px-4 py-2 text-muted-foreground truncate max-w-xs">{step.subject}</td>
+                  <td className="px-4 py-2 text-green-600">{step.sent}</td>
+                  <td className="px-4 py-2 text-red-500">{step.failed}</td>
+                  <td className="px-4 py-2 text-purple-600">{step.opened}</td>
+                  <td className="px-4 py-2 text-blue-600">{step.clicked}</td>
+                  <td className="px-4 py-2 text-green-600">{step.replied}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {/* Enrollments */}
+      {enrollments?.items?.length > 0 && (
         <Card>
-          <CardContent className="p-5">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="font-medium">Sending Progress</span>
-              <span className="text-muted-foreground">
-                {campaign.sent_count + campaign.failed_count} / {campaign.total_recipients}
-              </span>
-            </div>
-            <div className="h-3 bg-muted rounded-full overflow-hidden flex">
-              <div
-                className="h-full bg-green-500 transition-all"
-                style={{ width: `${campaign.delivery_rate}%` }}
-              />
-              <div
-                className="h-full bg-red-400 transition-all"
-                style={{ width: `${campaign.failure_rate}%` }}
-              />
-            </div>
-            <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Delivered {formatPercent(campaign.delivery_rate)}</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Failed {formatPercent(campaign.failure_rate)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* SMTP Performance */}
-        {smtpPerfData.length > 0 && (
-          <Card>
-            <CardHeader><CardTitle>SMTP Account Performance</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={smtpPerfData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="smtp_name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                  />
-                  <Bar dataKey="sent" name="Sent" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Status distribution */}
-        {statusData.length > 0 && (
-          <Card>
-            <CardHeader><CardTitle>Email Status Distribution</CardTitle></CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={statusData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={false} labelLine={false}>
-                    {statusData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Recent logs */}
-      {logs?.items?.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent Send Logs</CardTitle>
-            <Link href={`/analytics?campaign=${id}`}>
-              <Button variant="outline" size="sm">View All Logs</Button>
-            </Link>
-          </CardHeader>
+          <CardHeader><CardTitle>Enrolled Contacts</CardTitle></CardHeader>
           <CardContent className="p-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Contact</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">SMTP</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Current Step</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Time</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Next Send</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Enrolled</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {logs.items.map((log: any) => (
-                  <tr key={log.id} className="hover:bg-muted/30">
+                {enrollments.items.map((e: any) => (
+                  <tr key={e.id} className="hover:bg-muted/30">
                     <td className="px-4 py-2">
-                      <p className="font-medium text-xs">{log.contact_name || <span className="text-muted-foreground italic">Deleted contact</span>}</p>
-                      <p className="text-muted-foreground text-xs">{log.contact_email || '—'}</p>
+                      <p className="font-medium text-xs">{e.contact_name || <span className="text-muted-foreground italic">Deleted contact</span>}</p>
+                      <p className="text-muted-foreground text-xs">{e.contact_email}</p>
                     </td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">{log.smtp_name || '—'}</td>
-                    <td className="px-4 py-2"><StatusBadge status={log.status} /></td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">{formatDateTime(log.sent_at || log.created_at)}</td>
+                    <td className="px-4 py-2 text-xs">{e.current_step_order ?? '—'}</td>
+                    <td className="px-4 py-2"><StatusBadge status={e.status} /></td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground">{formatDateTime(e.next_send_at)}</td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground">{formatDateTime(e.enrolled_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -268,75 +202,16 @@ export default function CampaignDetailPage() {
         </Card>
       )}
 
-      {/* Campaign info */}
-      <Card>
-        <CardHeader><CardTitle>Campaign Details</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 text-sm">
-          {[
-            { label: 'Created', value: formatDateTime(campaign.created_at) },
-            { label: 'Started', value: formatDateTime(campaign.started_at) },
-            { label: 'Completed', value: formatDateTime(campaign.completed_at) },
-            { label: 'Scheduled', value: formatDateTime(campaign.scheduled_at) },
-            { label: 'Target Lists', value: campaign.contact_lists_detail?.map((l: any) => l.name).join(', ') || '—' },
-            { label: 'Template', value: campaign.template_detail?.name || 'Custom' },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-muted-foreground text-xs">{label}</p>
-              <p className="font-medium mt-0.5">{value || '—'}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
       <ConfirmDialog
-        open={showSend}
-        onClose={() => setShowSend(false)}
-        onConfirm={() => sendMut.mutate()}
-        title="Send Campaign"
-        description={`Start sending "${campaign.name}" to all active contacts in the selected lists?`}
-        confirmLabel="Send Now"
-        loading={sendMut.isPending}
-      />
-      <ConfirmDialog
-        open={showCancel}
-        onClose={() => setShowCancel(false)}
-        onConfirm={() => cancelMut.mutate()}
-        title="Cancel Campaign"
-        description="This will stop the campaign. Sent emails cannot be recalled."
-        confirmLabel="Cancel Campaign"
+        open={showDelete}
+        onClose={() => setShowDelete(false)}
+        onConfirm={() => deleteMut.mutate()}
+        title="Delete Campaign"
+        description="This campaign and its steps will be permanently deleted."
+        confirmLabel="Delete"
         destructive
-        loading={cancelMut.isPending}
+        loading={deleteMut.isPending}
       />
-
-      {/* Schedule dialog */}
-      {showSchedule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-card border rounded-2xl shadow-xl p-6 w-full max-w-sm space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <Clock size={16} className="text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm">Schedule Campaign</p>
-                <p className="text-xs text-muted-foreground">Pick a date and time to send automatically</p>
-              </div>
-            </div>
-            <input
-              type="datetime-local"
-              value={scheduleAt}
-              min={(() => { const d = new Date(Date.now() + 5 * 60 * 1000); return d.toISOString().slice(0, 16) })()}
-              onChange={e => setScheduleAt(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={() => { setShowSchedule(false); setScheduleAt('') }}>Cancel</Button>
-              <Button size="sm" disabled={!scheduleAt || scheduleMut.isPending} onClick={() => scheduleMut.mutate()}>
-                {scheduleMut.isPending ? 'Scheduling…' : scheduleAt ? `Schedule for ${new Date(scheduleAt).toLocaleString()}` : 'Pick a time first'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

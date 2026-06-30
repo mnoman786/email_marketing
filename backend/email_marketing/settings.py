@@ -145,20 +145,12 @@ CELERY_TASK_TIME_LIMIT = 1800
 CELERY_TASK_SOFT_TIME_LIMIT = 1700
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SCHEDULE = {
-    'process-scheduled-campaigns': {
-        'task': 'apps.campaigns.tasks.process_scheduled_campaigns',
-        'schedule': 60.0,
-    },
-    'recover-stuck-campaigns': {
-        'task': 'apps.campaigns.tasks.recover_stuck_campaigns',
-        'schedule': 300.0,  # every 5 minutes
-    },
     'enroll-due-contacts': {
         'task': 'apps.sequences.tasks.enroll_due_contacts',
         'schedule': 300.0,  # every 5 minutes
     },
-    'process-due-sequence-steps': {
-        'task': 'apps.sequences.tasks.process_due_sequence_steps',
+    'process-due-campaign-steps': {
+        'task': 'apps.sequences.tasks.process_due_campaign_steps',
         'schedule': 60.0,
     },
     'poll-imap-replies': {

@@ -113,34 +113,17 @@ export const campaignsApi = {
   create: (data: any) => api.post('/api/campaigns/', data),
   update: (id: number, data: any) => api.patch(`/api/campaigns/${id}/`, data),
   delete: (id: number) => api.delete(`/api/campaigns/${id}/`),
-  send: (id: number, data?: any) => api.post(`/api/campaigns/${id}/send/`, data || {}),
+  activate: (id: number) => api.post(`/api/campaigns/${id}/activate/`),
   pause: (id: number) => api.post(`/api/campaigns/${id}/pause/`),
-  cancel: (id: number) => api.post(`/api/campaigns/${id}/cancel/`),
-  reset: (id: number) => api.post(`/api/campaigns/${id}/reset/`),
-  duplicate: (id: number) => api.post(`/api/campaigns/${id}/duplicate/`),
+  resume: (id: number) => api.post(`/api/campaigns/${id}/resume/`),
   stats: (id: number) => api.get(`/api/campaigns/${id}/stats/`),
   smtpRoutes: (id: number) => api.get(`/api/campaigns/${id}/smtp-routes/`),
   updateSmtpRoutes: (id: number, data: any) => api.post(`/api/campaigns/${id}/smtp-routes/`, data),
-}
-
-// Sequences
-export const sequencesApi = {
-  getAll: (params?: any) => api.get('/api/sequences/', { params }),
-  get: (id: number) => api.get(`/api/sequences/${id}/`),
-  create: (data: any) => api.post('/api/sequences/', data),
-  update: (id: number, data: any) => api.patch(`/api/sequences/${id}/`, data),
-  delete: (id: number) => api.delete(`/api/sequences/${id}/`),
-  activate: (id: number) => api.post(`/api/sequences/${id}/activate/`),
-  pause: (id: number) => api.post(`/api/sequences/${id}/pause/`),
-  resume: (id: number) => api.post(`/api/sequences/${id}/resume/`),
-  stats: (id: number) => api.get(`/api/sequences/${id}/stats/`),
-  smtpRoutes: (id: number) => api.get(`/api/sequences/${id}/smtp-routes/`),
-  updateSmtpRoutes: (id: number, data: any) => api.post(`/api/sequences/${id}/smtp-routes/`, data),
-  enrollments: (id: number, params?: any) => api.get(`/api/sequences/${id}/enrollments/`, { params }),
-  getSteps: (id: number) => api.get(`/api/sequences/${id}/steps/`),
-  createStep: (id: number, data: any) => api.post(`/api/sequences/${id}/steps/`, data),
-  updateStep: (id: number, stepId: number, data: any) => api.patch(`/api/sequences/${id}/steps/${stepId}/`, data),
-  deleteStep: (id: number, stepId: number) => api.delete(`/api/sequences/${id}/steps/${stepId}/`),
+  enrollments: (id: number, params?: any) => api.get(`/api/campaigns/${id}/enrollments/`, { params }),
+  getSteps: (id: number) => api.get(`/api/campaigns/${id}/steps/`),
+  createStep: (id: number, data: any) => api.post(`/api/campaigns/${id}/steps/`, data),
+  updateStep: (id: number, stepId: number, data: any) => api.patch(`/api/campaigns/${id}/steps/${stepId}/`, data),
+  deleteStep: (id: number, stepId: number) => api.delete(`/api/campaigns/${id}/steps/${stepId}/`),
 }
 
 // Inbox

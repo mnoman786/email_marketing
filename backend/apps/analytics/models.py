@@ -41,11 +41,11 @@ class SendLog(models.Model):
     ]
 
     campaign = models.ForeignKey(
-        'campaigns.Campaign', on_delete=models.CASCADE, related_name='send_logs',
+        'sequences.Campaign', on_delete=models.CASCADE, related_name='send_logs',
         null=True, blank=True
     )
     sequence_step = models.ForeignKey(
-        'sequences.SequenceStep', on_delete=models.SET_NULL, related_name='send_logs',
+        'sequences.CampaignStep', on_delete=models.SET_NULL, related_name='send_logs',
         null=True, blank=True
     )
     contact = models.ForeignKey(

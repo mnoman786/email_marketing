@@ -4,7 +4,7 @@ from django.conf import settings
 from apps.campaigns.scheduling import SendWindowMixin
 
 
-class Sequence(SendWindowMixin, models.Model):
+class Campaign(SendWindowMixin, models.Model):
     STATUS_CHOICES = [
         ('draft', 'Draft'),
         ('active', 'Active'),
@@ -12,9 +12,9 @@ class Sequence(SendWindowMixin, models.Model):
         ('completed', 'Completed'),
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sequences')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='campaigns')
     name = models.CharField(max_length=255)
-    contact_lists = models.ManyToManyField('contacts.ContactList', related_name='sequences')
+    contact_lists = models.ManyToManyField('contacts.ContactList', related_name='campaigns')
     from_name = models.CharField(max_length=255, blank=True)
     from_email = models.EmailField(blank=True)
     reply_to = models.EmailField(blank=True)
@@ -36,13 +36,13 @@ class Sequence(SendWindowMixin, models.Model):
         return f'{self.name} ({self.status})'
 
 
-class SequenceStep(models.Model):
-    sequence = models.ForeignKey(Sequence, on_delete=models.CASCADE, related_name='steps')
+class CampaignStep(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='steps')
     order = models.PositiveIntegerField()
     subject = models.CharField(max_length=500)
     template = models.ForeignKey(
         'email_templates.EmailTemplate', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='sequence_steps'
+        null=True, blank=True, related_name='campaign_steps'
     )
     html_content = models.TextField(blank=True)
     text_content = models.TextField(blank=True)
@@ -52,7 +52,7 @@ class SequenceStep(models.Model):
     delay_days = models.PositiveIntegerField(default=0)
     delay_hours = models.PositiveIntegerField(default=0)
 
-    # Skip the rest of the sequence if the previous step was opened/clicked
+    # Skip the rest of the campaign if the previous step was opened/clicked
     stop_on_open = models.BooleanField(default=False)
     stop_on_click = models.BooleanField(default=False)
 
@@ -60,36 +60,36 @@ class SequenceStep(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['sequence', 'order']
+        ordering = ['campaign', 'order']
 
     def __str__(self):
-        return f'{self.sequence.name} - step {self.order}'
+        return f'{self.campaign.name} - step {self.order}'
 
     # Duck-type the attributes `apps.campaigns.services.send_campaign_email` /
     # `inject_tracking` expect from a "campaign"-like object, so that send
-    # pipeline can be reused unchanged for sequence steps.
+    # pipeline can be reused unchanged for campaign steps.
     @property
     def from_name(self):
-        return self.sequence.from_name
+        return self.campaign.from_name
 
     @property
     def from_email(self):
-        return self.sequence.from_email
+        return self.campaign.from_email
 
     @property
     def reply_to(self):
-        return self.sequence.reply_to
+        return self.campaign.reply_to
 
     @property
     def track_opens(self):
-        return self.sequence.track_opens
+        return self.campaign.track_opens
 
     @property
     def track_clicks(self):
-        return self.sequence.track_clicks
+        return self.campaign.track_clicks
 
 
-class SequenceEnrollment(models.Model):
+class CampaignEnrollment(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),
         ('completed', 'Completed'),
@@ -98,10 +98,10 @@ class SequenceEnrollment(models.Model):
         ('bounced', 'Bounced'),
     ]
 
-    sequence = models.ForeignKey(Sequence, on_delete=models.CASCADE, related_name='enrollments')
-    contact = models.ForeignKey('contacts.Contact', on_delete=models.CASCADE, related_name='sequence_enrollments')
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='enrollments')
+    contact = models.ForeignKey('contacts.Contact', on_delete=models.CASCADE, related_name='campaign_enrollments')
     current_step = models.ForeignKey(
-        SequenceStep, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+        CampaignStep, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     next_send_at = models.DateTimeField(null=True, blank=True)
@@ -109,27 +109,27 @@ class SequenceEnrollment(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        unique_together = ['sequence', 'contact']
+        unique_together = ['campaign', 'contact']
         ordering = ['-enrolled_at']
         indexes = [
             models.Index(fields=['status', 'next_send_at']),
         ]
 
     def __str__(self):
-        return f'{self.contact.email} in {self.sequence.name} ({self.status})'
+        return f'{self.contact.email} in {self.campaign.name} ({self.status})'
 
 
-class SequenceSMTPRoute(models.Model):
-    """SMTP routing configuration per sequence."""
-    sequence = models.ForeignKey(Sequence, on_delete=models.CASCADE, related_name='smtp_routes')
+class CampaignSMTPRoute(models.Model):
+    """SMTP routing configuration per campaign."""
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='smtp_routes')
     smtp_account = models.ForeignKey(
-        'smtp_accounts.SMTPAccount', on_delete=models.CASCADE, related_name='sequence_routes'
+        'smtp_accounts.SMTPAccount', on_delete=models.CASCADE, related_name='campaign_routes'
     )
     weight = models.PositiveIntegerField(default=10)
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = ['sequence', 'smtp_account']
+        unique_together = ['campaign', 'smtp_account']
 
     def __str__(self):
-        return f'{self.sequence.name} -> {self.smtp_account.name} (weight={self.weight})'
+        return f'{self.campaign.name} -> {self.smtp_account.name} (weight={self.weight})'

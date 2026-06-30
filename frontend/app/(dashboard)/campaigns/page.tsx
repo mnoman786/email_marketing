@@ -2,17 +2,15 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { campaignsApi } from '@/lib/api'
-import { Campaign, PaginatedResponse } from '@/lib/types'
+import { CampaignListItem, PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
-import { formatDateTime, formatNumber } from '@/lib/utils'
-import {
-  Plus, Search, Trash2, Megaphone, Send, Pause, MoreHorizontal, Copy, BarChart3, Clock
-} from 'lucide-react'
+import { formatDateTime } from '@/lib/utils'
+import { Plus, Search, Trash2, Megaphone, Play, Pause } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
@@ -22,11 +20,10 @@ export default function CampaignsPage() {
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [sendId, setSendId] = useState<number | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['campaigns', { search, status, page }],
-    queryFn: () => campaignsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<Campaign>),
+    queryFn: () => campaignsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<CampaignListItem>),
     refetchInterval: 10000,
   })
 
@@ -35,15 +32,20 @@ export default function CampaignsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign deleted'); setDeleteId(null) },
   })
 
-  const sendMut = useMutation({
-    mutationFn: (id: number) => campaignsApi.send(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign sending started!'); setSendId(null) },
-    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to send'),
+  const activateMut = useMutation({
+    mutationFn: (id: number) => campaignsApi.activate(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign activated') },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to activate'),
   })
 
-  const dupMut = useMutation({
-    mutationFn: (id: number) => campaignsApi.duplicate(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign duplicated') },
+  const pauseMut = useMutation({
+    mutationFn: (id: number) => campaignsApi.pause(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign paused') },
+  })
+
+  const resumeMut = useMutation({
+    mutationFn: (id: number) => campaignsApi.resume(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign resumed') },
   })
 
   const campaigns = data?.items || []
@@ -54,7 +56,7 @@ export default function CampaignsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Campaigns</h1>
-          <p className="text-sm text-muted-foreground">Create and manage email campaigns</p>
+          <p className="text-sm text-muted-foreground">Single emails or multi-step drip campaigns for cold outreach</p>
         </div>
         <Link href="/campaigns/new">
           <Button><Plus size={16} /> New Campaign</Button>
@@ -78,10 +80,9 @@ export default function CampaignsPage() {
         >
           <option value="">All Status</option>
           <option value="draft">Draft</option>
-          <option value="scheduled">Scheduled</option>
-          <option value="sending">Sending</option>
-          <option value="sent">Sent</option>
-          <option value="failed">Failed</option>
+          <option value="active">Active</option>
+          <option value="paused">Paused</option>
+          <option value="completed">Completed</option>
         </select>
       </div>
 
@@ -92,7 +93,7 @@ export default function CampaignsPage() {
           <EmptyState
             icon={Megaphone}
             title="No campaigns yet"
-            description="Create your first campaign to start sending emails to your contacts."
+            description="Create a campaign to send a single email or a multi-step drip to your contacts."
             action={{ label: 'Create Campaign', onClick: () => window.location.href = '/campaigns/new' }}
           />
         ) : (
@@ -103,75 +104,51 @@ export default function CampaignsPage() {
                   <tr className="border-b bg-muted/30">
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Campaign</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Recipients</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sent</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Failed</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Steps</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Lists</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Enrolled</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
                     <th className="px-4 py-3 w-32" />
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {campaigns.map((campaign: any) => (
+                  {campaigns.map((campaign) => (
                     <tr key={campaign.id} className="table-row-hover">
                       <td className="px-4 py-3">
                         <Link href={`/campaigns/${campaign.id}`}>
-                          <div>
-                            <p className="font-medium hover:text-primary transition-colors">{campaign.name}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-1">{campaign.subject}</p>
-                          </div>
+                          <p className="font-medium hover:text-primary transition-colors">{campaign.name}</p>
                         </Link>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={campaign.status} />
-                          {campaign.status === 'sending' && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          )}
-                        </div>
-                        {campaign.status === 'scheduled' && campaign.scheduled_at && (
-                          <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                            <Clock size={9} /> {formatDateTime(campaign.scheduled_at)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">{formatNumber(campaign.total_recipients)}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-green-600 dark:text-green-400">{formatNumber(campaign.sent_count)}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={campaign.failed_count > 0 ? 'text-red-500' : 'text-muted-foreground'}>
-                          {formatNumber(campaign.failed_count)}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={campaign.status} /></td>
+                      <td className="px-4 py-3">{campaign.step_count}</td>
+                      <td className="px-4 py-3">{campaign.contact_list_count}</td>
+                      <td className="px-4 py-3">{campaign.enrollment_count}</td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
                         {formatDateTime(campaign.created_at)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
-                          <Link href={`/campaigns/${campaign.id}`}>
-                            <Button variant="ghost" size="icon-sm" title="View stats">
-                              <BarChart3 size={14} />
-                            </Button>
-                          </Link>
-                          {(campaign.status === 'draft' || campaign.status === 'failed') && (
+                          {(campaign.status === 'draft' || campaign.status === 'paused') && (
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="Send now"
-                              onClick={() => setSendId(campaign.id)}
+                              title={campaign.status === 'draft' ? 'Activate' : 'Resume'}
+                              onClick={() => campaign.status === 'draft' ? activateMut.mutate(campaign.id) : resumeMut.mutate(campaign.id)}
                               className="text-green-600 hover:text-green-700"
                             >
-                              <Send size={14} />
+                              <Play size={14} />
                             </Button>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title="Duplicate"
-                            onClick={() => dupMut.mutate(campaign.id)}
-                          >
-                            <Copy size={14} />
-                          </Button>
+                          {campaign.status === 'active' && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Pause"
+                              onClick={() => pauseMut.mutate(campaign.id)}
+                            >
+                              <Pause size={14} />
+                            </Button>
+                          )}
                           {campaign.status === 'draft' && (
                             <Button
                               variant="ghost"
@@ -201,20 +178,11 @@ export default function CampaignsPage() {
       </div>
 
       <ConfirmDialog
-        open={!!sendId}
-        onClose={() => setSendId(null)}
-        onConfirm={() => sendId && sendMut.mutate(sendId)}
-        title="Send Campaign"
-        description="This will immediately start sending emails to all contacts in the selected lists."
-        confirmLabel="Send Now"
-        loading={sendMut.isPending}
-      />
-      <ConfirmDialog
         open={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
         title="Delete Campaign"
-        description="This campaign will be permanently deleted."
+        description="This campaign and its steps will be permanently deleted."
         confirmLabel="Delete"
         destructive
         loading={deleteMut.isPending}

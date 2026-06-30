@@ -89,63 +89,13 @@ export interface CampaignSMTPRoute {
   id: number
   smtp_account: number
   smtp_name: string
-  smtp_from_email: string
   weight: number
   is_active: boolean
 }
 
-export interface Campaign {
+export interface CampaignStep {
   id: number
-  name: string
-  subject: string
-  preview_text: string
-  template: number | null
-  template_detail: EmailTemplate | null
-  contact_list_ids: number[]
-  contact_lists_detail: ContactList[]
-  html_content: string
-  text_content: string
-  from_name: string
-  from_email: string
-  reply_to: string
-  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'paused' | 'failed' | 'cancelled'
-  scheduled_at: string | null
-  started_at: string | null
-  completed_at: string | null
-  total_recipients: number
-  sent_count: number
-  failed_count: number
-  open_count: number
-  click_count: number
-  bounce_count: number
-  reply_count: number
-  campaign_variables: Record<string, string>
-  use_custom_smtp_routing: boolean
-  smtp_routes: CampaignSMTPRoute[]
-  track_opens: boolean
-  track_clicks: boolean
-  schedule_enabled: boolean
-  schedule_days: number[]
-  schedule_start_time: string
-  schedule_end_time: string
-  schedule_timezone: string
-  delivery_rate: number
-  failure_rate: number
-  created_at: string
-  updated_at: string
-}
-
-export interface SequenceSMTPRoute {
-  id: number
-  smtp_account: number
-  smtp_name: string
-  weight: number
-  is_active: boolean
-}
-
-export interface SequenceStep {
-  id: number
-  sequence: number
+  campaign: number
   order: number
   subject: string
   template: number | null
@@ -158,7 +108,7 @@ export interface SequenceStep {
   stop_on_click: boolean
 }
 
-export interface Sequence {
+export interface Campaign {
   id: number
   name: string
   contact_list_ids: number[]
@@ -168,7 +118,7 @@ export interface Sequence {
   reply_to: string
   status: 'draft' | 'active' | 'paused' | 'completed'
   use_custom_smtp_routing: boolean
-  smtp_routes: SequenceSMTPRoute[]
+  smtp_routes: CampaignSMTPRoute[]
   track_opens: boolean
   track_clicks: boolean
   stop_on_reply: boolean
@@ -177,12 +127,12 @@ export interface Sequence {
   schedule_start_time: string
   schedule_end_time: string
   schedule_timezone: string
-  steps: SequenceStep[]
+  steps: CampaignStep[]
   created_at: string
   updated_at: string
 }
 
-export interface SequenceListItem {
+export interface CampaignListItem {
   id: number
   name: string
   status: 'draft' | 'active' | 'paused' | 'completed'
@@ -192,7 +142,7 @@ export interface SequenceListItem {
   created_at: string
 }
 
-export interface SequenceEnrollment {
+export interface CampaignEnrollment {
   id: number
   contact: number
   contact_email: string

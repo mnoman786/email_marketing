@@ -35,9 +35,9 @@ class SMTPRouteIn(Schema):
     is_active: bool = True
 
 
-class SequenceStepOut(Schema):
+class CampaignStepOut(Schema):
     id: int
-    sequence: int
+    campaign: int
     order: int
     subject: str
     template: Optional[int] = None
@@ -50,15 +50,15 @@ class SequenceStepOut(Schema):
     stop_on_click: bool
 
     @staticmethod
-    def resolve_sequence(obj):
-        return obj.sequence_id
+    def resolve_campaign(obj):
+        return obj.campaign_id
 
     @staticmethod
     def resolve_template(obj):
         return obj.template_id
 
 
-class SequenceStepIn(Schema):
+class CampaignStepIn(Schema):
     order: int
     subject: str
     template: Optional[int] = None
@@ -71,7 +71,7 @@ class SequenceStepIn(Schema):
     stop_on_click: bool = False
 
 
-class SequenceStepUpdateIn(Schema):
+class CampaignStepUpdateIn(Schema):
     order: Optional[int] = None
     subject: Optional[str] = None
     template: Optional[int] = None
@@ -84,7 +84,7 @@ class SequenceStepUpdateIn(Schema):
     stop_on_click: Optional[bool] = None
 
 
-class SequenceOut(Schema):
+class CampaignOut(Schema):
     id: int
     name: str
     contact_list_ids: List[int]
@@ -103,7 +103,7 @@ class SequenceOut(Schema):
     schedule_start_time: time
     schedule_end_time: time
     schedule_timezone: str
-    steps: List[SequenceStepOut]
+    steps: List[CampaignStepOut]
     created_at: datetime
     updated_at: datetime
 
@@ -124,7 +124,7 @@ class SequenceOut(Schema):
         return list(obj.steps.order_by('order').all())
 
 
-class SequenceListOut(Schema):
+class CampaignListOut(Schema):
     id: int
     name: str
     status: str
@@ -146,7 +146,7 @@ class SequenceListOut(Schema):
         return obj.enrollments.count()
 
 
-class SequenceIn(Schema):
+class CampaignIn(Schema):
     name: str
     contact_list_ids: List[int] = []
     from_name: str = ''
@@ -163,7 +163,7 @@ class SequenceIn(Schema):
     schedule_timezone: str = 'UTC'
 
 
-class SequenceUpdateIn(Schema):
+class CampaignUpdateIn(Schema):
     name: Optional[str] = None
     contact_list_ids: Optional[List[int]] = None
     from_name: Optional[str] = None
