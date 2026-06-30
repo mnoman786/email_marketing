@@ -1,15 +1,20 @@
+import uuid
+from typing import List
 from ninja import Router
 from ninja.errors import HttpError
 from django.contrib.auth import authenticate
-from .models import User
+from django.utils import timezone
+from .models import User, UserSession
 from .schemas import (
     RegisterIn, RegisterOut, LoginIn, TokenOut, TokenRefreshIn, TokenRefreshOut,
     UserOut, ProfileUpdateIn, ChangePasswordIn, VerifyEmailIn, ResendVerificationIn,
+    SessionOut,
 )
 from .auth import (
     create_tokens, decode_refresh_token, decode_email_verification_token, auth,
 )
 from .emails import send_verification_email
+from .utils import parse_user_agent, get_client_ip
 
 router = Router(tags=['Auth'])
 
@@ -69,21 +74,31 @@ def login(request, data: LoginIn):
         raise HttpError(401, 'Account is disabled.')
     if not user.is_email_verified:
         raise HttpError(403, 'Please verify your email address before signing in.')
-    access, refresh = create_tokens(user.id)
+    jti = str(uuid.uuid4())
+    access, refresh = create_tokens(user.id, jti)
+    UserSession.objects.create(
+        user=user,
+        jti=jti,
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:255],
+        ip_address=get_client_ip(request),
+    )
     return {'access': access, 'refresh': refresh, 'user': user}
 
 
 @router.post('/logout/', auth=auth)
 def logout(request):
+    UserSession.objects.filter(jti=request.session_jti).update(revoked_at=timezone.now())
     return {'detail': 'Logged out successfully.'}
 
 
 @router.post('/token/refresh/', response=TokenRefreshOut, auth=None)
 def token_refresh(request, data: TokenRefreshIn):
-    user_id = decode_refresh_token(data.refresh)
-    if not user_id:
+    result = decode_refresh_token(data.refresh)
+    if not result:
         raise HttpError(401, 'Invalid or expired refresh token.')
-    access, _ = create_tokens(user_id)
+    user_id, jti = result
+    access, _ = create_tokens(user_id, jti)
+    UserSession.objects.filter(jti=jti).update(last_active_at=timezone.now())
     return {'access': access}
 
 
@@ -109,3 +124,41 @@ def change_password(request, data: ChangePasswordIn):
     user.set_password(data.new_password)
     user.save()
     return {'detail': 'Password changed successfully.'}
+
+
+@router.get('/sessions/', response=List[SessionOut], auth=auth)
+def list_sessions(request):
+    sessions = UserSession.objects.filter(user=request.auth, revoked_at__isnull=True)
+    current_jti = getattr(request, 'session_jti', None)
+    return [
+        {
+            'id': s.id,
+            'device': parse_user_agent(s.user_agent),
+            'ip_address': s.ip_address,
+            'created_at': s.created_at,
+            'last_active_at': s.last_active_at,
+            'is_current': str(s.jti) == current_jti,
+        }
+        for s in sessions
+    ]
+
+
+@router.post('/sessions/{session_id}/revoke/', auth=auth)
+def revoke_session(request, session_id: int):
+    session = UserSession.objects.filter(
+        id=session_id, user=request.auth, revoked_at__isnull=True
+    ).first()
+    if not session:
+        raise HttpError(404, 'Session not found.')
+    session.revoked_at = timezone.now()
+    session.save(update_fields=['revoked_at'])
+    return {'detail': 'Session revoked.'}
+
+
+@router.post('/sessions/revoke-others/', auth=auth)
+def revoke_other_sessions(request):
+    current_jti = getattr(request, 'session_jti', None)
+    UserSession.objects.filter(
+        user=request.auth, revoked_at__isnull=True
+    ).exclude(jti=current_jti).update(revoked_at=timezone.now())
+    return {'detail': 'Other sessions revoked.'}

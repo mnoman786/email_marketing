@@ -1,7 +1,7 @@
 'use client'
 import { useQuery } from '@tanstack/react-query'
-import { analyticsApi } from '@/lib/api'
-import { DashboardStats } from '@/lib/types'
+import { analyticsApi, authApi } from '@/lib/api'
+import { DashboardStats, UserSession } from '@/lib/types'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { CardSkeleton } from '@/components/shared/loading-skeleton'
@@ -11,7 +11,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts'
-import { Users, Megaphone, Mail, Server, TrendingUp } from 'lucide-react'
+import { Users, Megaphone, Mail, Server, TrendingUp, Laptop } from 'lucide-react'
 import Link from 'next/link'
 
 const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
@@ -20,6 +20,12 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => analyticsApi.dashboard().then(r => r.data as DashboardStats),
+    refetchInterval: 30000,
+  })
+
+  const { data: sessions } = useQuery({
+    queryKey: ['active-sessions'],
+    queryFn: () => authApi.sessions().then(r => r.data as UserSession[]),
     refetchInterval: 30000,
   })
 
@@ -88,7 +94,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Email metrics row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
           { label: 'Open Rate', value: formatPercent(data.emails.open_rate), sub: `${formatNumber(data.emails.total_opened)} opens`, color: 'text-blue-600' },
           { label: 'Delivery Rate', value: formatPercent(data.emails.delivery_rate), sub: `${formatNumber(data.emails.total_sent)} delivered`, color: 'text-green-600' },
@@ -102,6 +108,18 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         ))}
+        <Link href="/settings">
+          <Card className="card-hover cursor-pointer">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Connected Devices</p>
+                <Laptop size={15} className="text-muted-foreground" />
+              </div>
+              <p className="text-3xl font-bold mt-1 text-purple-600">{sessions ? sessions.length : '—'}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">active sessions</p>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* Charts row */}
