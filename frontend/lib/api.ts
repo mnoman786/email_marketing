@@ -127,6 +127,12 @@ export const campaignsApi = {
   createStep: (id: number, data: any) => api.post(`/api/campaigns/${id}/steps/`, data),
   updateStep: (id: number, stepId: number, data: any) => api.patch(`/api/campaigns/${id}/steps/${stepId}/`, data),
   deleteStep: (id: number, stepId: number) => api.delete(`/api/campaigns/${id}/steps/${stepId}/`),
+  createVariant: (id: number, stepId: number, data: any) =>
+    api.post(`/api/campaigns/${id}/steps/${stepId}/variants/`, data),
+  updateVariant: (id: number, stepId: number, variantId: number, data: any) =>
+    api.patch(`/api/campaigns/${id}/steps/${stepId}/variants/${variantId}/`, data),
+  deleteVariant: (id: number, stepId: number, variantId: number) =>
+    api.delete(`/api/campaigns/${id}/steps/${stepId}/variants/${variantId}/`),
 }
 
 // Inbox

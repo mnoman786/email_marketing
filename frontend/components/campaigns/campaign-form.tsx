@@ -36,6 +36,15 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
+interface LocalVariant {
+  id?: number
+  label: string
+  subject: string
+  html_content: string
+  text_content: string
+  weight: number
+}
+
 interface LocalStep {
   id?: number
   order: number
@@ -46,6 +55,10 @@ interface LocalStep {
   delay_hours: number
   stop_on_open: boolean
   stop_on_click: boolean
+  auto_optimize: boolean
+  auto_optimize_metric: 'open_rate' | 'click_rate' | 'reply_rate'
+  auto_optimize_min_sends: number
+  variants: LocalVariant[]
 }
 
 function toLocalSteps(steps?: CampaignStep[]): LocalStep[] {
@@ -59,7 +72,24 @@ function toLocalSteps(steps?: CampaignStep[]): LocalStep[] {
     delay_hours: s.delay_hours,
     stop_on_open: s.stop_on_open,
     stop_on_click: s.stop_on_click,
+    auto_optimize: s.auto_optimize ?? false,
+    auto_optimize_metric: s.auto_optimize_metric ?? 'reply_rate',
+    auto_optimize_min_sends: s.auto_optimize_min_sends ?? 30,
+    variants: (s.variants || []).map(v => ({
+      id: v.id,
+      label: v.label,
+      subject: v.subject,
+      html_content: v.html_content,
+      text_content: v.text_content,
+      weight: v.weight,
+    })),
   }))
+}
+
+const VARIANT_LETTERS = 'ABCDEFGHIJ'
+
+function nextVariantLabel(variants: LocalVariant[]) {
+  return VARIANT_LETTERS[variants.length] || String(variants.length + 1)
 }
 
 interface Props {
@@ -71,10 +101,16 @@ export function CampaignForm({ campaign }: Props) {
   const [tab, setTab] = useState<'details' | 'steps' | 'smtp'>('details')
   const [steps, setSteps] = useState<LocalStep[]>(
     toLocalSteps(campaign?.steps).length ? toLocalSteps(campaign?.steps) : [
-      { order: 1, subject: '', html_content: '', text_content: '', delay_days: 0, delay_hours: 0, stop_on_open: false, stop_on_click: false },
+      {
+        order: 1, subject: '', html_content: '', text_content: '', delay_days: 0, delay_hours: 0,
+        stop_on_open: false, stop_on_click: false,
+        auto_optimize: false, auto_optimize_metric: 'reply_rate', auto_optimize_min_sends: 30,
+        variants: [],
+      },
     ]
   )
   const [deletedStepIds, setDeletedStepIds] = useState<number[]>([])
+  const [deletedVariants, setDeletedVariants] = useState<{ stepId: number; variantId: number }[]>([])
   const [smtpRoutes, setSmtpRoutes] = useState<{ smtp_account: number; weight: number }[]>([])
 
   const { data: lists } = useQuery({
@@ -137,6 +173,8 @@ export function CampaignForm({ campaign }: Props) {
       order: prev.length + 1, subject: '', html_content: '', text_content: '',
       delay_days: prev.length === 0 ? 0 : 3, delay_hours: 0,
       stop_on_open: false, stop_on_click: false,
+      auto_optimize: false, auto_optimize_metric: 'reply_rate', auto_optimize_min_sends: 30,
+      variants: [],
     }])
   }
 
@@ -146,6 +184,51 @@ export function CampaignForm({ campaign }: Props) {
       if (removed.id) setDeletedStepIds(ids => [...ids, removed.id!])
       return prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 }))
     })
+  }
+
+  const addVariant = (index: number) => {
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== index) return s
+      if (s.variants.length === 0) {
+        return {
+          ...s,
+          variants: [
+            { label: 'A', subject: s.subject, html_content: s.html_content, text_content: s.text_content, weight: 10 },
+            { label: 'B', subject: '', html_content: '', text_content: '', weight: 10 },
+          ],
+        }
+      }
+      return { ...s, variants: [...s.variants, { label: nextVariantLabel(s.variants), subject: '', html_content: '', text_content: '', weight: 10 }] }
+    }))
+  }
+
+  const updateVariant = (index: number, vIndex: number, patch: Partial<LocalVariant>) => {
+    setSteps(prev => prev.map((s, i) => i !== index ? s : {
+      ...s,
+      variants: s.variants.map((v, vi) => vi === vIndex ? { ...v, ...patch } : v),
+    }))
+  }
+
+  const removeVariant = (index: number, vIndex: number) => {
+    setSteps(prev => prev.map((s, i) => {
+      if (i !== index) return s
+      const removed = s.variants[vIndex]
+      if (removed.id && s.id) setDeletedVariants(v => [...v, { stepId: s.id!, variantId: removed.id! }])
+      const remaining = s.variants.filter((_, vi) => vi !== vIndex)
+      if (remaining.length <= 1) {
+        // Collapse back to plain mode, keeping whatever content is left.
+        const survivor = remaining[0]
+        if (survivor?.id && s.id) setDeletedVariants(v => [...v, { stepId: s.id!, variantId: survivor.id! }])
+        return {
+          ...s,
+          subject: survivor ? survivor.subject : s.subject,
+          html_content: survivor ? survivor.html_content : s.html_content,
+          text_content: survivor ? survivor.text_content : s.text_content,
+          variants: [],
+        }
+      }
+      return { ...s, variants: remaining }
+    }))
   }
 
   const moveStep = (index: number, dir: -1 | 1) => {
@@ -166,6 +249,10 @@ export function CampaignForm({ campaign }: Props) {
     for (const stepId of deletedStepIds) {
       await campaignsApi.deleteStep(campaignId, stepId)
     }
+    for (const { stepId, variantId } of deletedVariants) {
+      if (deletedStepIds.includes(stepId)) continue // cascade already removed it
+      await campaignsApi.deleteVariant(campaignId, stepId, variantId)
+    }
     for (const step of steps) {
       const payload = {
         order: step.order,
@@ -176,11 +263,27 @@ export function CampaignForm({ campaign }: Props) {
         delay_hours: step.delay_hours,
         stop_on_open: step.stop_on_open,
         stop_on_click: step.stop_on_click,
+        auto_optimize: step.auto_optimize,
+        auto_optimize_metric: step.auto_optimize_metric,
+        auto_optimize_min_sends: step.auto_optimize_min_sends,
       }
-      if (step.id) {
-        await campaignsApi.updateStep(campaignId, step.id, payload)
-      } else {
-        await campaignsApi.createStep(campaignId, payload)
+      const stepId = step.id
+        ? (await campaignsApi.updateStep(campaignId, step.id, payload)).data.id
+        : (await campaignsApi.createStep(campaignId, payload)).data.id
+
+      for (const variant of step.variants) {
+        const variantPayload = {
+          label: variant.label,
+          subject: variant.subject,
+          html_content: variant.html_content,
+          text_content: variant.text_content,
+          weight: variant.weight,
+        }
+        if (variant.id) {
+          await campaignsApi.updateVariant(campaignId, stepId, variant.id, variantPayload)
+        } else {
+          await campaignsApi.createVariant(campaignId, stepId, variantPayload)
+        }
       }
     }
   }
@@ -329,17 +432,16 @@ export function CampaignForm({ campaign }: Props) {
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Track Opens</Label>
-                    <p className="text-xs text-muted-foreground">Track when recipients open each step</p>
+                    <Label>Open & Click Tracking</Label>
+                    <p className="text-xs text-muted-foreground">Track when recipients open each step and click links inside it</p>
                   </div>
-                  <Switch checked={trackOpens} onCheckedChange={v => setValue('track_opens', v)} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Track Clicks</Label>
-                    <p className="text-xs text-muted-foreground">Track link clicks in each step</p>
-                  </div>
-                  <Switch checked={trackClicks} onCheckedChange={v => setValue('track_clicks', v)} />
+                  <Switch
+                    checked={trackOpens && trackClicks}
+                    onCheckedChange={v => {
+                      setValue('track_opens', v)
+                      setValue('track_clicks', v)
+                    }}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -400,24 +502,126 @@ export function CampaignForm({ campaign }: Props) {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div>
-                    <Label>Subject *</Label>
-                    <Input
-                      value={step.subject}
-                      onChange={e => updateStep(index, { subject: e.target.value })}
-                      placeholder="Quick question about {{company}}"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Email Body (HTML)</Label>
-                    <Textarea
-                      value={step.html_content}
-                      onChange={e => updateStep(index, { html_content: e.target.value })}
-                      placeholder="<p>Hi {{first_name}}, ...</p>"
-                      className="font-mono text-xs h-32 mt-1"
-                    />
-                  </div>
+                  {step.variants.length === 0 ? (
+                    <>
+                      <div>
+                        <Label>Subject *</Label>
+                        <Input
+                          value={step.subject}
+                          onChange={e => updateStep(index, { subject: e.target.value })}
+                          placeholder="Quick question about {{company}}"
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Email Body (HTML)</Label>
+                        <Textarea
+                          value={step.html_content}
+                          onChange={e => updateStep(index, { html_content: e.target.value })}
+                          placeholder="<p>Hi {{first_name}}, ...</p>"
+                          className="font-mono text-xs h-32 mt-1"
+                        />
+                      </div>
+                      <Button type="button" variant="outline" size="sm" onClick={() => addVariant(index)}>
+                        <Plus size={13} /> Add Variant (A/B test)
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Variants (weighted A/B test)</Label>
+                        <Button type="button" variant="outline" size="sm" onClick={() => addVariant(index)}>
+                          <Plus size={13} /> Add Variant
+                        </Button>
+                      </div>
+                      {step.variants.map((variant, vIndex) => (
+                        <div key={variant.id ?? `new-${vIndex}`} className="rounded-lg border p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold">Variant {variant.label}</span>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Weight</Label>
+                              <Input
+                                type="number" min={1}
+                                value={variant.weight}
+                                onChange={e => updateVariant(index, vIndex, { weight: Number(e.target.value) })}
+                                className="w-16 h-7 text-xs"
+                              />
+                              <Button
+                                variant="ghost" size="icon-sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => removeVariant(index, vIndex)}
+                              >
+                                <Trash2 size={13} />
+                              </Button>
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-xs">Subject *</Label>
+                            <Input
+                              value={variant.subject}
+                              onChange={e => updateVariant(index, vIndex, { subject: e.target.value })}
+                              placeholder="Quick question about {{company}}"
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Email Body (HTML)</Label>
+                            <Textarea
+                              value={variant.html_content}
+                              onChange={e => updateVariant(index, vIndex, { html_content: e.target.value })}
+                              placeholder="<p>Hi {{first_name}}, ...</p>"
+                              className="font-mono text-xs h-28 mt-1"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <p className="text-xs text-muted-foreground">
+                        Each send randomly picks a variant in proportion to its weight.
+                      </p>
+
+                      {step.variants.length > 1 && (
+                        <div className="rounded-lg border p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label>Auto-optimize</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Once every variant has enough sends, automatically deactivate the rest and keep only the best performer
+                              </p>
+                            </div>
+                            <Switch
+                              checked={step.auto_optimize}
+                              onCheckedChange={v => updateStep(index, { auto_optimize: v })}
+                            />
+                          </div>
+                          {step.auto_optimize && (
+                            <div className="grid grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <Label className="text-xs">Winning Metric</Label>
+                                <select
+                                  value={step.auto_optimize_metric}
+                                  onChange={e => updateStep(index, { auto_optimize_metric: e.target.value as LocalStep['auto_optimize_metric'] })}
+                                  className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm"
+                                >
+                                  <option value="open_rate">Open Rate</option>
+                                  <option value="click_rate">Click Rate</option>
+                                  <option value="reply_rate">Reply Rate</option>
+                                </select>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Min Sends per Variant</Label>
+                                <Input
+                                  type="number" min={1}
+                                  value={step.auto_optimize_min_sends}
+                                  onChange={e => updateStep(index, { auto_optimize_min_sends: Number(e.target.value) })}
+                                  className="mt-1"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {index > 0 && (
                     <div className="grid grid-cols-2 gap-3">

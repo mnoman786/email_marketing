@@ -5,10 +5,11 @@ from ninja.pagination import paginate, PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
 from typing import Optional, List
-from .models import Campaign, CampaignStep, CampaignEnrollment, CampaignSMTPRoute
+from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment, CampaignSMTPRoute
 from .schemas import (
     CampaignOut, CampaignListOut, CampaignIn, CampaignUpdateIn,
     CampaignStepOut, CampaignStepIn, CampaignStepUpdateIn,
+    CampaignStepVariantOut, CampaignStepVariantIn, CampaignStepVariantUpdateIn,
     SMTPRouteOut, SMTPRouteIn, EnrollmentOut,
 )
 from apps.accounts.auth import auth
@@ -103,6 +104,39 @@ def delete_step(request, campaign_id: int, step_id: int):
     return {'detail': 'Deleted.'}
 
 
+@router.get('/{campaign_id}/steps/{step_id}/variants/', response=List[CampaignStepVariantOut], auth=auth)
+def list_step_variants(request, campaign_id: int, step_id: int):
+    step = get_object_or_404(CampaignStep, id=step_id, campaign_id=campaign_id, campaign__user=request.auth)
+    return list(step.variants.all())
+
+
+@router.post('/{campaign_id}/steps/{step_id}/variants/', response=CampaignStepVariantOut, auth=auth)
+def create_step_variant(request, campaign_id: int, step_id: int, data: CampaignStepVariantIn):
+    step = get_object_or_404(CampaignStep, id=step_id, campaign_id=campaign_id, campaign__user=request.auth)
+    return CampaignStepVariant.objects.create(step=step, **data.dict())
+
+
+@router.patch('/{campaign_id}/steps/{step_id}/variants/{variant_id}/', response=CampaignStepVariantOut, auth=auth)
+def update_step_variant(request, campaign_id: int, step_id: int, variant_id: int, data: CampaignStepVariantUpdateIn):
+    variant = get_object_or_404(
+        CampaignStepVariant, id=variant_id, step_id=step_id,
+        step__campaign_id=campaign_id, step__campaign__user=request.auth
+    )
+    for field, value in data.dict(exclude_none=True).items():
+        setattr(variant, field, value)
+    variant.save()
+    return variant
+
+
+@router.delete('/{campaign_id}/steps/{step_id}/variants/{variant_id}/', auth=auth)
+def delete_step_variant(request, campaign_id: int, step_id: int, variant_id: int):
+    get_object_or_404(
+        CampaignStepVariant, id=variant_id, step_id=step_id,
+        step__campaign_id=campaign_id, step__campaign__user=request.auth
+    ).delete()
+    return {'detail': 'Deleted.'}
+
+
 @router.post('/{campaign_id}/activate/', auth=auth)
 def activate_campaign(request, campaign_id: int):
     campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
@@ -171,18 +205,36 @@ def campaign_stats(request, campaign_id: int):
     campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
     steps = list(campaign.steps.order_by('order'))
 
-    step_stats = []
-    for step in steps:
-        logs = SendLog.objects.filter(sequence_step=step)
-        step_stats.append({
-            'step_id': step.id,
-            'order': step.order,
-            'subject': step.subject,
+    def bucket_counts(logs):
+        return {
             'sent': logs.filter(status__in=('sent', 'opened', 'clicked', 'replied')).count(),
             'failed': logs.filter(status='failed').count(),
             'opened': logs.filter(status__in=('opened', 'clicked', 'replied')).count(),
             'clicked': logs.filter(status__in=('clicked', 'replied')).count(),
             'replied': logs.filter(status='replied').count(),
+        }
+
+    step_stats = []
+    for step in steps:
+        logs = SendLog.objects.filter(sequence_step=step)
+        variants = list(step.variants.all())
+        variant_stats = [
+            {
+                'variant_id': variant.id,
+                'label': variant.label or str(variant.id),
+                'subject': variant.subject,
+                'is_active': variant.is_active,
+                **bucket_counts(logs.filter(step_variant=variant)),
+            }
+            for variant in variants
+        ]
+        step_stats.append({
+            'step_id': step.id,
+            'order': step.order,
+            'subject': step.subject,
+            'auto_optimize': step.auto_optimize,
+            **bucket_counts(logs),
+            'variants': variant_stats,
         })
 
     enrollment_counts = {

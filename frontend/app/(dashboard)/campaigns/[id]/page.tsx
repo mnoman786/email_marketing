@@ -1,6 +1,6 @@
 'use client'
 import { useParams, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { campaignsApi } from '@/lib/api'
 import { Campaign } from '@/lib/types'
@@ -155,15 +155,36 @@ export default function CampaignDetailPage() {
             </thead>
             <tbody className="divide-y">
               {(stats?.steps || []).map((step: any) => (
-                <tr key={step.step_id}>
-                  <td className="px-4 py-2 font-medium">Step {step.order}</td>
-                  <td className="px-4 py-2 text-muted-foreground truncate max-w-xs">{step.subject}</td>
-                  <td className="px-4 py-2 text-green-600">{step.sent}</td>
-                  <td className="px-4 py-2 text-red-500">{step.failed}</td>
-                  <td className="px-4 py-2 text-purple-600">{step.opened}</td>
-                  <td className="px-4 py-2 text-blue-600">{step.clicked}</td>
-                  <td className="px-4 py-2 text-green-600">{step.replied}</td>
-                </tr>
+                <Fragment key={step.step_id}>
+                  <tr>
+                    <td className="px-4 py-2 font-medium">Step {step.order}</td>
+                    <td className="px-4 py-2 text-muted-foreground truncate max-w-xs">{step.subject}</td>
+                    <td className="px-4 py-2 text-green-600">{step.sent}</td>
+                    <td className="px-4 py-2 text-red-500">{step.failed}</td>
+                    <td className="px-4 py-2 text-purple-600">{step.opened}</td>
+                    <td className="px-4 py-2 text-blue-600">{step.clicked}</td>
+                    <td className="px-4 py-2 text-green-600">{step.replied}</td>
+                  </tr>
+                  {(step.variants || []).length > 1 && step.variants.map((variant: any) => {
+                    const activeCount = step.variants.filter((v: any) => v.is_active).length
+                    const isWinner = step.auto_optimize && activeCount === 1 && variant.is_active
+                    return (
+                    <tr key={variant.variant_id} className={`bg-muted/20 ${!variant.is_active ? 'opacity-50' : ''}`}>
+                      <td className="px-4 py-2 pl-8 text-xs text-muted-foreground">
+                        ↳ Variant {variant.label}
+                        {isWinner && <span className="ml-1 text-amber-600 font-medium">🏆 winner</span>}
+                        {!variant.is_active && <span className="ml-1 italic">(disabled)</span>}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-xs">{variant.subject}</td>
+                      <td className="px-4 py-2 text-xs text-green-600">{variant.sent}</td>
+                      <td className="px-4 py-2 text-xs text-red-500">{variant.failed}</td>
+                      <td className="px-4 py-2 text-xs text-purple-600">{variant.opened}</td>
+                      <td className="px-4 py-2 text-xs text-blue-600">{variant.clicked}</td>
+                      <td className="px-4 py-2 text-xs text-green-600">{variant.replied}</td>
+                    </tr>
+                    )
+                  })}
+                </Fragment>
               ))}
             </tbody>
           </table>

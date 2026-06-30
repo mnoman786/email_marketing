@@ -102,6 +102,17 @@ export interface CampaignSMTPRoute {
   is_active: boolean
 }
 
+export interface CampaignStepVariant {
+  id: number
+  step: number
+  label: string
+  subject: string
+  html_content: string
+  text_content: string
+  weight: number
+  is_active: boolean
+}
+
 export interface CampaignStep {
   id: number
   campaign: number
@@ -115,6 +126,10 @@ export interface CampaignStep {
   delay_hours: number
   stop_on_open: boolean
   stop_on_click: boolean
+  auto_optimize: boolean
+  auto_optimize_metric: 'open_rate' | 'click_rate' | 'reply_rate'
+  auto_optimize_min_sends: number
+  variants: CampaignStepVariant[]
 }
 
 export interface Campaign {

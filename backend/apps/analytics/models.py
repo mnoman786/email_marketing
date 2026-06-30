@@ -48,6 +48,10 @@ class SendLog(models.Model):
         'sequences.CampaignStep', on_delete=models.SET_NULL, related_name='send_logs',
         null=True, blank=True
     )
+    step_variant = models.ForeignKey(
+        'sequences.CampaignStepVariant', on_delete=models.SET_NULL, related_name='send_logs',
+        null=True, blank=True
+    )
     contact = models.ForeignKey(
         'contacts.Contact', on_delete=models.SET_NULL, null=True, related_name='send_logs'
     )

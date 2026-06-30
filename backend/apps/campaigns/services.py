@@ -48,6 +48,32 @@ def pick_smtp_by_weight(smtp_accounts):
     return active[-1]
 
 
+def pick_variant_by_weight(variants):
+    """
+    Weighted random selection of a CampaignStepVariant, mirroring
+    pick_smtp_by_weight above.
+    """
+    if not variants:
+        return None
+
+    active = [v for v in variants if v.is_active]
+    if not active:
+        return None
+
+    total = sum(v.weight for v in active)
+    if total == 0:
+        return random.choice(active)
+
+    r = random.uniform(0, total)
+    cumulative = 0
+    for variant in active:
+        cumulative += variant.weight
+        if r <= cumulative:
+            return variant
+
+    return active[-1]
+
+
 def inject_tracking(html, campaign, sendlog_id, base_url=None):
     """
     Inject open-tracking pixel and rewrite click links based on campaign settings.

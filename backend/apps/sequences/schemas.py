@@ -35,6 +35,39 @@ class SMTPRouteIn(Schema):
     is_active: bool = True
 
 
+class CampaignStepVariantOut(Schema):
+    id: int
+    step: int
+    label: str
+    subject: str
+    html_content: str
+    text_content: str
+    weight: int
+    is_active: bool
+
+    @staticmethod
+    def resolve_step(obj):
+        return obj.step_id
+
+
+class CampaignStepVariantIn(Schema):
+    label: str = ''
+    subject: str
+    html_content: str = ''
+    text_content: str = ''
+    weight: int = 10
+    is_active: bool = True
+
+
+class CampaignStepVariantUpdateIn(Schema):
+    label: Optional[str] = None
+    subject: Optional[str] = None
+    html_content: Optional[str] = None
+    text_content: Optional[str] = None
+    weight: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
 class CampaignStepOut(Schema):
     id: int
     campaign: int
@@ -48,6 +81,10 @@ class CampaignStepOut(Schema):
     delay_hours: int
     stop_on_open: bool
     stop_on_click: bool
+    auto_optimize: bool
+    auto_optimize_metric: str
+    auto_optimize_min_sends: int
+    variants: List[CampaignStepVariantOut]
 
     @staticmethod
     def resolve_campaign(obj):
@@ -56,6 +93,10 @@ class CampaignStepOut(Schema):
     @staticmethod
     def resolve_template(obj):
         return obj.template_id
+
+    @staticmethod
+    def resolve_variants(obj):
+        return list(obj.variants.all())
 
 
 class CampaignStepIn(Schema):
@@ -69,6 +110,9 @@ class CampaignStepIn(Schema):
     delay_hours: int = 0
     stop_on_open: bool = False
     stop_on_click: bool = False
+    auto_optimize: bool = False
+    auto_optimize_metric: str = 'reply_rate'
+    auto_optimize_min_sends: int = 30
 
 
 class CampaignStepUpdateIn(Schema):
@@ -82,6 +126,9 @@ class CampaignStepUpdateIn(Schema):
     delay_hours: Optional[int] = None
     stop_on_open: Optional[bool] = None
     stop_on_click: Optional[bool] = None
+    auto_optimize: Optional[bool] = None
+    auto_optimize_metric: Optional[str] = None
+    auto_optimize_min_sends: Optional[int] = None
 
 
 class CampaignOut(Schema):

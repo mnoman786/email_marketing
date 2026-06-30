@@ -62,7 +62,7 @@ def process_due_campaign_steps():
     """Periodic task: send the next due step for each active enrollment."""
     from .models import CampaignEnrollment
     from apps.analytics.models import SendLog
-    from apps.campaigns.services import send_campaign_email
+    from apps.campaigns.services import send_campaign_email, pick_variant_by_weight
     from apps.analytics.tracking import resolve_tracking_base_url
 
     now = timezone.now()
@@ -143,9 +143,14 @@ def process_due_campaign_steps():
             logger.error(f'Campaign {campaign.id}: no active SMTP accounts, skipping enrollment {enrollment.id}.')
             continue
 
+        variants = list(next_step.variants.filter(is_active=True))
+        variant = pick_variant_by_weight(variants) if variants else None
+        send_target = variant or next_step
+
         sendlog = SendLog.objects.create(
             campaign=campaign,
             sequence_step=next_step,
+            step_variant=variant,
             contact=enrollment.contact,
             status='pending',
             contact_email=enrollment.contact.email,
@@ -153,7 +158,7 @@ def process_due_campaign_steps():
         )
 
         tracking_base = resolve_tracking_base_url(campaign.user)
-        result = send_campaign_email(next_step, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id,
+        result = send_campaign_email(send_target, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id,
                                      tracking_base_url=tracking_base)
 
         sendlog.smtp_account = result.smtp_account
@@ -191,11 +196,11 @@ def retry_failed_send_task(self, log_id):
     from apps.campaigns.services import send_campaign_email
     from apps.analytics.tracking import resolve_tracking_base_url
 
-    log = SendLog.objects.select_related('campaign', 'sequence_step', 'contact').get(id=log_id)
+    log = SendLog.objects.select_related('campaign', 'sequence_step', 'step_variant', 'contact').get(id=log_id)
     if not log.contact:
         return {'success': False, 'error': 'No contact on this log.'}
 
-    campaign_like = log.sequence_step or log.campaign
+    campaign_like = log.step_variant or log.sequence_step or log.campaign
     if campaign_like is None:
         return {'success': False, 'error': 'No campaign on this log.'}
 
@@ -221,5 +226,61 @@ def retry_failed_send_task(self, log_id):
             log, result.smtp_account, log.contact,
             result.subject, result.html, result.text, result.message_id,
         )
+
+    return {'success': result.success, 'error': result.error}
+
+
+# Bucket -> which SendLog statuses count as a "hit" for that metric, mirroring
+# the funnel buckets used by the campaign_stats endpoint (a reply implies a
+# click implies an open).
+_AUTO_OPTIMIZE_BUCKETS = {
+    'open_rate': ('opened', 'clicked', 'replied'),
+    'click_rate': ('clicked', 'replied'),
+    'reply_rate': ('replied',),
+}
+
+
+@shared_task
+def auto_optimize_campaign_steps():
+    """Periodic task: for steps with auto-optimize enabled, once every active
+    variant has collected enough sends, deactivate all but the best performer
+    by the configured metric. Idempotent — once one variant is left active,
+    there's nothing left to evaluate."""
+    from .models import CampaignStep
+    from apps.analytics.models import SendLog
+
+    evaluated = 0
+    for step in CampaignStep.objects.filter(auto_optimize=True).prefetch_related('variants'):
+        variants = [v for v in step.variants.all() if v.is_active]
+        if len(variants) < 2:
+            continue
+
+        hit_statuses = _AUTO_OPTIMIZE_BUCKETS[step.auto_optimize_metric]
+        rates = []
+        ready = True
+        for variant in variants:
+            logs = SendLog.objects.filter(sequence_step=step, step_variant=variant)
+            total = logs.filter(status__in=('sent', 'opened', 'clicked', 'replied')).count()
+            if total < step.auto_optimize_min_sends:
+                ready = False
+                break
+            hits = logs.filter(status__in=hit_statuses).count()
+            rates.append((variant, hits / total if total else 0))
+
+        if not ready:
+            continue
+
+        winner, _ = max(rates, key=lambda pair: pair[1])
+        losers = [v for v, _ in rates if v.id != winner.id]
+        for v in losers:
+            v.is_active = False
+            v.save(update_fields=['is_active'])
+        logger.info(
+            f'Step {step.id}: auto-optimize picked variant {winner.id} ({winner.label}) '
+            f'on {step.auto_optimize_metric}, deactivated {len(losers)} other(s).'
+        )
+        evaluated += 1
+
+    return {'steps_resolved': evaluated}
 
     return {'success': result.success, 'error': result.error}
