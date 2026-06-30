@@ -25,7 +25,17 @@ DOMAIN="${DOMAIN:-}"              # e.g. "mail.example.com" — leave blank to s
 # Django's cache all read this same REDIS_URL today.
 REDIS_DB="${REDIS_DB:-11}"
 REDIS_URL="redis://localhost:6379/${REDIS_DB}"
-CELERY_CONCURRENCY="${CELERY_CONCURRENCY:-4}"
+# Worker pool. gevent is the right default here: campaign sends, IMAP polls and
+# warmup are all I/O-bound (blocked on SMTP/IMAP network), so one process with
+# many greenlets vastly out-throughputs 4 prefork OS processes. Concurrency is
+# the greenlet count under gevent — 100 is reasonable; raise for bigger sends.
+# Override to prefork (CELERY_POOL=prefork CELERY_CONCURRENCY=4) for CPU-bound work.
+CELERY_POOL="${CELERY_POOL:-gevent}"
+if [ "$CELERY_POOL" = "gevent" ] || [ "$CELERY_POOL" = "eventlet" ]; then
+    CELERY_CONCURRENCY="${CELERY_CONCURRENCY:-100}"
+else
+    CELERY_CONCURRENCY="${CELERY_CONCURRENCY:-4}"
+fi
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
@@ -379,7 +389,7 @@ After=network.target ${REDIS_SERVICE}.service
 Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${BACKEND_DIR}
-ExecStart=${VENV_DIR}/bin/celery -A email_marketing worker -l info --concurrency=${CELERY_CONCURRENCY}
+ExecStart=${VENV_DIR}/bin/celery -A email_marketing worker -l info --pool=${CELERY_POOL} --concurrency=${CELERY_CONCURRENCY}
 EnvironmentFile=${ENV_FILE}
 Restart=on-failure
 RestartSec=10s
@@ -417,7 +427,7 @@ sudo systemctl restart mailflow-celery mailflow-beat
 sleep 2
 
 if systemctl is-active --quiet mailflow-celery && systemctl is-active --quiet mailflow-beat; then
-    success "Celery worker (concurrency=${CELERY_CONCURRENCY}) + beat scheduler running."
+    success "Celery worker (pool=${CELERY_POOL}, concurrency=${CELERY_CONCURRENCY}) + beat scheduler running."
 else
     warn "Celery may not have started. Check: sudo journalctl -u mailflow-celery -u mailflow-beat -n 30"
 fi

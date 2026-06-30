@@ -131,8 +131,13 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Recycle worker child processes periodically — long sending sessions can
 # accumulate memory (SMTP connection objects, etc.) that a single process
-# would otherwise hold for the lifetime of the worker.
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 100
+# would otherwise hold for the lifetime of the worker. Under the gevent pool
+# there's a single process running many greenlets, so recycling every 100 tasks
+# thrashes (it waits for in-flight greenlets to drain); set this much higher,
+# or 0 to disable, via env. Prefork deployments can keep the conservative 100.
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
+    'CELERY_MAX_TASKS_PER_CHILD', default=2000, cast=int
+)
 # Backstop so a hung SMTP connection or runaway task can't block a worker
 # indefinitely; individual tasks (e.g. the batch sender) can set a tighter
 # limit themselves, as send_campaign_batch_task does.
