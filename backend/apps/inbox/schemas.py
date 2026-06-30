@@ -1,6 +1,10 @@
 from ninja import Schema
 from typing import Optional, List
 from datetime import datetime
+import re
+
+_TAG_RE = re.compile(r'<[^>]+>')
+_WS_RE = re.compile(r'\s+')
 
 
 class AttachmentOut(Schema):
@@ -81,7 +85,10 @@ class ThreadListOut(ThreadOut):
         last = obj.messages.order_by('-occurred_at').first()
         if not last:
             return ''
-        preview = last.body_text or last.body_html
+        # body_text is often empty for rich-text replies, so we fall back to
+        # body_html — which carries invisible markup like the open-tracking
+        # pixel <img>. Strip tags so that never leaks into the preview text.
+        preview = last.body_text or _WS_RE.sub(' ', _TAG_RE.sub(' ', last.body_html)).strip()
         return preview[:140]
 
 
