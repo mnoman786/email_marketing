@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
-import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock } from 'lucide-react'
+import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Info, Mail, Server, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 
@@ -144,6 +144,9 @@ export function CampaignForm({ campaign }: Props) {
     },
   })
 
+  const name = watch('name')
+  const fromName = watch('from_name')
+  const fromEmail = watch('from_email')
   const selectedLists = watch('contact_list_ids') || []
   const trackOpens = watch('track_opens')
   const trackClicks = watch('track_clicks')
@@ -154,6 +157,29 @@ export function CampaignForm({ campaign }: Props) {
   const scheduleStartTime = watch('schedule_start_time') ?? '09:00'
   const scheduleEndTime = watch('schedule_end_time') ?? '17:00'
   const scheduleTimezone = watch('schedule_timezone') ?? 'UTC'
+
+  const selectedListObjs = (lists || []).filter((l: any) => selectedLists.includes(l.id))
+  const totalContacts = selectedListObjs.reduce((sum: number, l: any) => sum + (l.contact_count || 0), 0)
+
+  // Per-tab completeness — drives the progress indicators and gates activation.
+  const stepIsFilled = (s: LocalStep) =>
+    s.variants.length > 0
+      ? s.variants.every(v => v.subject.trim() && v.html_content.trim())
+      : Boolean(s.subject.trim() && s.html_content.trim())
+
+  const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0
+  const stepsValid = steps.length > 0 && steps.every(stepIsFilled)
+  const smtpValid = !useCustomSMTP || smtpRoutes.length > 0
+  const canActivate = detailsValid && stepsValid && smtpValid
+
+  const missing: string[] = []
+  if (!(name || '').trim()) missing.push('campaign name')
+  if (selectedLists.length === 0) missing.push('at least one target list')
+  if (steps.length === 0) missing.push('at least one step')
+  else if (!steps.every(stepIsFilled)) missing.push('subject & body for every step/variant')
+  if (useCustomSMTP && smtpRoutes.length === 0) missing.push('at least one SMTP account')
+
+  const tabValid: Record<string, boolean> = { details: detailsValid, steps: stepsValid, smtp: smtpValid }
 
   const toggleList = (id: number) => {
     setValue('contact_list_ids', selectedLists.includes(id)
@@ -337,37 +363,63 @@ export function CampaignForm({ campaign }: Props) {
             <p className="text-xs text-muted-foreground">Build a single email or a multi-step drip campaign</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleSubmit(d => saveMut.mutate(d))} loading={saveMut.isPending}>
-            <Save size={15} /> Save Draft
-          </Button>
-          <Button onClick={handleSubmit(d => activateMut.mutate(d))} loading={activateMut.isPending}>
-            <Play size={15} /> Save &amp; Activate
-          </Button>
+        <div className="flex items-center gap-3">
+          {!canActivate && (
+            <p className="hidden md:block text-xs text-muted-foreground max-w-xs text-right">
+              To activate, add {missing.join(', ')}.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleSubmit(d => saveMut.mutate(d))} loading={saveMut.isPending}>
+              <Save size={15} /> Save Draft
+            </Button>
+            <Button
+              onClick={handleSubmit(d => activateMut.mutate(d))}
+              loading={activateMut.isPending}
+              disabled={!canActivate}
+              title={canActivate ? undefined : `Missing: ${missing.join(', ')}`}
+            >
+              <Play size={15} /> Save &amp; Activate
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="flex border-b bg-card px-6">
+      <div className="flex border-b bg-card px-6 gap-1">
         {[
-          { key: 'details', label: 'Details' },
-          { key: 'steps', label: `Steps (${steps.length})` },
-          { key: 'smtp', label: 'SMTP Routing' },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key as any)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              tab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+          { key: 'details', label: 'Details', icon: Info, hint: 'Name, sender, lists & tracking' },
+          { key: 'steps', label: 'Steps', icon: Mail, count: steps.length, hint: 'Email sequence' },
+          { key: 'smtp', label: 'SMTP Routing', icon: Server, hint: 'Sending accounts' },
+        ].map(t => {
+          const active = tab === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key as any)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                active ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <t.icon size={15} />
+              {t.label}
+              {typeof t.count === 'number' && (
+                <span className={`text-xs rounded-full px-1.5 py-0.5 ${active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                  {t.count}
+                </span>
+              )}
+              {tabValid[t.key]
+                ? <CheckCircle2 size={14} className="text-green-600" />
+                : <AlertCircle size={14} className="text-amber-500" />}
+            </button>
+          )
+        })}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-5xl p-6 grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-6 items-start">
+          <div className="min-w-0">
         {tab === 'details' && (
-          <div className="max-w-2xl space-y-5">
+          <div className="space-y-5">
             <Card>
               <CardHeader><CardTitle className="text-sm">Campaign Info</CardTitle></CardHeader>
               <CardContent className="space-y-4">
@@ -471,7 +523,7 @@ export function CampaignForm({ campaign }: Props) {
         )}
 
         {tab === 'steps' && (
-          <div className="max-w-2xl space-y-4">
+          <div className="space-y-4">
             {steps.map((step, index) => (
               <Card key={step.id ?? `new-${index}`}>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -677,7 +729,7 @@ export function CampaignForm({ campaign }: Props) {
         )}
 
         {tab === 'smtp' && (
-          <div className="max-w-2xl space-y-5">
+          <div className="space-y-5">
             <Card>
               <CardHeader><CardTitle className="text-sm">SMTP Routing</CardTitle></CardHeader>
               <CardContent className="space-y-4">
@@ -739,7 +791,109 @@ export function CampaignForm({ campaign }: Props) {
             </Card>
           </div>
         )}
+          </div>
+
+          {/* Live summary — see the whole campaign at a glance */}
+          <aside className="hidden lg:block">
+            <Card className="sticky top-6">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm">Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Campaign</p>
+                  <p className="font-medium truncate">{name || <span className="text-muted-foreground italic">Untitled</span>}</p>
+                </div>
+
+                <div className="border-t pt-3">
+                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5"><Mail size={12} /> Sender</p>
+                  {fromEmail || fromName ? (
+                    <p className="text-xs leading-relaxed">
+                      {fromName && <span className="font-medium">{fromName}</span>}
+                      {fromEmail && <span className="text-muted-foreground"> &lt;{fromEmail}&gt;</span>}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Uses SMTP account defaults</p>
+                  )}
+                </div>
+
+                <div className="border-t pt-3">
+                  <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5"><Users size={12} /> Audience</p>
+                  {selectedListObjs.length ? (
+                    <>
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {selectedListObjs.map((l: any) => (
+                          <span key={l.id} className="text-xs rounded-full bg-muted px-2 py-0.5">{l.name}</span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{totalContacts.toLocaleString()} contacts enrolled</p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-destructive">No lists selected</p>
+                  )}
+                </div>
+
+                <div className="border-t pt-3">
+                  <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5"><Mail size={12} /> Sequence</p>
+                  <div className="space-y-1.5">
+                    {steps.map((s, i) => (
+                      <div key={s.id ?? `sum-${i}`} className="flex items-center gap-2 text-xs">
+                        <span className="flex-none w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium">{s.order}</span>
+                        <span className="truncate flex-1">
+                          {s.variants.length > 1
+                            ? <span className="inline-flex items-center gap-1"><FlaskConical size={11} /> {s.variants.length} variants</span>
+                            : (s.variants[0]?.subject || s.subject || <span className="text-muted-foreground italic">No subject</span>)}
+                        </span>
+                        {i > 0 && <span className="flex-none text-muted-foreground flex items-center gap-0.5"><Clock size={10} />{s.delay_days}d{s.delay_hours ? ` ${s.delay_hours}h` : ''}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t pt-3 space-y-1.5">
+                  <p className="text-xs text-muted-foreground mb-1">Settings</p>
+                  <SummaryFlag on={trackOpens && trackClicks} label="Open & click tracking" />
+                  <SummaryFlag on={stopOnReply} label="Stop on reply" />
+                  <SummaryFlag on={scheduleEnabled} label={scheduleEnabled ? `Business hours (${scheduleStartTime}–${scheduleEndTime})` : 'Send anytime'} forceCheck={!scheduleEnabled} />
+                  <div className="flex items-center gap-2 text-xs">
+                    <Server size={13} className="text-muted-foreground flex-none" />
+                    <span>{useCustomSMTP ? `Custom routing (${smtpRoutes.length})` : 'All active SMTP accounts'}</span>
+                  </div>
+                </div>
+
+                {canActivate ? (
+                  <div className="rounded-md border bg-muted/40 p-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                      <CheckCircle2 size={14} className="text-green-600 flex-none" /> Ready to activate
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border bg-muted/40 p-3">
+                    <p className="flex items-center gap-2 text-xs font-semibold text-foreground mb-1.5">
+                      <AlertCircle size={14} className="text-amber-500 flex-none" /> Not ready yet
+                    </p>
+                    <ul className="list-disc pl-4 space-y-0.5 text-xs text-muted-foreground">
+                      {missing.map(m => <li key={m}>Add {m}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function SummaryFlag({ on, label, forceCheck }: { on?: boolean; label: string; forceCheck?: boolean }) {
+  const checked = on || forceCheck
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      {checked
+        ? <Check size={13} className="text-green-600 flex-none" />
+        : <X size={13} className="text-muted-foreground flex-none" />}
+      <span className={checked ? '' : 'text-muted-foreground'}>{label}</span>
     </div>
   )
 }
