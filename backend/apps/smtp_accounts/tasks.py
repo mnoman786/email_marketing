@@ -306,6 +306,21 @@ def poll_account_replies(account_id):
                     handle_received_warmup(account, parsed, from_email)
                     continue
 
+                # Bounce (DSN from the receiving MTA, not the contact) — never
+                # becomes a reply/lead. Mark the SendLog bounced and, for a
+                # hard bounce, suppress the address account-wide.
+                from apps.smtp_accounts.bounces import is_bounce_message, process_bounce
+                if is_bounce_message(parsed, from_email):
+                    try:
+                        conn.uid('STORE', str(uid), '+FLAGS', '(\\Seen)')
+                    except Exception:
+                        pass
+                    try:
+                        process_bounce(parsed, account)
+                    except Exception as e:
+                        logger.warning(f'Failed processing bounce for SMTPAccount {account.id}: {e}')
+                    continue
+
                 log = _match_sendlog(parsed, from_email, account)
                 contact = log.contact if log and log.contact_id else None
                 is_cold_lead = False
