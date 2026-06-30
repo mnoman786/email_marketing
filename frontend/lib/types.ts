@@ -10,6 +10,15 @@ export interface User {
   created_at: string
 }
 
+export interface UserSession {
+  id: number
+  device: string
+  ip_address: string | null
+  created_at: string
+  last_active_at: string
+  is_current: boolean
+}
+
 export interface ContactList {
   id: number
   name: string

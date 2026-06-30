@@ -52,6 +52,9 @@ export const authApi = {
   profile: () => api.get('/api/auth/profile/'),
   updateProfile: (data: any) => api.patch('/api/auth/profile/', data),
   changePassword: (data: any) => api.post('/api/auth/change-password/', data),
+  sessions: () => api.get('/api/auth/sessions/'),
+  revokeSession: (id: number) => api.post(`/api/auth/sessions/${id}/revoke/`),
+  revokeOtherSessions: () => api.post('/api/auth/sessions/revoke-others/'),
 }
 
 // Contact Lists

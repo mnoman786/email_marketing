@@ -88,3 +88,12 @@ class ChangePasswordIn(Schema):
         if len(v) < 8:
             raise ValueError('New password must be at least 8 characters.')
         return v
+
+
+class SessionOut(Schema):
+    id: int
+    device: str
+    ip_address: Optional[str] = None
+    created_at: datetime
+    last_active_at: datetime
+    is_current: bool

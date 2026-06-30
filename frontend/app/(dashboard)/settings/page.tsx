@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { TrackingDomainsCard } from '@/components/settings/tracking-domains-card'
+import { SessionsCard } from '@/components/settings/sessions-card'
 import toast from 'react-hot-toast'
 
 const profileSchema = z.object({
@@ -103,6 +104,9 @@ export default function SettingsPage() {
 
       {/* Custom Tracking Domains */}
       <TrackingDomainsCard />
+
+      {/* Active Sessions */}
+      <SessionsCard />
 
       {/* Change Password */}
       <Card>
