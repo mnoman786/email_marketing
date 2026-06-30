@@ -1,6 +1,6 @@
 from ninja import Schema
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, time
 
 
 class ContactListRefOut(Schema):
@@ -98,6 +98,11 @@ class SequenceOut(Schema):
     track_opens: bool
     track_clicks: bool
     stop_on_reply: bool
+    schedule_enabled: bool
+    schedule_days: List[int]
+    schedule_start_time: time
+    schedule_end_time: time
+    schedule_timezone: str
     steps: List[SequenceStepOut]
     created_at: datetime
     updated_at: datetime
@@ -151,6 +156,11 @@ class SequenceIn(Schema):
     track_opens: bool = True
     track_clicks: bool = True
     stop_on_reply: bool = True
+    schedule_enabled: bool = False
+    schedule_days: List[int] = [0, 1, 2, 3, 4]
+    schedule_start_time: time = time(9, 0)
+    schedule_end_time: time = time(17, 0)
+    schedule_timezone: str = 'UTC'
 
 
 class SequenceUpdateIn(Schema):
@@ -163,6 +173,11 @@ class SequenceUpdateIn(Schema):
     track_opens: Optional[bool] = None
     track_clicks: Optional[bool] = None
     stop_on_reply: Optional[bool] = None
+    schedule_enabled: Optional[bool] = None
+    schedule_days: Optional[List[int]] = None
+    schedule_start_time: Optional[time] = None
+    schedule_end_time: Optional[time] = None
+    schedule_timezone: Optional[str] = None
 
 
 class EnrollmentOut(Schema):

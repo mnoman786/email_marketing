@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
 import { ArrowLeft, Save, Send, Variable, Loader2, Calendar } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -30,6 +31,11 @@ const schema = z.object({
   track_opens: z.boolean().optional(),
   track_clicks: z.boolean().optional(),
   use_custom_smtp_routing: z.boolean().optional(),
+  schedule_enabled: z.boolean().optional(),
+  schedule_days: z.array(z.number()).optional(),
+  schedule_start_time: z.string().optional(),
+  schedule_end_time: z.string().optional(),
+  schedule_timezone: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -88,6 +94,11 @@ export function CampaignForm({ campaign }: Props) {
       track_opens: campaign?.track_opens ?? true,
       track_clicks: campaign?.track_clicks ?? true,
       use_custom_smtp_routing: campaign?.use_custom_smtp_routing ?? false,
+      schedule_enabled: campaign?.schedule_enabled ?? false,
+      schedule_days: campaign?.schedule_days ?? [0, 1, 2, 3, 4],
+      schedule_start_time: campaign?.schedule_start_time?.slice(0, 5) ?? '09:00',
+      schedule_end_time: campaign?.schedule_end_time?.slice(0, 5) ?? '17:00',
+      schedule_timezone: campaign?.schedule_timezone ?? 'UTC',
     },
   })
 
@@ -96,6 +107,11 @@ export function CampaignForm({ campaign }: Props) {
   const trackOpens = watch('track_opens')
   const trackClicks = watch('track_clicks')
   const useCustomSMTP = watch('use_custom_smtp_routing')
+  const scheduleEnabled = watch('schedule_enabled') ?? false
+  const scheduleDays = watch('schedule_days') ?? [0, 1, 2, 3, 4]
+  const scheduleStartTime = watch('schedule_start_time') ?? '09:00'
+  const scheduleEndTime = watch('schedule_end_time') ?? '17:00'
+  const scheduleTimezone = watch('schedule_timezone') ?? 'UTC'
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -359,6 +375,19 @@ export function CampaignForm({ campaign }: Props) {
                 </div>
               </CardContent>
             </Card>
+
+            <SendingScheduleCard
+              value={{
+                schedule_enabled: scheduleEnabled,
+                schedule_days: scheduleDays,
+                schedule_start_time: scheduleStartTime,
+                schedule_end_time: scheduleEndTime,
+                schedule_timezone: scheduleTimezone,
+              }}
+              onChange={patch => {
+                Object.entries(patch).forEach(([key, val]) => setValue(key as any, val as any))
+              }}
+            />
           </div>
         )}
 

@@ -1,8 +1,10 @@
 from django.db import models
 from django.conf import settings
 
+from .scheduling import SendWindowMixin
 
-class Campaign(models.Model):
+
+class Campaign(SendWindowMixin, models.Model):
     STATUS_CHOICES = [
         ('draft', 'Draft'),
         ('scheduled', 'Scheduled'),

@@ -130,6 +130,14 @@ def process_due_sequence_steps():
             stopped += 1
             continue
 
+        # Outside the sequence's sending window (business hours) — push this
+        # step out to when the window next opens instead of sending now.
+        from apps.campaigns.scheduling import is_within_send_window, next_window_start
+        if not is_within_send_window(sequence):
+            enrollment.next_send_at = next_window_start(sequence)
+            enrollment.save(update_fields=['next_send_at'])
+            continue
+
         smtp_accounts = _smtp_accounts_for(sequence)
         if not smtp_accounts:
             logger.error(f'Sequence {sequence.id}: no active SMTP accounts, skipping enrollment {enrollment.id}.')

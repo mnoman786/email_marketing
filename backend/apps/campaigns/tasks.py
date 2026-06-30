@@ -25,6 +25,7 @@ def send_campaign_task(self, campaign_id):
     from .models import Campaign, CampaignSMTPRoute
     from apps.contacts.models import Contact, Suppression
     from apps.smtp_accounts.models import SMTPAccount
+    from .scheduling import is_within_send_window, next_window_start
 
     try:
         campaign = Campaign.objects.get(id=campaign_id)
@@ -35,6 +36,12 @@ def send_campaign_task(self, campaign_id):
     if campaign.status not in ('sending', 'scheduled'):
         logger.warning(f'Campaign {campaign_id} is in status {campaign.status}, skipping.')
         return
+
+    if not is_within_send_window(campaign):
+        eta = next_window_start(campaign)
+        countdown = max(30, int((eta - timezone.now()).total_seconds()))
+        logger.info(f'Campaign {campaign_id}: outside its sending window, retrying in {countdown}s.')
+        raise self.retry(countdown=countdown, max_retries=100000)
 
     campaign.status = 'sending'
     campaign.started_at = timezone.now()
@@ -112,8 +119,16 @@ def send_campaign_batch_task(self, campaign_id, contact_ids):
     )
 
     from apps.analytics.tracking import resolve_tracking_base_url
+    from .scheduling import is_within_send_window, next_window_start
 
     campaign = Campaign.objects.select_related('template').get(id=campaign_id)
+
+    if not is_within_send_window(campaign):
+        eta = next_window_start(campaign)
+        countdown = max(30, int((eta - timezone.now()).total_seconds()))
+        logger.info(f'Campaign {campaign_id}: batch hit closed sending window, retrying in {countdown}s.')
+        raise self.retry(countdown=countdown, max_retries=100000)
+
     # Resolve the user's tracking domain ONCE for the whole batch (cached), not
     # per email.
     tracking_base = resolve_tracking_base_url(campaign.user)

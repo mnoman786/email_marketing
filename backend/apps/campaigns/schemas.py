@@ -1,6 +1,6 @@
 from ninja import Schema
 from typing import Optional, List, Any, Dict
-from datetime import datetime
+from datetime import datetime, time
 
 
 class TemplateRefOut(Schema):
@@ -83,6 +83,11 @@ class CampaignOut(Schema):
     smtp_routes: List[SMTPRouteOut]
     track_opens: bool
     track_clicks: bool
+    schedule_enabled: bool
+    schedule_days: List[int]
+    schedule_start_time: time
+    schedule_end_time: time
+    schedule_timezone: str
     delivery_rate: float
     failure_rate: float
     created_at: datetime
@@ -156,6 +161,11 @@ class CampaignIn(Schema):
     use_custom_smtp_routing: bool = False
     track_opens: bool = True
     track_clicks: bool = True
+    schedule_enabled: bool = False
+    schedule_days: List[int] = [0, 1, 2, 3, 4]
+    schedule_start_time: time = time(9, 0)
+    schedule_end_time: time = time(17, 0)
+    schedule_timezone: str = 'UTC'
 
 
 class CampaignUpdateIn(Schema):
@@ -173,6 +183,11 @@ class CampaignUpdateIn(Schema):
     use_custom_smtp_routing: Optional[bool] = None
     track_opens: Optional[bool] = None
     track_clicks: Optional[bool] = None
+    schedule_enabled: Optional[bool] = None
+    schedule_days: Optional[List[int]] = None
+    schedule_start_time: Optional[time] = None
+    schedule_end_time: Optional[time] = None
+    schedule_timezone: Optional[str] = None
 
 
 class SendCampaignIn(Schema):

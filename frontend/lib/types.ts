@@ -124,6 +124,11 @@ export interface Campaign {
   smtp_routes: CampaignSMTPRoute[]
   track_opens: boolean
   track_clicks: boolean
+  schedule_enabled: boolean
+  schedule_days: number[]
+  schedule_start_time: string
+  schedule_end_time: string
+  schedule_timezone: string
   delivery_rate: number
   failure_rate: number
   created_at: string
@@ -167,6 +172,11 @@ export interface Sequence {
   track_opens: boolean
   track_clicks: boolean
   stop_on_reply: boolean
+  schedule_enabled: boolean
+  schedule_days: number[]
+  schedule_start_time: string
+  schedule_end_time: string
+  schedule_timezone: string
   steps: SequenceStep[]
   created_at: string
   updated_at: string

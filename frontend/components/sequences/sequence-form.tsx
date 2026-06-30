@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
 import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -26,6 +27,11 @@ const schema = z.object({
   track_clicks: z.boolean().optional(),
   stop_on_reply: z.boolean().optional(),
   use_custom_smtp_routing: z.boolean().optional(),
+  schedule_enabled: z.boolean().optional(),
+  schedule_days: z.array(z.number()).optional(),
+  schedule_start_time: z.string().optional(),
+  schedule_end_time: z.string().optional(),
+  schedule_timezone: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -94,6 +100,11 @@ export function SequenceForm({ sequence }: Props) {
       track_clicks: sequence?.track_clicks ?? true,
       stop_on_reply: sequence?.stop_on_reply ?? true,
       use_custom_smtp_routing: sequence?.use_custom_smtp_routing ?? false,
+      schedule_enabled: sequence?.schedule_enabled ?? false,
+      schedule_days: sequence?.schedule_days ?? [0, 1, 2, 3, 4],
+      schedule_start_time: sequence?.schedule_start_time?.slice(0, 5) ?? '09:00',
+      schedule_end_time: sequence?.schedule_end_time?.slice(0, 5) ?? '17:00',
+      schedule_timezone: sequence?.schedule_timezone ?? 'UTC',
     },
   })
 
@@ -102,6 +113,11 @@ export function SequenceForm({ sequence }: Props) {
   const trackClicks = watch('track_clicks')
   const stopOnReply = watch('stop_on_reply')
   const useCustomSMTP = watch('use_custom_smtp_routing')
+  const scheduleEnabled = watch('schedule_enabled') ?? false
+  const scheduleDays = watch('schedule_days') ?? [0, 1, 2, 3, 4]
+  const scheduleStartTime = watch('schedule_start_time') ?? '09:00'
+  const scheduleEndTime = watch('schedule_end_time') ?? '17:00'
+  const scheduleTimezone = watch('schedule_timezone') ?? 'UTC'
 
   const toggleList = (id: number) => {
     setValue('contact_list_ids', selectedLists.includes(id)
@@ -336,6 +352,19 @@ export function SequenceForm({ sequence }: Props) {
                 </div>
               </CardContent>
             </Card>
+
+            <SendingScheduleCard
+              value={{
+                schedule_enabled: scheduleEnabled,
+                schedule_days: scheduleDays,
+                schedule_start_time: scheduleStartTime,
+                schedule_end_time: scheduleEndTime,
+                schedule_timezone: scheduleTimezone,
+              }}
+              onChange={patch => {
+                Object.entries(patch).forEach(([key, val]) => setValue(key as any, val as any))
+              }}
+            />
           </div>
         )}
 
