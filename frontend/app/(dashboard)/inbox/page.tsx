@@ -161,8 +161,13 @@ export default function InboxPage() {
         old ? { count: Math.max(0, old.count - 1) } : old
       )
     }
-    qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'all' })
-    qc.invalidateQueries({ queryKey: ['inbox-unread-count'] })
+    // Mark stale but DON'T force an immediate refetch — the optimistic updates
+    // above already reflect the read state, and firing a full list refetch on
+    // every thread open competes with the detail request for the (few) sync
+    // workers, which is what makes opening a thread feel slow. The 15s poll
+    // reconciles anyway.
+    qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'none' })
+    qc.invalidateQueries({ queryKey: ['inbox-unread-count'], refetchType: 'none' })
   }, [thread?.id])
 
   const resetComposer = () => {

@@ -101,7 +101,9 @@ def list_threads(
 @router.get('/threads/{thread_id}/', response=ThreadDetailOut, auth=auth)
 def get_thread(request, thread_id: int):
     thread = get_object_or_404(
-        Thread.objects.select_related('contact', 'smtp_account'), id=thread_id, user=request.auth
+        Thread.objects.select_related('contact', 'smtp_account')
+        .prefetch_related('messages__attachments'),
+        id=thread_id, user=request.auth
     )
     if thread.is_unread:
         thread.is_unread = False
