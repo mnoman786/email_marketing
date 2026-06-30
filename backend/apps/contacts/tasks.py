@@ -1,6 +1,8 @@
 from celery import shared_task
 from django.db import transaction
+from django.utils import timezone
 from .models import ContactList, Contact
+from .verification import verify_email
 
 
 @shared_task(bind=True, ignore_result=False)
@@ -21,6 +23,12 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
     total = len(contacts_data)
     created, updated, failed = 0, 0, 0
     errors = []
+    # MX results reused across the whole import (on top of the Redis per-domain
+    # cache), and contact ids collected so the list M2M is added in one query at
+    # the end instead of one INSERT per row.
+    mx_cache = {}
+    contact_ids_for_list = []
+    now = timezone.now()
 
     for idx, row in enumerate(contacts_data):
         try:
@@ -35,6 +43,8 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
                     'last_name': row.get('last_name', ''),
                     'phone': row.get('phone', ''),
                     'company': row.get('company', ''),
+                    'verification_status': verify_email(email, mx_cache=mx_cache),
+                    'verified_at': now,
                     'custom_fields': {
                         k: v for k, v in row.items()
                         if k not in ['email', 'first_name', 'last_name', 'phone', 'company']
@@ -42,7 +52,7 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
                 }
             )
             if contact_list:
-                contact.lists.add(contact_list)
+                contact_ids_for_list.append(contact.id)
             if is_new:
                 created += 1
             else:
@@ -63,6 +73,11 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
                     'failed': failed,
                 }
             )
+
+    # One M2M insert for the whole import instead of one per row. add() with the
+    # through table ignores duplicates, so re-imported contacts stay single-membership.
+    if contact_list and contact_ids_for_list:
+        contact_list.contacts.add(*set(contact_ids_for_list))
 
     return {
         'current': total,

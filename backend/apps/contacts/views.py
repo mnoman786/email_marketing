@@ -103,6 +103,8 @@ def list_contacts(
 
 @router.post('/', response=ContactOut, auth=auth)
 def create_contact(request, data: ContactIn):
+    from .verification import verify_email
+
     list_ids = data.list_ids
     payload = data.dict(exclude={'list_ids'})
     payload['user'] = request.auth
@@ -114,6 +116,10 @@ def create_contact(request, data: ContactIn):
     if existing:
         contact = existing
     else:
+        # Verify on add — one MX lookup (cached per-domain in Redis), so adding a
+        # contact whose domain you've seen before costs no DNS at all.
+        payload['verification_status'] = verify_email(payload['email'])
+        payload['verified_at'] = timezone.now()
         contact = Contact.objects.create(**payload)
 
     if list_ids:

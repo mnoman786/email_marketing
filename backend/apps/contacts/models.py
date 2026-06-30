@@ -32,6 +32,12 @@ class Contact(models.Model):
         ('bounced', 'Bounced'),
         ('complained', 'Complained'),
     ]
+    VERIFICATION_CHOICES = [
+        ('unverified', 'Unverified'),  # never checked
+        ('valid', 'Valid'),            # syntax ok + domain has MX
+        ('invalid', 'Invalid'),        # bad syntax or no mail server
+        ('unknown', 'Unknown'),        # lookup was inconclusive
+    ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='contacts')
     lists = models.ManyToManyField(ContactList, related_name='contacts', blank=True)
@@ -41,6 +47,10 @@ class Contact(models.Model):
     phone = models.CharField(max_length=20, blank=True)
     company = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    verification_status = models.CharField(
+        max_length=20, choices=VERIFICATION_CHOICES, default='unverified', db_index=True
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
     custom_fields = models.JSONField(default=dict, blank=True)
     subscribed_at = models.DateTimeField(auto_now_add=True)
     unsubscribed_at = models.DateTimeField(null=True, blank=True)

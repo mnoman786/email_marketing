@@ -28,6 +28,8 @@ export interface Contact {
   phone: string
   company: string
   status: 'active' | 'unsubscribed' | 'bounced' | 'complained'
+  verification_status: 'unverified' | 'valid' | 'invalid' | 'unknown'
+  verified_at: string | null
   custom_fields: Record<string, any>
   full_name: string
   list_ids: number[]

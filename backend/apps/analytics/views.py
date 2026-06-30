@@ -5,12 +5,17 @@ from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
 from django.db.models import Count, Q, F
 from django.http import HttpResponse, HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
 from typing import Optional, List
-from .models import SendLog
-from .schemas import SendLogOut, RetryFailedIn
+import re
+from .models import SendLog, TrackingDomain
+from .schemas import SendLogOut, RetryFailedIn, TrackingDomainOut, TrackingDomainIn
+from .tracking import verify_tracking_domain, tracking_base_cache_key
 from apps.accounts.auth import auth
+
+_DOMAIN_RE = re.compile(r'^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,}$')
 
 # 1×1 transparent GIF — served as the open-tracking pixel
 _PIXEL_GIF = base64.b64decode(
@@ -154,6 +159,61 @@ def retry_failed(request, data: RetryFailedIn):
             count += 1
 
     return {'queued': count}
+
+
+def _invalidate_tracking_base(user_id):
+    cache.delete(tracking_base_cache_key(user_id))
+
+
+@router.get('/tracking-domains/', response=List[TrackingDomainOut], auth=auth)
+def list_tracking_domains(request):
+    return list(TrackingDomain.objects.filter(user=request.auth))
+
+
+@router.post('/tracking-domains/', response=TrackingDomainOut, auth=auth)
+def add_tracking_domain(request, data: TrackingDomainIn):
+    domain = data.domain.strip().lower().rstrip('.')
+    if domain.startswith(('http://', 'https://')):
+        domain = domain.split('://', 1)[1]
+    domain = domain.split('/', 1)[0]
+    if not _DOMAIN_RE.match(domain):
+        raise HttpError(400, 'Enter a valid domain, e.g. track.yourcompany.com')
+    if TrackingDomain.objects.filter(domain=domain).exists():
+        raise HttpError(400, 'That domain is already registered.')
+    is_first = not TrackingDomain.objects.filter(user=request.auth).exists()
+    return TrackingDomain.objects.create(user=request.auth, domain=domain, is_primary=is_first)
+
+
+@router.post('/tracking-domains/{domain_id}/verify/', response=TrackingDomainOut, auth=auth)
+def verify_tracking_domain_endpoint(request, domain_id: int):
+    td = get_object_or_404(TrackingDomain, id=domain_id, user=request.auth)
+    ok = verify_tracking_domain(td.domain)
+    td.is_verified = ok
+    td.last_checked_at = timezone.now()
+    if ok and not td.verified_at:
+        td.verified_at = timezone.now()
+    td.save(update_fields=['is_verified', 'last_checked_at', 'verified_at'])
+    _invalidate_tracking_base(request.auth.id)
+    if not ok:
+        raise HttpError(400, 'DNS not pointing here yet. Add the CNAME and try again (propagation can take a while).')
+    return td
+
+
+@router.post('/tracking-domains/{domain_id}/primary/', response=TrackingDomainOut, auth=auth)
+def set_primary_tracking_domain(request, domain_id: int):
+    td = get_object_or_404(TrackingDomain, id=domain_id, user=request.auth)
+    TrackingDomain.objects.filter(user=request.auth).update(is_primary=False)
+    td.is_primary = True
+    td.save(update_fields=['is_primary'])
+    _invalidate_tracking_base(request.auth.id)
+    return td
+
+
+@router.delete('/tracking-domains/{domain_id}/', auth=auth)
+def delete_tracking_domain(request, domain_id: int):
+    get_object_or_404(TrackingDomain, id=domain_id, user=request.auth).delete()
+    _invalidate_tracking_base(request.auth.id)
+    return {'detail': 'Deleted.'}
 
 
 @router.get('/track/open/{log_id}/', auth=None, include_in_schema=False)

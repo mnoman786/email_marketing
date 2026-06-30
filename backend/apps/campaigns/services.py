@@ -48,12 +48,17 @@ def pick_smtp_by_weight(smtp_accounts):
     return active[-1]
 
 
-def inject_tracking(html, campaign, sendlog_id):
+def inject_tracking(html, campaign, sendlog_id, base_url=None):
     """
     Inject open-tracking pixel and rewrite click links based on campaign settings.
     sendlog_id must exist in the DB before this is called.
+
+    `base_url` is the tracking host (the user's verified custom domain, or the
+    shared SITE_URL). Callers resolve it once per send batch and pass it in so
+    we don't hit the DB per email; falls back to SITE_URL when omitted.
     """
-    base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
+    if base_url is None:
+        base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000').rstrip('/')
 
     if campaign.track_opens:
         pixel = (
@@ -288,11 +293,15 @@ def render_template_for_contact(html_content, contact, campaign_variables=None):
         return html_content
 
 
-def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog_id=None):
+def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog_id=None,
+                        tracking_base_url=None):
     """
     Send a single campaign email to one contact.
     Uses weighted SMTP selection with fallback on failure.
     Returns a SendResult(success, smtp_account, error, message_id, html, text, subject).
+
+    `tracking_base_url` is resolved once by the caller (per batch/run) and passed
+    in to avoid a per-email DB lookup of the user's tracking domain.
     """
     available = list(smtp_accounts)
     attempted = []
@@ -312,7 +321,7 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
 
     # Inject tracking pixel / rewrite links if tracking is enabled and we have a log ID
     if sendlog_id and (campaign.track_opens or campaign.track_clicks):
-        html = inject_tracking(html, campaign, sendlog_id)
+        html = inject_tracking(html, campaign, sendlog_id, base_url=tracking_base_url)
 
     message_id = make_message_id(sendlog_id, campaign.from_email) if sendlog_id else None
 

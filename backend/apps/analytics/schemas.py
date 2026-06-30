@@ -51,3 +51,23 @@ class SendLogOut(Schema):
 class RetryFailedIn(Schema):
     campaign_id: Optional[int] = None
     log_ids: Optional[List[int]] = None
+
+
+class TrackingDomainOut(Schema):
+    id: int
+    domain: str
+    is_verified: bool
+    is_primary: bool
+    verified_at: Optional[datetime] = None
+    last_checked_at: Optional[datetime] = None
+    created_at: datetime
+    cname_target: str
+
+    @staticmethod
+    def resolve_cname_target(obj):
+        from .tracking import tracking_target_host
+        return tracking_target_host()
+
+
+class TrackingDomainIn(Schema):
+    domain: str

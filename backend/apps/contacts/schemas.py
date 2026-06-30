@@ -45,6 +45,8 @@ class ContactOut(Schema):
     phone: str
     company: str
     status: str
+    verification_status: str
+    verified_at: Optional[datetime] = None
     custom_fields: Dict[str, Any]
     full_name: str
     list_ids: List[int]
@@ -60,7 +62,9 @@ class ContactOut(Schema):
 
     @staticmethod
     def resolve_list_ids(obj):
-        return list(obj.lists.values_list('id', flat=True))
+        # Use the prefetched lists (list views prefetch_related('lists')) rather
+        # than .values_list(), which would fire a fresh query per contact.
+        return [l.id for l in obj.lists.all()]
 
     @staticmethod
     def resolve_list_names(obj):

@@ -17,6 +17,19 @@ import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
 import { BulkImportDialog } from '@/components/contacts/bulk-import-dialog'
 
+// Small coloured dot conveying email-verification status at a glance.
+const VERIFY_META: Record<string, { color: string; title: string }> = {
+  valid: { color: 'bg-green-500', title: 'Email verified — domain accepts mail' },
+  invalid: { color: 'bg-red-500', title: 'Invalid — bad address or no mail server' },
+  unknown: { color: 'bg-amber-400', title: 'Unverified — lookup was inconclusive' },
+  unverified: { color: 'bg-gray-300', title: 'Not yet verified' },
+}
+
+function VerificationDot({ status }: { status: string }) {
+  const m = VERIFY_META[status] || VERIFY_META.unverified
+  return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${m.color}`} title={m.title} />
+}
+
 export default function ContactsPage() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
@@ -189,7 +202,10 @@ export default function ContactsPage() {
                       <td className="px-4 py-3">
                         <div>
                           <p className="font-medium">{contact.full_name}</p>
-                          <p className="text-muted-foreground text-xs">{contact.email}</p>
+                          <p className="text-muted-foreground text-xs flex items-center gap-1">
+                            <VerificationDot status={contact.verification_status} />
+                            {contact.email}
+                          </p>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{contact.company || '—'}</td>

@@ -195,3 +195,12 @@ export const analyticsApi = {
   logs: (params?: any) => api.get('/api/analytics/logs/', { params }),
   retryFailed: (data: any) => api.post('/api/analytics/logs/retry-failed/', data),
 }
+
+// Custom tracking domains
+export const trackingDomainsApi = {
+  getAll: () => api.get('/api/analytics/tracking-domains/'),
+  create: (domain: string) => api.post('/api/analytics/tracking-domains/', { domain }),
+  verify: (id: number) => api.post(`/api/analytics/tracking-domains/${id}/verify/`),
+  setPrimary: (id: number) => api.post(`/api/analytics/tracking-domains/${id}/primary/`),
+  delete: (id: number) => api.delete(`/api/analytics/tracking-domains/${id}/`),
+}

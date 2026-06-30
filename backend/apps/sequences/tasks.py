@@ -62,13 +62,16 @@ def process_due_sequence_steps():
     from .models import SequenceEnrollment
     from apps.analytics.models import SendLog
     from apps.campaigns.services import send_campaign_email
+    from apps.analytics.tracking import resolve_tracking_base_url
 
     now = timezone.now()
     sent, stopped, completed = 0, 0, 0
 
+    # sequence__user joined so the per-user tracking-domain lookup below doesn't
+    # lazy-load the User (and it's Redis-cached on top of that).
     due = SequenceEnrollment.objects.filter(
         status='active', next_send_at__lte=now
-    ).select_related('sequence', 'contact', 'current_step')
+    ).select_related('sequence', 'sequence__user', 'contact', 'current_step')
 
     for enrollment in due:
         sequence = enrollment.sequence
@@ -129,7 +132,9 @@ def process_due_sequence_steps():
             contact_name=enrollment.contact.full_name,
         )
 
-        result = send_campaign_email(next_step, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id)
+        tracking_base = resolve_tracking_base_url(enrollment.sequence.user)
+        result = send_campaign_email(next_step, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id,
+                                     tracking_base_url=tracking_base)
 
         sendlog.smtp_account = result.smtp_account
         sendlog.status = 'sent' if result.success else 'failed'

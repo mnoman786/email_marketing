@@ -108,7 +108,12 @@ def send_campaign_batch_task(self, campaign_id, contact_ids):
         send_via_open_connection, reserve_send_slot,
     )
 
+    from apps.analytics.tracking import resolve_tracking_base_url
+
     campaign = Campaign.objects.select_related('template').get(id=campaign_id)
+    # Resolve the user's tracking domain ONCE for the whole batch (cached), not
+    # per email.
+    tracking_base = resolve_tracking_base_url(campaign.user)
 
     if campaign.use_custom_smtp_routing:
         routes = CampaignSMTPRoute.objects.filter(campaign=campaign, is_active=True).select_related('smtp_account')
@@ -168,10 +173,16 @@ def send_campaign_batch_task(self, campaign_id, contact_ids):
                 campaign.html_content or (campaign.template.html_content if campaign.template else ''),
                 contact, campaign_variables=campaign.campaign_variables or {},
             )
-            text = campaign.text_content or (campaign.template.text_content if campaign.template else '')
-            subject = campaign.subject
+            # Same spintax + variable treatment as the body, per recipient.
+            text = render_template_for_contact(
+                campaign.text_content or (campaign.template.text_content if campaign.template else ''),
+                contact, campaign_variables=campaign.campaign_variables or {},
+            )
+            subject = render_template_for_contact(
+                campaign.subject, contact, campaign_variables=campaign.campaign_variables or {},
+            )
             if campaign.track_opens or campaign.track_clicks:
-                html = inject_tracking(html, campaign, sendlog.id)
+                html = inject_tracking(html, campaign, sendlog.id, base_url=tracking_base)
             message_id = make_message_id(sendlog.id, campaign.from_email)
 
             success, used_account, error = False, None, None
@@ -297,10 +308,12 @@ def send_single_email_task(self, campaign_id, contact_id):
     from apps.smtp_accounts.models import SMTPAccount
     from apps.analytics.models import SendLog
     from .services import send_campaign_email
+    from apps.analytics.tracking import resolve_tracking_base_url
 
     campaign = Campaign.objects.get(id=campaign_id)
     contact = Contact.objects.get(id=contact_id)
     smtp_accounts = list(SMTPAccount.objects.filter(user=campaign.user, is_active=True))
+    tracking_base = resolve_tracking_base_url(campaign.user)
 
     # Ensure a SendLog row exists so tracking pixel has an ID
     sendlog, _ = SendLog.objects.get_or_create(
@@ -313,7 +326,8 @@ def send_single_email_task(self, campaign_id, contact_id):
         }
     )
 
-    result = send_campaign_email(campaign, contact, smtp_accounts, sendlog_id=sendlog.id)
+    result = send_campaign_email(campaign, contact, smtp_accounts, sendlog_id=sendlog.id,
+                                 tracking_base_url=tracking_base)
 
     sendlog.smtp_account = result.smtp_account
     sendlog.status = 'sent' if result.success else 'failed'
