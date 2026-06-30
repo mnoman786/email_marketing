@@ -23,7 +23,7 @@ def send_campaign_task(self, campaign_id):
     email in a single long-running, unparallelizable task.
     """
     from .models import Campaign, CampaignSMTPRoute
-    from apps.contacts.models import Contact
+    from apps.contacts.models import Contact, Suppression
     from apps.smtp_accounts.models import SMTPAccount
 
     try:
@@ -54,9 +54,12 @@ def send_campaign_task(self, campaign_id):
     # Stream contact IDs instead of materializing every Contact — at 1M
     # recipients that's the difference between ~28MB of ints and gigabytes
     # of model instances held in this dispatcher task's memory.
+    # Exclude the account-wide suppression list (unsubscribed/bounced/complained/
+    # manual) via subquery so even a re-imported 'active' contact is never mailed.
+    suppressed = Suppression.objects.filter(user=campaign.user).values('email')
     contact_id_qs = Contact.objects.filter(
         lists__in=campaign.contact_lists.all(), status='active'
-    ).values_list('id', flat=True).distinct()
+    ).exclude(email__in=suppressed).values_list('id', flat=True).distinct()
 
     batches = []
     current = []

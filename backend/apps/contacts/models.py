@@ -68,3 +68,40 @@ class Contact(models.Model):
     @property
     def full_name(self):
         return f'{self.first_name} {self.last_name}'.strip() or self.email
+
+
+class Suppression(models.Model):
+    """Account-wide do-not-send list. Any email here is skipped by every campaign
+    and sequence send, regardless of whether it's also a Contact. Populated on
+    unsubscribe / bounce / complaint, or added manually."""
+    REASON_CHOICES = [
+        ('unsubscribed', 'Unsubscribed'),
+        ('bounced', 'Bounced'),
+        ('complained', 'Complained'),
+        ('manual', 'Manually added'),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='suppressions')
+    email = models.EmailField()
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES, default='manual')
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = ['user', 'email']
+        indexes = [models.Index(fields=['user', 'email'])]
+
+    def __str__(self):
+        return f'{self.email} ({self.reason})'
+
+
+def suppress_email(user, email, reason='manual', note=''):
+    """Idempotently add an email to the user's suppression list (lowercased)."""
+    email = (email or '').strip().lower()
+    if not email:
+        return None
+    obj, _ = Suppression.objects.get_or_create(
+        user=user, email=email, defaults={'reason': reason, 'note': note}
+    )
+    return obj

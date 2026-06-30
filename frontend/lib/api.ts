@@ -75,6 +75,9 @@ export const contactsApi = {
   importStatus: (taskId: string) => api.get(`/api/contacts/import-status/${taskId}/`),
   bulkDelete: (ids: number[]) => api.post('/api/contacts/bulk-delete/', { ids }),
   unsubscribe: (id: number) => api.post(`/api/contacts/${id}/unsubscribe/`),
+  suppressions: (params?: any) => api.get('/api/contacts/suppressions/', { params }),
+  addSuppressions: (emails: string[], note = '') => api.post('/api/contacts/suppressions/', { emails, note }),
+  deleteSuppressions: (ids: number[]) => api.post('/api/contacts/suppressions/delete/', { ids }),
 }
 
 // Templates

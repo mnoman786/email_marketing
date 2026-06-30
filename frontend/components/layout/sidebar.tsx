@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { inboxApi } from '@/lib/api'
 import {
   LayoutDashboard, Users, Mail, Server, Megaphone, BarChart3, Settings,
-  ChevronLeft, ChevronRight, Zap, ListFilter, Workflow, Inbox, Bell, BellOff
+  ChevronLeft, ChevronRight, Zap, ListFilter, Workflow, Inbox, Bell, BellOff, ShieldBan
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -15,6 +15,7 @@ const navItems = [
   { href: '/inbox', label: 'Inbox', icon: Inbox },
   { href: '/contacts', label: 'Contacts', icon: Users },
   { href: '/lists', label: 'Lists', icon: ListFilter },
+  { href: '/suppressions', label: 'Suppression', icon: ShieldBan },
   { href: '/templates', label: 'Templates', icon: Mail },
   { href: '/smtp', label: 'SMTP Accounts', icon: Server },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },

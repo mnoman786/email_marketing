@@ -24,7 +24,7 @@ def _smtp_accounts_for(sequence):
 def enroll_due_contacts():
     """Periodic task: auto-enroll new list contacts into active sequences (evergreen)."""
     from .models import Sequence, SequenceEnrollment
-    from apps.contacts.models import Contact
+    from apps.contacts.models import Contact, Suppression
 
     now = timezone.now()
     enrolled_total = 0
@@ -34,10 +34,11 @@ def enroll_due_contacts():
         if not first_step:
             continue
 
+        suppressed = Suppression.objects.filter(user=sequence.user).values('email')
         contact_ids = Contact.objects.filter(
             lists__in=sequence.contact_lists.all(),
             status='active'
-        ).values_list('id', flat=True).distinct()
+        ).exclude(email__in=suppressed).values_list('id', flat=True).distinct()
 
         already_enrolled = set(
             SequenceEnrollment.objects.filter(sequence=sequence).values_list('contact_id', flat=True)
@@ -117,6 +118,16 @@ def process_due_sequence_steps():
             enrollment.completed_at = now
             enrollment.save(update_fields=['status', 'completed_at'])
             completed += 1
+            continue
+
+        # Safety net: someone may have been suppressed after enrolling. Stop the
+        # enrollment instead of sending another step.
+        from apps.contacts.models import Suppression
+        if Suppression.objects.filter(user=sequence.user, email__iexact=enrollment.contact.email).exists():
+            enrollment.status = 'unsubscribed'
+            enrollment.completed_at = now
+            enrollment.save(update_fields=['status', 'completed_at'])
+            stopped += 1
             continue
 
         smtp_accounts = _smtp_accounts_for(sequence)

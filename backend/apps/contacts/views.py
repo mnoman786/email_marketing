@@ -5,12 +5,13 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
 from typing import Optional, List
-from .models import ContactList, Contact
+from .models import ContactList, Contact, Suppression, suppress_email
 from .schemas import (
     ContactListOut, ContactListIn, ContactListUpdateIn,
     ContactOut, ContactIn, ContactUpdateIn,
     BulkImportIn, BulkImportOut, BulkDeleteIn, AddRemoveContactsIn,
     BulkImportStartOut, ImportStatusOut,
+    SuppressionOut, SuppressionIn, SuppressionDeleteIn,
 )
 from apps.accounts.auth import auth
 
@@ -170,6 +171,32 @@ def bulk_delete(request, data: BulkDeleteIn):
     return {'deleted': deleted}
 
 
+# --- Suppression list (account-wide do-not-send) ---
+
+@router.get('/suppressions/', response=List[SuppressionOut], auth=auth)
+@paginate(PageNumberPagination, page_size=50)
+def list_suppressions(request, search: Optional[str] = None):
+    qs = Suppression.objects.filter(user=request.auth)
+    if search:
+        qs = qs.filter(email__icontains=search)
+    return qs
+
+
+@router.post('/suppressions/', auth=auth)
+def add_suppressions(request, data: SuppressionIn):
+    added = 0
+    for email in data.emails:
+        if suppress_email(request.auth, email, reason='manual', note=data.note):
+            added += 1
+    return {'added': added}
+
+
+@router.post('/suppressions/delete/', auth=auth)
+def delete_suppressions(request, data: SuppressionDeleteIn):
+    deleted, _ = Suppression.objects.filter(user=request.auth, id__in=data.ids).delete()
+    return {'deleted': deleted}
+
+
 # Dynamic /{contact_id}/ routes after all static paths
 @router.get('/{contact_id}/', response=ContactOut, auth=auth)
 def get_contact(request, contact_id: int):
@@ -184,6 +211,9 @@ def update_contact(request, contact_id: int, data: ContactUpdateIn):
     for field, value in payload.items():
         setattr(contact, field, value)
     contact.save()
+    # Manually flipping a contact to a non-active state suppresses them too.
+    if payload.get('status') in ('unsubscribed', 'bounced', 'complained'):
+        suppress_email(request.auth, contact.email, reason=payload['status'])
     if list_ids is not None:
         contact.lists.set(ContactList.objects.filter(user=request.auth, id__in=list_ids))
     return contact
@@ -201,4 +231,7 @@ def unsubscribe_contact(request, contact_id: int):
     contact.status = 'unsubscribed'
     contact.unsubscribed_at = timezone.now()
     contact.save()
+    # Add to the account-wide do-not-send list so no future campaign/sequence
+    # can reach them, even if re-imported under a different list.
+    suppress_email(request.auth, contact.email, reason='unsubscribed')
     return {'status': 'unsubscribed'}

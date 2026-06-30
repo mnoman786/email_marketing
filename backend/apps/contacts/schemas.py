@@ -127,3 +127,20 @@ class BulkDeleteIn(Schema):
 
 class AddRemoveContactsIn(Schema):
     contact_ids: List[int]
+
+
+class SuppressionOut(Schema):
+    id: int
+    email: str
+    reason: str
+    note: str
+    created_at: datetime
+
+
+class SuppressionIn(Schema):
+    emails: List[str]
+    note: str = ''
+
+
+class SuppressionDeleteIn(Schema):
+    ids: List[int]
