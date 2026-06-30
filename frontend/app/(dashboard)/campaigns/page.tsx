@@ -149,10 +149,11 @@ export default function CampaignsPage() {
                               <Pause size={14} />
                             </Button>
                           )}
-                          {campaign.status === 'draft' && (
+                          {campaign.status !== 'active' && (
                             <Button
                               variant="ghost"
                               size="icon-sm"
+                              title="Delete"
                               className="text-destructive hover:text-destructive"
                               onClick={() => setDeleteId(campaign.id)}
                             >

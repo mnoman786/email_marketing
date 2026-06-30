@@ -81,7 +81,9 @@ export default function CampaignDetailPage() {
               <h1 className="text-xl font-bold truncate">{campaign.name}</h1>
               <StatusBadge status={campaign.status} />
             </div>
-            <p className="text-sm text-muted-foreground mt-0.5">{campaign.steps.length} step(s)</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {campaign.steps.length} step(s) · Created {formatDateTime(campaign.created_at)} · Updated {formatDateTime(campaign.updated_at)}
+            </p>
           </div>
         </div>
 
@@ -106,7 +108,7 @@ export default function CampaignDetailPage() {
               <Pause size={14} /> Pause
             </Button>
           )}
-          {campaign.status === 'draft' && (
+          {campaign.status !== 'active' && (
             <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)}>
               <Trash2 size={14} /> Delete
             </Button>
@@ -117,7 +119,7 @@ export default function CampaignDetailPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Enrolled', value: totalEnrolled, icon: Users, color: 'text-blue-600' },
+          { label: 'Total Enrolled', value: totalEnrolled, icon: Users, color: 'text-blue-600' },
           { label: 'Active', value: counts.active || 0, icon: Mail, color: 'text-amber-500' },
           { label: 'Completed', value: counts.completed || 0, icon: Mail, color: 'text-green-600' },
           { label: 'Stopped (engaged)', value: counts.stopped || 0, icon: MousePointerClick, color: 'text-purple-600' },
@@ -180,7 +182,7 @@ export default function CampaignDetailPage() {
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Current Step</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Next Send</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Enrolled</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Enrolled At</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -192,7 +194,7 @@ export default function CampaignDetailPage() {
                     </td>
                     <td className="px-4 py-2 text-xs">{e.current_step_order ?? '—'}</td>
                     <td className="px-4 py-2"><StatusBadge status={e.status} /></td>
-                    <td className="px-4 py-2 text-xs text-muted-foreground">{formatDateTime(e.next_send_at)}</td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground">{e.status === 'active' && e.next_send_at ? formatDateTime(e.next_send_at) : '—'}</td>
                     <td className="px-4 py-2 text-xs text-muted-foreground">{formatDateTime(e.enrolled_at)}</td>
                   </tr>
                 ))}
