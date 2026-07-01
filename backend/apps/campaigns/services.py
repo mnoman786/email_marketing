@@ -348,12 +348,17 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
             logger.warning(f'[Campaign {campaign.id}] Skipping {smtp_account.name} for {contact.email}: {error}')
             continue
 
+        # Append this account's signature if one is set.
+        sig = getattr(smtp_account, 'signature_html', '') or ''
+        html_with_sig = f'{html}<br><br>{sig}' if sig.strip() else html
+        text_with_sig = f'{text}\n\n{sig}' if sig.strip() else text
+
         msg = build_email_message(
             smtp_account=smtp_account,
             to_email=contact.email,
             subject=subject,
-            html_content=html,
-            text_content=text,
+            html_content=html_with_sig,
+            text_content=text_with_sig,
             from_name=campaign.from_name or None,
             from_email=campaign.from_email or None,
             reply_to=campaign.reply_to or None,

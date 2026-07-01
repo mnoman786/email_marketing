@@ -98,7 +98,7 @@ interface Props {
 export function CampaignForm({ campaign }: Props) {
   const router = useRouter()
   const { user } = useAuth()
-  const [tab, setTab] = useState<'details' | 'steps'>('details')
+  const [tab, setTab] = useState<'sequence' | 'settings'>('sequence')
   const [steps, setSteps] = useState<LocalStep[]>(
     toLocalSteps(campaign?.steps).length ? toLocalSteps(campaign?.steps) : [
       {
@@ -172,7 +172,7 @@ export function CampaignForm({ campaign }: Props) {
   if (selectedLists.length === 0) missing.push('at least one target list')
   if (steps.length === 0) missing.push('at least one step')
   else if (!steps.every(stepIsFilled)) missing.push('subject & body for every step/variant')
-  const tabValid: Record<string, boolean> = { details: detailsValid, steps: stepsValid }
+  const tabValid: Record<string, boolean> = { sequence: stepsValid, settings: detailsValid }
 
   const toggleList = (id: number) => {
     setValue('contact_list_ids', selectedLists.includes(id)
@@ -366,29 +366,37 @@ export function CampaignForm({ campaign }: Props) {
         </div>
       </div>
 
-      {/* ── Section tabs ── */}
-      <div className="flex border-b bg-card px-4 shrink-0">
+      {/* ── Tabs — Instantly style ── */}
+      <div className="flex items-center border-b bg-card px-6 shrink-0 gap-1">
         {([
-          { key: 'details', label: 'Details', icon: Info, count: undefined as number | undefined },
-          { key: 'steps',   label: 'Steps',   icon: Mail,  count: steps.length },
+          { key: 'sequence', label: 'Sequence', icon: Mail, badge: steps.length },
+          { key: 'settings', label: 'Settings', icon: Info, badge: undefined as number | undefined },
         ] as const).map(t => {
           const active = tab === t.key
           const valid  = tabValid[t.key]
           return (
-            <button key={t.key} onClick={() => setTab(t.key)}
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
               className={cn(
-                'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-                active ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                'relative flex items-center gap-2 px-3 py-3.5 text-sm font-medium transition-colors',
+                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <t.icon size={14} />
               {t.label}
-              {t.count !== undefined && (
-                <span className={cn('text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center',
-                  active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                )}>{t.count}</span>
+              {t.badge !== undefined && (
+                <span className={cn(
+                  'text-[10px] font-semibold rounded-full w-4.5 h-4.5 flex items-center justify-center',
+                  active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                )}>{t.badge}</span>
               )}
-              <span className={cn('w-1.5 h-1.5 rounded-full', valid ? 'bg-green-500' : 'bg-amber-400')} />
+              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', valid ? 'bg-green-500' : 'bg-amber-400')} />
+              {/* Active bottom highlight */}
+              {active && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />
+              )}
             </button>
           )
         })}
@@ -399,7 +407,7 @@ export function CampaignForm({ campaign }: Props) {
         <div className="mx-auto max-w-5xl p-6 grid grid-cols-1 lg:grid-cols-[1fr_17rem] gap-6 items-start">
           <div className="min-w-0 space-y-4">
 
-        {tab === 'details' && (
+        {tab === 'settings' && (
           <div className="space-y-4">
 
             {/* Campaign name */}
@@ -498,7 +506,7 @@ export function CampaignForm({ campaign }: Props) {
           </div>
         )}
 
-        {tab === 'steps' && (
+        {tab === 'sequence' && (
           <div className="space-y-4">
             {steps.map((step, index) => {
               const hasVariants = step.variants.length > 0

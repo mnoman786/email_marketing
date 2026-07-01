@@ -13,14 +13,13 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FlaskConical, CheckCircle, XCircle, Send, Inbox, PenLine, ArrowRight, Check } from 'lucide-react'
+import { FlaskConical, CheckCircle, XCircle, Send, Inbox, ArrowRight, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 
 const STEPS = [
   { key: 'sending', label: 'Sending', icon: Send },
   { key: 'imap', label: 'Reply Detection', icon: Inbox },
-  { key: 'signature', label: 'Signature', icon: PenLine },
 ] as const
 type StepKey = typeof STEPS[number]['key']
 
@@ -144,7 +143,6 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
         toast.error('Fill in IMAP host, username, and password — or turn off Reply Detection to skip this step.')
         return
       }
-      goToStep('signature')
     }
   }
 
@@ -296,6 +294,16 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                   <Label>Active</Label>
                   <Switch checked={isActive} onCheckedChange={v => setValue('is_active', v)} />
                 </div>
+
+                <div className="col-span-2">
+                  <Label>Signature</Label>
+                  <Textarea
+                    {...register('signature_html')}
+                    placeholder="Best,&#10;Your Name&#10;Your Company"
+                    className="mt-1 h-24 font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Appended to outgoing emails sent from this account.</p>
+                </div>
               </div>
             )}
 
@@ -376,19 +384,6 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
               </div>
             )}
 
-            {tab === 'signature' && (
-              <div className="space-y-2">
-                <Label>Signature (HTML)</Label>
-                <Textarea
-                  {...register('signature_html')}
-                  placeholder="Best,&#10;Jane Doe&#10;Acme Inc."
-                  className="h-40 font-mono text-xs"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Appended to replies and new emails sent from this mailbox when &ldquo;Include signature&rdquo; is checked in the inbox composer.
-                </p>
-              </div>
-            )}
           </div>
 
           <DialogFooter className="px-6 py-4 border-t">
