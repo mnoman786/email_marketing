@@ -13,27 +13,6 @@ class ContactListRefOut(Schema):
         return obj.contact_count
 
 
-class SMTPRouteOut(Schema):
-    id: int
-    smtp_account: int
-    smtp_name: str
-    weight: int
-    is_active: bool
-
-    @staticmethod
-    def resolve_smtp_account(obj):
-        return obj.smtp_account_id
-
-    @staticmethod
-    def resolve_smtp_name(obj):
-        return obj.smtp_account.name
-
-
-class SMTPRouteIn(Schema):
-    smtp_account: int
-    weight: int = 10
-    is_active: bool = True
-
 
 class CampaignStepVariantOut(Schema):
     id: int
@@ -42,7 +21,6 @@ class CampaignStepVariantOut(Schema):
     subject: str
     html_content: str
     text_content: str
-    weight: int
     is_active: bool
 
     @staticmethod
@@ -55,7 +33,6 @@ class CampaignStepVariantIn(Schema):
     subject: str
     html_content: str = ''
     text_content: str = ''
-    weight: int = 10
     is_active: bool = True
 
 
@@ -64,7 +41,6 @@ class CampaignStepVariantUpdateIn(Schema):
     subject: Optional[str] = None
     html_content: Optional[str] = None
     text_content: Optional[str] = None
-    weight: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -140,8 +116,6 @@ class CampaignOut(Schema):
     from_email: str
     reply_to: str
     status: str
-    use_custom_smtp_routing: bool
-    smtp_routes: List[SMTPRouteOut]
     track_opens: bool
     track_clicks: bool
     stop_on_reply: bool
@@ -161,10 +135,6 @@ class CampaignOut(Schema):
     @staticmethod
     def resolve_contact_lists_detail(obj):
         return list(obj.contact_lists.all())
-
-    @staticmethod
-    def resolve_smtp_routes(obj):
-        return list(obj.smtp_routes.select_related('smtp_account').all())
 
     @staticmethod
     def resolve_steps(obj):
@@ -199,7 +169,6 @@ class CampaignIn(Schema):
     from_name: str = ''
     from_email: str = ''
     reply_to: str = ''
-    use_custom_smtp_routing: bool = False
     track_opens: bool = True
     track_clicks: bool = True
     stop_on_reply: bool = True
@@ -216,7 +185,6 @@ class CampaignUpdateIn(Schema):
     from_name: Optional[str] = None
     from_email: Optional[str] = None
     reply_to: Optional[str] = None
-    use_custom_smtp_routing: Optional[bool] = None
     track_opens: Optional[bool] = None
     track_clicks: Optional[bool] = None
     stop_on_reply: Optional[bool] = None

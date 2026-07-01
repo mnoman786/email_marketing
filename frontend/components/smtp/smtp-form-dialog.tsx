@@ -33,7 +33,6 @@ const schema = z.object({
   from_email: z.string().email('Invalid email'),
   from_name: z.string().min(1, 'From name required'),
   security: z.enum(['none', 'tls', 'ssl']),
-  weight: z.number().min(1).max(1000),
   is_active: z.boolean(),
   daily_limit: z.number().min(0),
   hourly_limit: z.number().min(0),
@@ -65,7 +64,6 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
     mode: 'onChange',
     defaultValues: {
       security: 'tls',
-      weight: 10,
       is_active: true,
       port: 587,
       daily_limit: 0,
@@ -102,7 +100,6 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
         from_email: account.from_email,
         from_name: account.from_name,
         security: account.security,
-        weight: account.weight,
         is_active: account.is_active,
         daily_limit: account.daily_limit,
         hourly_limit: account.hourly_limit,
@@ -118,7 +115,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
     } else {
       reset({
         name: '', host: '', port: 587, username: '', password: '', from_email: '', from_name: '',
-        security: 'tls', weight: 10, is_active: true, daily_limit: 0, hourly_limit: 0,
+        security: 'tls', is_active: true, daily_limit: 0, hourly_limit: 0,
         imap_enabled: false, imap_host: '', imap_port: 993, imap_username: '', imap_password: '', imap_use_ssl: true,
         capture_cold_leads: false, signature_html: '',
       })
@@ -259,18 +256,6 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                       <SelectItem value="none">None (25)</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div>
-                  <Label>Routing Weight</Label>
-                  <Input
-                    {...register('weight', { valueAsNumber: true })}
-                    type="number"
-                    min={1}
-                    max={1000}
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Higher = more traffic</p>
                 </div>
 
                 <div>

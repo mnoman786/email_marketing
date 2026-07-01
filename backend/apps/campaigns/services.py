@@ -23,55 +23,17 @@ SendResult = namedtuple('SendResult', ['success', 'smtp_account', 'error', 'mess
 
 
 def pick_smtp_by_weight(smtp_accounts):
-    """
-    Weighted random selection of SMTP account.
-    Returns a single SMTPAccount based on probability weights.
-    """
-    if not smtp_accounts:
-        return None
-
-    active = [s for s in smtp_accounts if s.is_active]
-    if not active:
-        return None
-
-    total = sum(s.weight for s in active)
-    if total == 0:
-        return random.choice(active)
-
-    r = random.uniform(0, total)
-    cumulative = 0
-    for account in active:
-        cumulative += account.weight
-        if r <= cumulative:
-            return account
-
-    return active[-1]
+    """Equal-probability random selection from active SMTP accounts."""
+    active = [s for s in smtp_accounts if s.is_active] if smtp_accounts else []
+    return random.choice(active) if active else None
 
 
 def pick_variant_by_weight(variants):
-    """
-    Weighted random selection of a CampaignStepVariant, mirroring
-    pick_smtp_by_weight above.
-    """
+    """Equal-probability random selection of an active CampaignStepVariant."""
     if not variants:
         return None
-
     active = [v for v in variants if v.is_active]
-    if not active:
-        return None
-
-    total = sum(v.weight for v in active)
-    if total == 0:
-        return random.choice(active)
-
-    r = random.uniform(0, total)
-    cumulative = 0
-    for variant in active:
-        cumulative += variant.weight
-        if r <= cumulative:
-            return variant
-
-    return active[-1]
+    return random.choice(active) if active else None
 
 
 def inject_tracking(html, campaign, sendlog_id, base_url=None):
@@ -300,18 +262,35 @@ def spin(text):
     return re.sub(r'\x00(\d+)\x00', lambda m: masks[int(m.group(1))], masked)
 
 
-def render_template_for_contact(html_content, contact, campaign_variables=None):
+def render_template_for_contact(html_content, contact, campaign_variables=None, sender=None):
     """Resolve spintax, then merge variables: campaign-level vars first, then per-contact vars override."""
     try:
+        sender_first = ''
+        sender_last = ''
+        if sender:
+            sender_first = getattr(sender, 'first_name', '') or ''
+            sender_last = getattr(sender, 'last_name', '') or ''
         context = {
             **(campaign_variables or {}),
             **contact.custom_fields,
+            # Contact (recipient) tags
             'first_name': contact.first_name,
             'last_name': contact.last_name,
             'full_name': contact.full_name,
             'email': contact.email,
             'phone': contact.phone,
             'company': contact.company,
+            'website': getattr(contact, 'website', ''),
+            'title': getattr(contact, 'title', ''),
+            'city': getattr(contact, 'city', ''),
+            'state': getattr(contact, 'state', ''),
+            'country': getattr(contact, 'country', ''),
+            # Sender tags
+            'sender_name': f'{sender_first} {sender_last}'.strip() if sender else '',
+            'sender_first_name': sender_first,
+            'sender_last_name': sender_last,
+            'sender_email': getattr(sender, 'email', '') if sender else '',
+            'sender_company': getattr(sender, 'company_name', '') if sender else '',
         }
         t = Template(spin(html_content))
         return t.render(Context(context))
@@ -333,17 +312,19 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     attempted = []
 
     campaign_vars = campaign.campaign_variables or {}
+    sender = getattr(campaign, 'user', None)
     html = render_template_for_contact(
         campaign.html_content or (campaign.template.html_content if campaign.template else ''),
         contact,
         campaign_variables=campaign_vars,
+        sender=sender,
     )
     # Subject and plaintext get the same spintax + variable treatment as the body.
     text = render_template_for_contact(
         campaign.text_content or (campaign.template.text_content if campaign.template else ''),
-        contact, campaign_variables=campaign_vars,
+        contact, campaign_variables=campaign_vars, sender=sender,
     )
-    subject = render_template_for_contact(campaign.subject, contact, campaign_variables=campaign_vars)
+    subject = render_template_for_contact(campaign.subject, contact, campaign_variables=campaign_vars, sender=sender)
 
     # Inject tracking pixel / rewrite links if tracking is enabled and we have a log ID
     if sendlog_id and (campaign.track_opens or campaign.track_clicks):

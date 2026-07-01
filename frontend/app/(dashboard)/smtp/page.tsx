@@ -46,48 +46,18 @@ export default function SMTPPage() {
     },
   })
 
-  const totalWeight = stats?.reduce((sum: number, s: any) => sum + (s.is_active ? s.weight : 0), 0) || 0
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">SMTP Accounts</h1>
-          <p className="text-sm text-muted-foreground">Configure sending servers with probability-based routing</p>
+          <p className="text-sm text-muted-foreground">Sending accounts — all active accounts rotate equally per campaign</p>
         </div>
         <Button onClick={() => { setEditAccount(null); setShowForm(true) }}>
           <Plus size={16} /> Add SMTP Account
         </Button>
       </div>
 
-      {/* Probability routing overview */}
-      {stats && stats.length > 0 && (
-        <div className="rounded-xl border bg-card p-5">
-          <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
-            <Server size={15} />
-            Probability Routing Distribution
-          </h3>
-          <div className="space-y-3">
-            {stats.filter((s: any) => s.is_active).map((account: any) => {
-              const prob = totalWeight > 0 ? (account.weight / totalWeight * 100).toFixed(1) : 0
-              return (
-                <div key={account.id} className="flex items-center gap-3">
-                  <div className="w-36 text-sm truncate font-medium">{account.name}</div>
-                  <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all"
-                      style={{ width: `${prob}%` }}
-                    />
-                  </div>
-                  <div className="w-20 text-right text-sm text-muted-foreground">
-                    {prob}% (w:{account.weight})
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {isLoading ? (
         <TableSkeleton rows={4} cols={6} />
@@ -107,7 +77,6 @@ export default function SMTPPage() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Host / Port</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">From Email</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Security</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Weight</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Last Test</th>
                 <th className="px-4 py-3 w-24" />
@@ -133,12 +102,6 @@ export default function SMTPPage() {
                     <Badge variant={account.security === 'ssl' ? 'success' : account.security === 'tls' ? 'info' : 'secondary'}>
                       {account.security.toUpperCase()}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-primary" />
-                      <span className="font-medium">{account.weight}</span>
-                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={account.is_active ? 'success' : 'secondary'}>

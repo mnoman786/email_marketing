@@ -100,13 +100,13 @@ export default function LoginPage() {
             Send smarter email campaigns
           </h2>
           <p className="text-blue-100 leading-relaxed">
-            MailFlow gives you powerful tools to manage contacts, design beautiful templates, and deliver campaigns with intelligent SMTP routing.
+            MailFlow gives you powerful tools to manage contacts, run multi-step drip campaigns, and deliver emails that actually land in the inbox.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-4">
             {[
-              { label: 'SMTP Routing', desc: 'Probability-based load balancing' },
+              { label: 'Sequences', desc: 'Multi-step drip campaigns' },
               { label: 'Analytics', desc: 'Real-time delivery tracking' },
-              { label: 'Templates', desc: 'HTML editor with variables' },
+              { label: 'Inbox', desc: 'Manage replies in one place' },
               { label: 'Contacts', desc: 'Lists and bulk import' },
             ].map(f => (
               <div key={f.label} className="bg-white/10 rounded-xl p-3">

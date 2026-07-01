@@ -9,7 +9,7 @@ class SMTPAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = SMTPAccount
         fields = ['id', 'name', 'host', 'port', 'username', 'password', 'has_password',
-                  'from_email', 'from_name', 'security', 'weight', 'is_active',
+                  'from_email', 'from_name', 'security', 'is_active',
                   'daily_limit', 'hourly_limit', 'last_tested_at', 'last_test_success',
                   'created_at', 'updated_at']
         read_only_fields = ['id', 'last_tested_at', 'last_test_success', 'created_at', 'updated_at']

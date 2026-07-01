@@ -5,12 +5,12 @@ from ninja.pagination import paginate, PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
 from typing import Optional, List
-from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment, CampaignSMTPRoute
+from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment
 from .schemas import (
     CampaignOut, CampaignListOut, CampaignIn, CampaignUpdateIn,
     CampaignStepOut, CampaignStepIn, CampaignStepUpdateIn,
     CampaignStepVariantOut, CampaignStepVariantIn, CampaignStepVariantUpdateIn,
-    SMTPRouteOut, SMTPRouteIn, EnrollmentOut,
+    EnrollmentOut,
 )
 from apps.accounts.auth import auth
 
@@ -173,20 +173,6 @@ def resume_campaign(request, campaign_id: int):
     campaign.save(update_fields=['status'])
     return {'status': 'active'}
 
-
-@router.get('/{campaign_id}/smtp-routes/', response=List[SMTPRouteOut], auth=auth)
-def get_smtp_routes(request, campaign_id: int):
-    campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
-    return list(CampaignSMTPRoute.objects.filter(campaign=campaign).select_related('smtp_account'))
-
-
-@router.post('/{campaign_id}/smtp-routes/', auth=auth)
-def set_smtp_routes(request, campaign_id: int, data: List[SMTPRouteIn]):
-    campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
-    CampaignSMTPRoute.objects.filter(campaign=campaign).delete()
-    for route in data:
-        CampaignSMTPRoute.objects.create(campaign=campaign, **route.dict())
-    return {'status': 'routes updated'}
 
 
 @router.get('/{campaign_id}/enrollments/', response=List[EnrollmentOut], auth=auth)

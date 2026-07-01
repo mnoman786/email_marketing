@@ -7,16 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def _smtp_accounts_for(campaign):
-    from .models import CampaignSMTPRoute
     from apps.smtp_accounts.models import SMTPAccount
-
-    if campaign.use_custom_smtp_routing:
-        routes = CampaignSMTPRoute.objects.filter(campaign=campaign, is_active=True).select_related('smtp_account')
-        accounts = []
-        for r in routes:
-            r.smtp_account.weight = r.weight
-            accounts.append(r.smtp_account)
-        return accounts
     return list(SMTPAccount.objects.filter(user=campaign.user, is_active=True))
 
 

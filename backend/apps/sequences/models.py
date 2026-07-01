@@ -21,7 +21,6 @@ class Campaign(SendWindowMixin, models.Model):
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
 
-    use_custom_smtp_routing = models.BooleanField(default=False)
     track_opens = models.BooleanField(default=True)
     track_clicks = models.BooleanField(default=True)
     stop_on_reply = models.BooleanField(default=True)
@@ -84,6 +83,10 @@ class CampaignStep(models.Model):
     # `inject_tracking` expect from a "campaign"-like object, so that send
     # pipeline can be reused unchanged for campaign steps.
     @property
+    def user(self):
+        return self.campaign.user
+
+    @property
     def from_name(self):
         return self.campaign.from_name
 
@@ -113,7 +116,6 @@ class CampaignStepVariant(models.Model):
     subject = models.CharField(max_length=500)
     html_content = models.TextField(blank=True)
     text_content = models.TextField(blank=True)
-    weight = models.PositiveIntegerField(default=10)
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -130,6 +132,10 @@ class CampaignStepVariant(models.Model):
     @property
     def campaign(self):
         return self.step.campaign
+
+    @property
+    def user(self):
+        return self.step.campaign.user
 
     @property
     def template(self):
@@ -190,17 +196,3 @@ class CampaignEnrollment(models.Model):
         return f'{self.contact.email} in {self.campaign.name} ({self.status})'
 
 
-class CampaignSMTPRoute(models.Model):
-    """SMTP routing configuration per campaign."""
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='smtp_routes')
-    smtp_account = models.ForeignKey(
-        'smtp_accounts.SMTPAccount', on_delete=models.CASCADE, related_name='campaign_routes'
-    )
-    weight = models.PositiveIntegerField(default=10)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        unique_together = ['campaign', 'smtp_account']
-
-    def __str__(self):
-        return f'{self.campaign.name} -> {self.smtp_account.name} (weight={self.weight})'

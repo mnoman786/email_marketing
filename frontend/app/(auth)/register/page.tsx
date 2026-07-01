@@ -143,9 +143,9 @@ export default function RegisterPage() {
           </p>
           <ul className="space-y-3">
             {[
-              'Smart SMTP routing with load balancing',
+              'Multi-step drip campaigns with A/B testing',
               'Real-time delivery & open analytics',
-              'Drag-and-drop HTML template editor',
+              'Spintax & personalization merge tags',
               'Unlimited contacts, lists & bulk import',
             ].map(item => (
               <li key={item} className="flex items-center gap-3">

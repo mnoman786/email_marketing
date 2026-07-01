@@ -46,6 +46,11 @@ class Contact(models.Model):
     last_name = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     company = models.CharField(max_length=255, blank=True)
+    website = models.URLField(max_length=500, blank=True)
+    title = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     verification_status = models.CharField(
         max_length=20, choices=VERIFICATION_CHOICES, default='unverified', db_index=True

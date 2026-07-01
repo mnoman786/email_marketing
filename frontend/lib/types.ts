@@ -73,7 +73,6 @@ export interface SMTPAccount {
   from_email: string
   from_name: string
   security: 'none' | 'tls' | 'ssl'
-  weight: number
   is_active: boolean
   daily_limit: number
   hourly_limit: number
@@ -94,13 +93,6 @@ export interface SMTPAccount {
   updated_at: string
 }
 
-export interface CampaignSMTPRoute {
-  id: number
-  smtp_account: number
-  smtp_name: string
-  weight: number
-  is_active: boolean
-}
 
 export interface CampaignStepVariant {
   id: number
@@ -109,7 +101,6 @@ export interface CampaignStepVariant {
   subject: string
   html_content: string
   text_content: string
-  weight: number
   is_active: boolean
 }
 
@@ -141,8 +132,6 @@ export interface Campaign {
   from_email: string
   reply_to: string
   status: 'draft' | 'active' | 'paused' | 'completed'
-  use_custom_smtp_routing: boolean
-  smtp_routes: CampaignSMTPRoute[]
   track_opens: boolean
   track_clicks: boolean
   stop_on_reply: boolean

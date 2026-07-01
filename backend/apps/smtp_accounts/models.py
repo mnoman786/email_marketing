@@ -31,10 +31,6 @@ class SMTPAccount(models.Model):
     from_email = models.EmailField()
     from_name = models.CharField(max_length=255)
     security = models.CharField(max_length=10, choices=SECURITY_CHOICES, default='tls')
-    weight = models.PositiveIntegerField(
-        default=10,
-        help_text='Probability weight for routing. Higher = more likely to be selected.'
-    )
     is_active = models.BooleanField(default=True)
     daily_limit = models.PositiveIntegerField(
         default=0, help_text='Max emails per day (0 = unlimited)'

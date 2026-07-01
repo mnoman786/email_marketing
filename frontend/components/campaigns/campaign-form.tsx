@@ -4,18 +4,20 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { campaignsApi, listsApi, smtpApi } from '@/lib/api'
+import { campaignsApi, listsApi } from '@/lib/api'
 import { Campaign, CampaignStep } from '@/lib/types'
+import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
-import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Info, Mail, Server, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle } from 'lucide-react'
+import { EmailBodyEditor } from '@/components/campaigns/email-body-editor'
+import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Info, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
@@ -26,7 +28,6 @@ const schema = z.object({
   track_opens: z.boolean().optional(),
   track_clicks: z.boolean().optional(),
   stop_on_reply: z.boolean().optional(),
-  use_custom_smtp_routing: z.boolean().optional(),
   schedule_enabled: z.boolean().optional(),
   schedule_days: z.array(z.number()).optional(),
   schedule_start_time: z.string().optional(),
@@ -42,7 +43,6 @@ interface LocalVariant {
   subject: string
   html_content: string
   text_content: string
-  weight: number
 }
 
 interface LocalStep {
@@ -81,7 +81,6 @@ function toLocalSteps(steps?: CampaignStep[]): LocalStep[] {
       subject: v.subject,
       html_content: v.html_content,
       text_content: v.text_content,
-      weight: v.weight,
     })),
   }))
 }
@@ -98,7 +97,8 @@ interface Props {
 
 export function CampaignForm({ campaign }: Props) {
   const router = useRouter()
-  const [tab, setTab] = useState<'details' | 'steps' | 'smtp'>('details')
+  const { user } = useAuth()
+  const [tab, setTab] = useState<'details' | 'steps'>('details')
   const [steps, setSteps] = useState<LocalStep[]>(
     toLocalSteps(campaign?.steps).length ? toLocalSteps(campaign?.steps) : [
       {
@@ -111,7 +111,9 @@ export function CampaignForm({ campaign }: Props) {
   )
   const [deletedStepIds, setDeletedStepIds] = useState<number[]>([])
   const [deletedVariants, setDeletedVariants] = useState<{ stepId: number; variantId: number }[]>([])
-  const [smtpRoutes, setSmtpRoutes] = useState<{ smtp_account: number; weight: number }[]>([])
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
+  // active variant tab per step index — undefined means "no variants / plain step"
+  const [activeVarTab, setActiveVarTab] = useState<Record<number, number>>({})
 
   const { data: lists } = useQuery({
     queryKey: ['lists-all'],
@@ -119,10 +121,6 @@ export function CampaignForm({ campaign }: Props) {
     staleTime: 0,
   })
 
-  const { data: smtpAccounts } = useQuery({
-    queryKey: ['smtp-accounts'],
-    queryFn: () => smtpApi.getAll().then(r => r.data.items || []),
-  })
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -135,7 +133,6 @@ export function CampaignForm({ campaign }: Props) {
       track_opens: campaign?.track_opens ?? true,
       track_clicks: campaign?.track_clicks ?? true,
       stop_on_reply: campaign?.stop_on_reply ?? true,
-      use_custom_smtp_routing: campaign?.use_custom_smtp_routing ?? false,
       schedule_enabled: campaign?.schedule_enabled ?? false,
       schedule_days: campaign?.schedule_days ?? [0, 1, 2, 3, 4],
       schedule_start_time: campaign?.schedule_start_time?.slice(0, 5) ?? '09:00',
@@ -151,7 +148,6 @@ export function CampaignForm({ campaign }: Props) {
   const trackOpens = watch('track_opens')
   const trackClicks = watch('track_clicks')
   const stopOnReply = watch('stop_on_reply')
-  const useCustomSMTP = watch('use_custom_smtp_routing')
   const scheduleEnabled = watch('schedule_enabled') ?? false
   const scheduleDays = watch('schedule_days') ?? [0, 1, 2, 3, 4]
   const scheduleStartTime = watch('schedule_start_time') ?? '09:00'
@@ -169,17 +165,14 @@ export function CampaignForm({ campaign }: Props) {
 
   const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0
   const stepsValid = steps.length > 0 && steps.every(stepIsFilled)
-  const smtpValid = !useCustomSMTP || smtpRoutes.length > 0
-  const canActivate = detailsValid && stepsValid && smtpValid
+  const canActivate = detailsValid && stepsValid
 
   const missing: string[] = []
   if (!(name || '').trim()) missing.push('campaign name')
   if (selectedLists.length === 0) missing.push('at least one target list')
   if (steps.length === 0) missing.push('at least one step')
   else if (!steps.every(stepIsFilled)) missing.push('subject & body for every step/variant')
-  if (useCustomSMTP && smtpRoutes.length === 0) missing.push('at least one SMTP account')
-
-  const tabValid: Record<string, boolean> = { details: detailsValid, steps: stepsValid, smtp: smtpValid }
+  const tabValid: Record<string, boolean> = { details: detailsValid, steps: stepsValid }
 
   const toggleList = (id: number) => {
     setValue('contact_list_ids', selectedLists.includes(id)
@@ -188,11 +181,6 @@ export function CampaignForm({ campaign }: Props) {
     )
   }
 
-  const addSmtpRoute = (accountId: number) => {
-    if (!smtpRoutes.find(r => r.smtp_account === accountId)) {
-      setSmtpRoutes([...smtpRoutes, { smtp_account: accountId, weight: 10 }])
-    }
-  }
 
   const addStep = () => {
     setSteps(prev => [...prev, {
@@ -219,12 +207,12 @@ export function CampaignForm({ campaign }: Props) {
         return {
           ...s,
           variants: [
-            { label: 'A', subject: s.subject, html_content: s.html_content, text_content: s.text_content, weight: 10 },
-            { label: 'B', subject: '', html_content: '', text_content: '', weight: 10 },
+            { label: 'A', subject: s.subject, html_content: s.html_content, text_content: s.text_content },
+            { label: 'B', subject: '', html_content: '', text_content: '' },
           ],
         }
       }
-      return { ...s, variants: [...s.variants, { label: nextVariantLabel(s.variants), subject: '', html_content: '', text_content: '', weight: 10 }] }
+      return { ...s, variants: [...s.variants, { label: nextVariantLabel(s.variants), subject: '', html_content: '', text_content: '' }] }
     }))
   }
 
@@ -303,7 +291,6 @@ export function CampaignForm({ campaign }: Props) {
           subject: variant.subject,
           html_content: variant.html_content,
           text_content: variant.text_content,
-          weight: variant.weight,
         }
         if (variant.id) {
           await campaignsApi.updateVariant(campaignId, stepId, variant.id, variantPayload)
@@ -320,9 +307,6 @@ export function CampaignForm({ campaign }: Props) {
         ? await campaignsApi.update(campaign.id, data)
         : await campaignsApi.create(data)
       await persistSteps(res.data.id)
-      if (useCustomSMTP && smtpRoutes.length > 0) {
-        await campaignsApi.updateSmtpRoutes(res.data.id, smtpRoutes)
-      }
       return res.data
     },
     onSuccess: (data) => {
@@ -338,9 +322,6 @@ export function CampaignForm({ campaign }: Props) {
         ? await campaignsApi.update(campaign.id, data)
         : await campaignsApi.create(data)
       await persistSteps(res.data.id)
-      if (useCustomSMTP && smtpRoutes.length > 0) {
-        await campaignsApi.updateSmtpRoutes(res.data.id, smtpRoutes)
-      }
       await campaignsApi.activate(res.data.id)
       return res.data
     },
@@ -352,445 +333,359 @@ export function CampaignForm({ campaign }: Props) {
   })
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
+    <div className="flex flex-col h-full bg-background">
+
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between px-6 py-3.5 border-b bg-card shrink-0">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/campaigns')}>
+          <button onClick={() => router.push('/campaigns')} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft size={16} />
-          </Button>
+          </button>
           <div>
-            <h1 className="font-semibold">{campaign ? 'Edit Campaign' : 'New Campaign'}</h1>
-            <p className="text-xs text-muted-foreground">Build a single email or a multi-step drip campaign</p>
+            <h1 className="font-semibold text-sm">{campaign ? 'Edit Campaign' : 'New Campaign'}</h1>
+            <p className="text-xs text-muted-foreground">{name ? name : 'Untitled campaign'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {!canActivate && (
-            <p className="hidden md:block text-xs text-muted-foreground max-w-xs text-right">
-              To activate, add {missing.join(', ')}.
+            <p className="hidden md:block text-xs text-muted-foreground max-w-xs text-right leading-relaxed">
+              Complete: {missing.join(', ')}
             </p>
           )}
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleSubmit(d => saveMut.mutate(d))} loading={saveMut.isPending}>
-              <Save size={15} /> Save Draft
-            </Button>
-            <Button
-              onClick={handleSubmit(d => activateMut.mutate(d))}
-              loading={activateMut.isPending}
-              disabled={!canActivate}
-              title={canActivate ? undefined : `Missing: ${missing.join(', ')}`}
-            >
-              <Play size={15} /> Save &amp; Activate
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={handleSubmit(d => saveMut.mutate(d))} loading={saveMut.isPending}>
+            <Save size={14} /> Save Draft
+          </Button>
+          <Button size="sm"
+            onClick={handleSubmit(d => activateMut.mutate(d))}
+            loading={activateMut.isPending}
+            disabled={!canActivate}
+            title={canActivate ? undefined : `Missing: ${missing.join(', ')}`}
+          >
+            <Play size={14} /> Activate
+          </Button>
         </div>
       </div>
 
-      <div className="flex border-b bg-card px-6 gap-1">
-        {[
-          { key: 'details', label: 'Details', icon: Info, hint: 'Name, sender, lists & tracking' },
-          { key: 'steps', label: 'Steps', icon: Mail, count: steps.length, hint: 'Email sequence' },
-          { key: 'smtp', label: 'SMTP Routing', icon: Server, hint: 'Sending accounts' },
-        ].map(t => {
+      {/* ── Section tabs ── */}
+      <div className="flex border-b bg-card px-4 shrink-0">
+        {([
+          { key: 'details', label: 'Details', icon: Info, count: undefined as number | undefined },
+          { key: 'steps',   label: 'Steps',   icon: Mail,  count: steps.length },
+        ] as const).map(t => {
           const active = tab === t.key
+          const valid  = tabValid[t.key]
           return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key as any)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
                 active ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <t.icon size={15} />
-              {t.label}
-              {typeof t.count === 'number' && (
-                <span className={`text-xs rounded-full px-1.5 py-0.5 ${active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                  {t.count}
-                </span>
               )}
-              {tabValid[t.key]
-                ? <CheckCircle2 size={14} className="text-green-600" />
-                : <AlertCircle size={14} className="text-amber-500" />}
+            >
+              <t.icon size={14} />
+              {t.label}
+              {t.count !== undefined && (
+                <span className={cn('text-[11px] font-semibold rounded-full w-5 h-5 flex items-center justify-center',
+                  active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                )}>{t.count}</span>
+              )}
+              <span className={cn('w-1.5 h-1.5 rounded-full', valid ? 'bg-green-500' : 'bg-amber-400')} />
             </button>
           )
         })}
       </div>
 
+      {/* ── Body ── */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl p-6 grid grid-cols-1 lg:grid-cols-[1fr_18rem] gap-6 items-start">
-          <div className="min-w-0">
+        <div className="mx-auto max-w-5xl p-6 grid grid-cols-1 lg:grid-cols-[1fr_17rem] gap-6 items-start">
+          <div className="min-w-0 space-y-4">
+
         {tab === 'details' && (
-          <div className="space-y-5">
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Campaign Info</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Campaign Name *</Label>
-                  <Input {...register('name')} placeholder="Cold Outreach - SaaS Founders" className="mt-1" />
-                  {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
-                </div>
-              </CardContent>
-            </Card>
+          <div className="space-y-4">
 
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Sender Info (leave blank to use SMTP defaults)</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>From Name</Label>
-                    <Input {...register('from_name')} placeholder="Your Company" className="mt-1" />
-                  </div>
-                  <div>
-                    <Label>From Email</Label>
-                    <Input {...register('from_email')} type="email" placeholder="noreply@company.com" className="mt-1" />
-                  </div>
+            {/* Campaign name */}
+            <div className="rounded-xl border bg-card p-5 space-y-1">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Campaign Name</Label>
+              <Input {...register('name')} placeholder="e.g. Cold Outreach — SaaS Founders Q3" className="mt-1 text-sm h-10" />
+              {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
+            </div>
+
+            {/* Sender */}
+            <div className="rounded-xl border bg-card p-5 space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sender</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Leave blank to use SMTP account defaults</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">From Name</Label>
+                  <Input {...register('from_name')} placeholder="John Smith" className="mt-1 h-9 text-sm" />
                 </div>
                 <div>
-                  <Label>Reply-To Email</Label>
-                  <Input {...register('reply_to')} type="email" placeholder="support@company.com" className="mt-1" />
+                  <Label className="text-xs">From Email</Label>
+                  <Input {...register('from_email')} type="email" placeholder="john@company.com" className="mt-1 h-9 text-sm" />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div>
+                <Label className="text-xs">Reply-To</Label>
+                <Input {...register('reply_to')} type="email" placeholder="replies@company.com" className="mt-1 h-9 text-sm" />
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Target Lists *</CardTitle></CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Contacts in these lists are automatically enrolled — including ones added later.
-                </p>
-                {errors.contact_list_ids && (
-                  <p className="text-xs text-destructive mb-2">{errors.contact_list_ids.message}</p>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  {lists?.map((list: any) => (
-                    <label key={list.id} className="flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-muted text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedLists.includes(list.id)}
-                        onChange={() => toggleList(list.id)}
-                        className="rounded"
-                      />
-                      <div>
-                        <p className="font-medium">{list.name}</p>
-                        <p className="text-xs text-muted-foreground">{list.contact_count} contacts</p>
+            {/* Target lists */}
+            <div className="rounded-xl border bg-card p-5 space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Target Lists <span className="text-destructive">*</span></p>
+                <p className="text-xs text-muted-foreground mt-0.5">Contacts are enrolled automatically, including ones added later</p>
+              </div>
+              {errors.contact_list_ids && (
+                <p className="text-xs text-destructive">{errors.contact_list_ids.message}</p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                {lists?.map((list: any) => {
+                  const selected = selectedLists.includes(list.id)
+                  return (
+                    <label key={list.id} className={cn(
+                      'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors text-sm',
+                      selected ? 'border-primary bg-primary/5' : 'hover:bg-muted'
+                    )}>
+                      <div className={cn('w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                        selected ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+                      )}>
+                        {selected && <Check size={10} className="text-primary-foreground" />}
+                      </div>
+                      <input type="checkbox" checked={selected} onChange={() => toggleList(list.id)} className="sr-only" />
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{list.name}</p>
+                        <p className="text-xs text-muted-foreground">{list.contact_count?.toLocaleString()} contacts</p>
                       </div>
                     </label>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  )
+                })}
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Tracking</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between">
+            {/* Tracking */}
+            <div className="rounded-xl border bg-card p-5 space-y-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tracking & Behaviour</p>
+              {[
+                {
+                  label: 'Open & click tracking',
+                  desc: 'Track when recipients open emails and click links',
+                  checked: !!(trackOpens && trackClicks),
+                  onChange: (v: boolean) => { setValue('track_opens', v); setValue('track_clicks', v) },
+                },
+                {
+                  label: 'Stop on reply',
+                  desc: 'Halt campaign as soon as a reply is detected',
+                  checked: !!stopOnReply,
+                  onChange: (v: boolean) => setValue('stop_on_reply', v),
+                },
+              ].map(row => (
+                <div key={row.label} className="flex items-center justify-between gap-4">
                   <div>
-                    <Label>Open & Click Tracking</Label>
-                    <p className="text-xs text-muted-foreground">Track when recipients open each step and click links inside it</p>
+                    <p className="text-sm font-medium">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.desc}</p>
                   </div>
-                  <Switch
-                    checked={trackOpens && trackClicks}
-                    onCheckedChange={v => {
-                      setValue('track_opens', v)
-                      setValue('track_clicks', v)
-                    }}
-                  />
+                  <Switch checked={row.checked} onCheckedChange={row.onChange} />
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Stop if contact replies</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Halt the campaign as soon as a reply is detected (requires IMAP reply detection enabled on an SMTP account)
-                    </p>
-                  </div>
-                  <Switch checked={stopOnReply} onCheckedChange={v => setValue('stop_on_reply', v)} />
-                </div>
-              </CardContent>
-            </Card>
+              ))}
+            </div>
 
             <SendingScheduleCard
-              value={{
-                schedule_enabled: scheduleEnabled,
-                schedule_days: scheduleDays,
-                schedule_start_time: scheduleStartTime,
-                schedule_end_time: scheduleEndTime,
-                schedule_timezone: scheduleTimezone,
-              }}
-              onChange={patch => {
-                Object.entries(patch).forEach(([key, val]) => setValue(key as any, val as any))
-              }}
+              value={{ schedule_enabled: scheduleEnabled, schedule_days: scheduleDays, schedule_start_time: scheduleStartTime, schedule_end_time: scheduleEndTime, schedule_timezone: scheduleTimezone }}
+              onChange={patch => { Object.entries(patch).forEach(([key, val]) => setValue(key as any, val as any)) }}
             />
           </div>
         )}
 
         {tab === 'steps' && (
           <div className="space-y-4">
-            {steps.map((step, index) => (
-              <Card key={step.id ?? `new-${index}`}>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    Step {step.order}
-                    {index > 0 && (
-                      <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
-                        <Clock size={11} />
-                        wait {step.delay_days}d {step.delay_hours}h after step {step.order - 1}
-                      </span>
-                    )}
-                  </CardTitle>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveStep(index, -1)}>
-                      <ChevronUp size={14} />
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" disabled={index === steps.length - 1} onClick={() => moveStep(index, 1)}>
-                      <ChevronDown size={14} />
-                    </Button>
-                    <Button
-                      variant="ghost" size="icon-sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => removeStep(index)}
-                      disabled={steps.length === 1}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {step.variants.length === 0 ? (
-                    <>
-                      <div>
-                        <Label>Subject *</Label>
-                        <Input
-                          value={step.subject}
-                          onChange={e => updateStep(index, { subject: e.target.value })}
-                          placeholder="Quick question about {{company}}"
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>Email Body (HTML)</Label>
-                        <Textarea
-                          value={step.html_content}
-                          onChange={e => updateStep(index, { html_content: e.target.value })}
-                          placeholder="<p>Hi {{first_name}}, ...</p>"
-                          className="font-mono text-xs h-32 mt-1"
-                        />
-                      </div>
-                      <Button type="button" variant="outline" size="sm" onClick={() => addVariant(index)}>
-                        <Plus size={13} /> Add Variant (A/B test)
+            {steps.map((step, index) => {
+              const hasVariants = step.variants.length > 0
+              const activeTab = activeVarTab[index] ?? 0
+              const currentVariant = hasVariants ? step.variants[activeTab] : null
+
+              // What subject/html to show in the editor area
+              const editSubject = currentVariant ? currentVariant.subject : step.subject
+              const editHtml    = currentVariant ? currentVariant.html_content : step.html_content
+
+              const setSubject = (val: string) => currentVariant
+                ? updateVariant(index, activeTab, { subject: val })
+                : updateStep(index, { subject: val })
+              const setBody = (html: string, text: string) => currentVariant
+                ? updateVariant(index, activeTab, { html_content: html, text_content: text })
+                : updateStep(index, { html_content: html, text_content: text })
+
+              return (
+                <Card key={step.id ?? `new-${index}`}>
+                  {/* ── Step header ── */}
+                  <CardHeader className="flex flex-row items-center justify-between pb-0">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      Step {step.order}
+                      {index > 0 && (
+                        <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
+                          <Clock size={11} />
+                          wait {step.delay_days}d {step.delay_hours}h
+                        </span>
+                      )}
+                    </CardTitle>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveStep(index, -1)}>
+                        <ChevronUp size={14} />
                       </Button>
-                    </>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Variants (weighted A/B test)</Label>
-                        <Button type="button" variant="outline" size="sm" onClick={() => addVariant(index)}>
-                          <Plus size={13} /> Add Variant
-                        </Button>
+                      <Button variant="ghost" size="icon-sm" disabled={index === steps.length - 1} onClick={() => moveStep(index, 1)}>
+                        <ChevronDown size={14} />
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive"
+                        onClick={() => removeStep(index)} disabled={steps.length === 1}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </CardHeader>
+
+                  {/* ── Variant tabs ── */}
+                  <div className="flex items-center gap-1 px-4 pt-2 border-b">
+                    {hasVariants ? (
+                      <>
+                        {step.variants.map((v, vi) => {
+                          const isActive = activeTab === vi
+                          return (
+                            <div key={vi} role="tab"
+                              onClick={() => setActiveVarTab(prev => ({ ...prev, [index]: vi }))}
+                              className={cn(
+                                'group relative flex items-center gap-2 px-3 py-2 rounded-t-lg border border-b-0 -mb-px cursor-pointer transition-all select-none min-w-0 max-w-[220px]',
+                                isActive
+                                  ? 'bg-background border-border text-foreground shadow-sm'
+                                  : 'bg-muted/40 border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                              )}
+                            >
+                              <span className={cn(
+                                'flex-none w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center',
+                                isActive ? 'bg-primary text-primary-foreground' : 'bg-muted-foreground/20 text-muted-foreground'
+                              )}>{v.label}</span>
+                              <span className="truncate text-xs font-medium">
+                                {v.subject || <span className="italic text-muted-foreground/60">No subject</span>}
+                              </span>
+                              {step.variants.length > 1 && (
+                                <span role="button"
+                                  onClick={e => { e.stopPropagation(); removeVariant(index, vi); setActiveVarTab(prev => ({ ...prev, [index]: Math.max(0, vi - 1) })) }}
+                                  className="flex-none opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                                ><X size={10} /></span>
+                              )}
+                            </div>
+                          )
+                        })}
+                        <button type="button"
+                          onClick={() => { addVariant(index); setActiveVarTab(prev => ({ ...prev, [index]: step.variants.length })) }}
+                          className="flex items-center gap-1 px-2 py-1.5 ml-1 text-xs text-muted-foreground hover:text-primary rounded-md hover:bg-muted transition-colors"
+                        ><Plus size={11} /> Add Variant</button>
+                      </>
+                    ) : (
+                      <button type="button"
+                        onClick={() => { addVariant(index); setActiveVarTab(prev => ({ ...prev, [index]: 0 })) }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-xs font-medium border border-dashed rounded-md text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+                      ><Plus size={11} /> Add A/B Variant</button>
+                    )}
+                  </div>
+
+                  <CardContent className="pt-4 space-y-4">
+                    {/* Subject */}
+                    <div>
+                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject *</Label>
+                      <Input value={editSubject} onChange={e => setSubject(e.target.value)}
+                        placeholder="Quick question about {{company}}" className="mt-1.5 h-10" />
+                    </div>
+
+                    {/* Body */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Body</Label>
+                        <button type="button" onClick={() => setPreview({ subject: editSubject, html: editHtml })}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                          <Eye size={12} /> Preview
+                        </button>
                       </div>
-                      {step.variants.map((variant, vIndex) => (
-                        <div key={variant.id ?? `new-${vIndex}`} className="rounded-lg border p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold">Variant {variant.label}</span>
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs">Weight</Label>
-                              <Input
-                                type="number" min={1}
-                                value={variant.weight}
-                                onChange={e => updateVariant(index, vIndex, { weight: Number(e.target.value) })}
-                                className="w-16 h-7 text-xs"
-                              />
-                              <Button
-                                variant="ghost" size="icon-sm"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => removeVariant(index, vIndex)}
-                              >
-                                <Trash2 size={13} />
-                              </Button>
+                      <EmailBodyEditor value={editHtml} onChange={setBody} placeholder="Hi {{first_name}}, ..." />
+                    </div>
+
+                    {/* Auto-optimize */}
+                    {step.variants.length > 1 && (
+                      <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">Auto-optimize</p>
+                            <p className="text-xs text-muted-foreground">Keep only the best-performing variant after enough sends</p>
+                          </div>
+                          <Switch checked={step.auto_optimize} onCheckedChange={v => updateStep(index, { auto_optimize: v })} />
+                        </div>
+                        {step.auto_optimize && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">Winning Metric</Label>
+                              <select value={step.auto_optimize_metric}
+                                onChange={e => updateStep(index, { auto_optimize_metric: e.target.value as LocalStep['auto_optimize_metric'] })}
+                                className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm">
+                                <option value="open_rate">Open Rate</option>
+                                <option value="click_rate">Click Rate</option>
+                                <option value="reply_rate">Reply Rate</option>
+                              </select>
+                            </div>
+                            <div>
+                              <Label className="text-xs">Min Sends per Variant</Label>
+                              <Input type="number" min={1} value={step.auto_optimize_min_sends}
+                                onChange={e => updateStep(index, { auto_optimize_min_sends: Number(e.target.value) })}
+                                className="mt-1" />
                             </div>
                           </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Delay */}
+                    {index > 0 && (
+                      <div className="grid grid-cols-2 gap-3 pt-1 border-t">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Wait Days</Label>
+                          <Input type="number" min={0} value={step.delay_days}
+                            onChange={e => updateStep(index, { delay_days: Number(e.target.value) })} className="mt-1" />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Wait Hours</Label>
+                          <Input type="number" min={0} value={step.delay_hours}
+                            onChange={e => updateStep(index, { delay_hours: Number(e.target.value) })} className="mt-1" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Stop conditions */}
+                    <div className="space-y-3 pt-1 border-t">
+                      {[
+                        { label: 'Stop if opened', desc: 'Skip remaining steps if this email is opened', key: 'stop_on_open' as const },
+                        { label: 'Stop if clicked', desc: 'Skip remaining steps if a link is clicked', key: 'stop_on_click' as const },
+                      ].map(row => (
+                        <div key={row.key} className="flex items-center justify-between">
                           <div>
-                            <Label className="text-xs">Subject *</Label>
-                            <Input
-                              value={variant.subject}
-                              onChange={e => updateVariant(index, vIndex, { subject: e.target.value })}
-                              placeholder="Quick question about {{company}}"
-                              className="mt-1"
-                            />
+                            <p className="text-sm font-medium">{row.label}</p>
+                            <p className="text-xs text-muted-foreground">{row.desc}</p>
                           </div>
-                          <div>
-                            <Label className="text-xs">Email Body (HTML)</Label>
-                            <Textarea
-                              value={variant.html_content}
-                              onChange={e => updateVariant(index, vIndex, { html_content: e.target.value })}
-                              placeholder="<p>Hi {{first_name}}, ...</p>"
-                              className="font-mono text-xs h-28 mt-1"
-                            />
-                          </div>
+                          <Switch checked={step[row.key]} onCheckedChange={v => updateStep(index, { [row.key]: v })} />
                         </div>
                       ))}
-                      <p className="text-xs text-muted-foreground">
-                        Each send randomly picks a variant in proportion to its weight.
-                      </p>
-
-                      {step.variants.length > 1 && (
-                        <div className="rounded-lg border p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <Label>Auto-optimize</Label>
-                              <p className="text-xs text-muted-foreground">
-                                Once every variant has enough sends, automatically deactivate the rest and keep only the best performer
-                              </p>
-                            </div>
-                            <Switch
-                              checked={step.auto_optimize}
-                              onCheckedChange={v => updateStep(index, { auto_optimize: v })}
-                            />
-                          </div>
-                          {step.auto_optimize && (
-                            <div className="grid grid-cols-2 gap-3 pt-1">
-                              <div>
-                                <Label className="text-xs">Winning Metric</Label>
-                                <select
-                                  value={step.auto_optimize_metric}
-                                  onChange={e => updateStep(index, { auto_optimize_metric: e.target.value as LocalStep['auto_optimize_metric'] })}
-                                  className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm"
-                                >
-                                  <option value="open_rate">Open Rate</option>
-                                  <option value="click_rate">Click Rate</option>
-                                  <option value="reply_rate">Reply Rate</option>
-                                </select>
-                              </div>
-                              <div>
-                                <Label className="text-xs">Min Sends per Variant</Label>
-                                <Input
-                                  type="number" min={1}
-                                  value={step.auto_optimize_min_sends}
-                                  onChange={e => updateStep(index, { auto_optimize_min_sends: Number(e.target.value) })}
-                                  className="mt-1"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
-                  )}
+                  </CardContent>
+                </Card>
+              )
+            })}
 
-                  {index > 0 && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label>Wait Days</Label>
-                        <Input
-                          type="number" min={0}
-                          value={step.delay_days}
-                          onChange={e => updateStep(index, { delay_days: Number(e.target.value) })}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>Wait Hours</Label>
-                        <Input
-                          type="number" min={0}
-                          value={step.delay_hours}
-                          onChange={e => updateStep(index, { delay_hours: Number(e.target.value) })}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-1">
-                    <div>
-                      <Label>Stop campaign if opened</Label>
-                      <p className="text-xs text-muted-foreground">Skip remaining steps if this email is opened</p>
-                    </div>
-                    <Switch
-                      checked={step.stop_on_open}
-                      onCheckedChange={v => updateStep(index, { stop_on_open: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Stop campaign if clicked</Label>
-                      <p className="text-xs text-muted-foreground">Skip remaining steps if a link in this email is clicked</p>
-                    </div>
-                    <Switch
-                      checked={step.stop_on_click}
-                      onCheckedChange={v => updateStep(index, { stop_on_click: v })}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-
-            <Button variant="outline" onClick={addStep} className="w-full">
+            {/* Add Step */}
+            <button type="button" onClick={addStep}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
               <Plus size={15} /> Add Step
-            </Button>
+            </button>
           </div>
         )}
 
-        {tab === 'smtp' && (
-          <div className="space-y-5">
-            <Card>
-              <CardHeader><CardTitle className="text-sm">SMTP Routing</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Use Custom SMTP Routing</Label>
-                    <p className="text-xs text-muted-foreground">Override default SMTP weights for this campaign</p>
-                  </div>
-                  <Switch checked={useCustomSMTP} onCheckedChange={v => setValue('use_custom_smtp_routing', v)} />
-                </div>
 
-                {useCustomSMTP && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">Select SMTP accounts and set routing weights:</p>
-                    {smtpAccounts?.map((account: any) => {
-                      const route = smtpRoutes.find(r => r.smtp_account === account.id)
-                      return (
-                        <div key={account.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                          <input
-                            type="checkbox"
-                            checked={!!route}
-                            onChange={() => route
-                              ? setSmtpRoutes(smtpRoutes.filter(r => r.smtp_account !== account.id))
-                              : addSmtpRoute(account.id)
-                            }
-                            className="rounded"
-                          />
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{account.name}</p>
-                            <p className="text-xs text-muted-foreground">{account.from_email}</p>
-                          </div>
-                          {route && (
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs">Weight</Label>
-                              <Input
-                                type="number"
-                                value={route.weight}
-                                onChange={e => setSmtpRoutes(smtpRoutes.map(r =>
-                                  r.smtp_account === account.id ? { ...r, weight: Number(e.target.value) } : r
-                                ))}
-                                className="w-16 h-7 text-xs"
-                                min={1}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {!useCustomSMTP && (
-                  <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-                    <p>All active SMTP accounts will be used with their configured weights.</p>
-                    <p className="mt-1">Enable custom routing above to set per-campaign weights.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
           </div>
 
           {/* Live summary — see the whole campaign at a glance */}
@@ -855,10 +750,6 @@ export function CampaignForm({ campaign }: Props) {
                   <SummaryFlag on={trackOpens && trackClicks} label="Open & click tracking" />
                   <SummaryFlag on={stopOnReply} label="Stop on reply" />
                   <SummaryFlag on={scheduleEnabled} label={scheduleEnabled ? `Business hours (${scheduleStartTime}–${scheduleEndTime})` : 'Send anytime'} forceCheck={!scheduleEnabled} />
-                  <div className="flex items-center gap-2 text-xs">
-                    <Server size={13} className="text-muted-foreground flex-none" />
-                    <span>{useCustomSMTP ? `Custom routing (${smtpRoutes.length})` : 'All active SMTP accounts'}</span>
-                  </div>
                 </div>
 
                 {canActivate ? (
@@ -882,6 +773,88 @@ export function CampaignForm({ campaign }: Props) {
           </aside>
         </div>
       </div>
+
+      {/* Email preview panel — uses the logged-in user's own profile as sample data */}
+      {preview && (() => {
+        // Sample CONTACT data — not the sender's profile.
+        const sampleMap: [string, string][] = [
+          ['first_name',      'Sarah'],
+          ['last_name',       'Johnson'],
+          ['full_name',       'Sarah Johnson'],
+          ['company',         'Stripe'],
+          ['title',           'Head of Growth'],
+          ['email',           'sarah@stripe.com'],
+          ['phone',           '+1 555 0192'],
+          ['website',         'stripe.com'],
+          ['city',            'San Francisco'],
+          ['state',           'CA'],
+          ['country',         'USA'],
+          // Sender tags: use campaign From fields if set, else fall back to logged-in user profile.
+          ['sender_name',    fromName || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Your Name'],
+          ['sender_email',   fromEmail || user?.email || 'you@example.com'],
+          ['sender_company', user?.company_name || 'Your Company'],
+        ]
+        // Mirrors the backend spin() — picks one option at random from {a|b|c}.
+        // Run AFTER merge-tag substitution so {{tags}} are already gone.
+        const spin = (str: string) =>
+          str.replace(/\{([^{}]+)\}/g, (_, inner) => {
+            const opts = inner.split('|')
+            return opts[Math.floor(Math.random() * opts.length)]
+          })
+        const applyVars = (str: string) =>
+          spin(sampleMap.reduce((s, [tag, val]) => s.replace(new RegExp(`\\{\\{${tag}\\}\\}`, 'g'), val), str))
+
+        return (
+          <div className="fixed inset-0 z-50 flex" onClick={() => setPreview(null)}>
+            <div className="flex-1 bg-black/50 backdrop-blur-sm" />
+            <div
+              className="w-full max-w-2xl h-full bg-card border-l flex flex-col shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-3.5 border-b shrink-0">
+                <div>
+                  <p className="font-semibold text-sm">Email Preview</p>
+                  {preview.subject && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      <span className="font-medium">Subject:</span> {applyVars(preview.subject)}
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => setPreview(null)} className="p-1.5 rounded hover:bg-muted">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="px-5 py-2.5 bg-muted/40 border-b shrink-0 space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Sample recipient data (not your profile)
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {(['first_name', 'company', 'title', 'sender_name'] as const).map(tag => {
+                    const entry = sampleMap.find(([t]) => t === tag)
+                    if (!entry) return null
+                    return (
+                      <span key={tag} className="text-[11px] text-muted-foreground">
+                        <span className="font-mono bg-muted px-1 rounded">{`{{${tag}}}`}</span>
+                        <span className="mx-1">→</span>
+                        <span className="font-medium text-foreground">{entry[1]}</span>
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto bg-gray-100">
+                <iframe
+                  srcDoc={`<!DOCTYPE html><html><body style="font-family:sans-serif;font-size:14px;line-height:1.6;padding:24px;max-width:600px;margin:0 auto">${
+                    applyVars(preview.html || '<p style="color:#888">No content yet.</p>')
+                  }</body></html>`}
+                  className="w-full h-full border-none"
+                  title="Email preview"
+                />
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
