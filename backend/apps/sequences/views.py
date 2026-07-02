@@ -42,11 +42,15 @@ def list_campaigns(request, status: Optional[str] = None, search: Optional[str] 
 def create_campaign(request, data: CampaignIn):
     payload = data.dict()
     list_ids = payload.pop('contact_list_ids', [])
+    smtp_ids = payload.pop('smtp_account_ids', [])
     payload['user'] = request.auth
     campaign = Campaign.objects.create(**payload)
     if list_ids:
         from apps.contacts.models import ContactList
         campaign.contact_lists.set(ContactList.objects.filter(user=request.auth, id__in=list_ids))
+    if smtp_ids:
+        from apps.smtp_accounts.models import SMTPAccount
+        campaign.smtp_accounts.set(SMTPAccount.objects.filter(user=request.auth, id__in=smtp_ids))
     return campaign
 
 
@@ -63,12 +67,16 @@ def update_campaign(request, campaign_id: int, data: CampaignUpdateIn):
     campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
     payload = data.dict(exclude_none=True)
     list_ids = payload.pop('contact_list_ids', None)
+    smtp_ids = payload.pop('smtp_account_ids', None)
     for field, value in payload.items():
         setattr(campaign, field, value)
     campaign.save()
     if list_ids is not None:
         from apps.contacts.models import ContactList
         campaign.contact_lists.set(ContactList.objects.filter(user=request.auth, id__in=list_ids))
+    if smtp_ids is not None:
+        from apps.smtp_accounts.models import SMTPAccount
+        campaign.smtp_accounts.set(SMTPAccount.objects.filter(user=request.auth, id__in=smtp_ids))
     return campaign
 
 

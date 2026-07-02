@@ -7,7 +7,13 @@ logger = logging.getLogger(__name__)
 
 
 def _smtp_accounts_for(campaign):
+    """Active sending mailboxes for a campaign. Uses the campaign's selected
+    accounts (Instantly-style); if none were selected, falls back to every
+    active account for the user so older campaigns keep sending."""
     from apps.smtp_accounts.models import SMTPAccount
+    selected = list(campaign.smtp_accounts.filter(is_active=True))
+    if selected:
+        return selected
     return list(SMTPAccount.objects.filter(user=campaign.user, is_active=True))
 
 

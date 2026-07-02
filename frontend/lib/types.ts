@@ -123,11 +123,20 @@ export interface CampaignStep {
   variants: CampaignStepVariant[]
 }
 
+export interface CampaignSmtpRef {
+  id: number
+  name: string
+  from_email: string
+  is_active: boolean
+}
+
 export interface Campaign {
   id: number
   name: string
   contact_list_ids: number[]
   contact_lists_detail: ContactList[]
+  smtp_account_ids: number[]
+  smtp_accounts_detail: CampaignSmtpRef[]
   from_name: string
   from_email: string
   reply_to: string

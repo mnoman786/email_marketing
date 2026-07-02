@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { campaignsApi, listsApi } from '@/lib/api'
+import { campaignsApi, listsApi, smtpApi } from '@/lib/api'
 import { Campaign, CampaignStep } from '@/lib/types'
 import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
@@ -21,10 +21,9 @@ import { cn } from '@/lib/utils'
 
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
-  from_name: z.string().optional(),
-  from_email: z.string().email().optional().or(z.literal('')),
   reply_to: z.string().email().optional().or(z.literal('')),
   contact_list_ids: z.array(z.number()).min(1, 'Select at least one list'),
+  smtp_account_ids: z.array(z.number()).min(1, 'Select at least one sending account'),
   track_opens: z.boolean().optional(),
   track_clicks: z.boolean().optional(),
   stop_on_reply: z.boolean().optional(),
@@ -123,15 +122,20 @@ export function CampaignForm({ campaign, initialName }: Props) {
     staleTime: 0,
   })
 
+  const { data: smtpAccounts } = useQuery({
+    queryKey: ['smtp-all'],
+    queryFn: () => smtpApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
+    staleTime: 0,
+  })
+
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: campaign?.name || initialName || '',
-      from_name: campaign?.from_name || '',
-      from_email: campaign?.from_email || '',
       reply_to: campaign?.reply_to || '',
       contact_list_ids: campaign?.contact_list_ids || [],
+      smtp_account_ids: campaign?.smtp_account_ids || [],
       track_opens: campaign?.track_opens ?? true,
       track_clicks: campaign?.track_clicks ?? true,
       stop_on_reply: campaign?.stop_on_reply ?? true,
@@ -144,9 +148,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
   })
 
   const name = watch('name')
-  const fromName = watch('from_name')
-  const fromEmail = watch('from_email')
   const selectedLists = watch('contact_list_ids') || []
+  const selectedSmtp = watch('smtp_account_ids') || []
   const trackOpens = watch('track_opens')
   const trackClicks = watch('track_clicks')
   const stopOnReply = watch('stop_on_reply')
@@ -158,6 +161,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
 
   const selectedListObjs = (lists || []).filter((l: any) => selectedLists.includes(l.id))
   const totalContacts = selectedListObjs.reduce((sum: number, l: any) => sum + (l.contact_count || 0), 0)
+  const selectedSmtpObjs = (smtpAccounts || []).filter((a: any) => selectedSmtp.includes(a.id))
 
   // Per-tab completeness — drives the progress indicators and gates activation.
   const stepIsFilled = (s: LocalStep) =>
@@ -165,12 +169,13 @@ export function CampaignForm({ campaign, initialName }: Props) {
       ? s.variants.every(v => v.subject.trim() && v.html_content.trim())
       : Boolean(s.subject.trim() && s.html_content.trim())
 
-  const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0
+  const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0 && selectedSmtp.length > 0
   const stepsValid = steps.length > 0 && steps.every(stepIsFilled)
   const canActivate = detailsValid && stepsValid
 
   const missing: string[] = []
   if (!(name || '').trim()) missing.push('campaign name')
+  if (selectedSmtp.length === 0) missing.push('at least one sending account')
   if (selectedLists.length === 0) missing.push('at least one target list')
   if (steps.length === 0) missing.push('at least one step')
   else if (!steps.every(stepIsFilled)) missing.push('subject & body for every step/variant')
@@ -180,6 +185,13 @@ export function CampaignForm({ campaign, initialName }: Props) {
     setValue('contact_list_ids', selectedLists.includes(id)
       ? selectedLists.filter(x => x !== id)
       : [...selectedLists, id]
+    )
+  }
+
+  const toggleSmtp = (id: number) => {
+    setValue('smtp_account_ids', selectedSmtp.includes(id)
+      ? selectedSmtp.filter(x => x !== id)
+      : [...selectedSmtp, id]
     )
   }
 
@@ -419,24 +431,52 @@ export function CampaignForm({ campaign, initialName }: Props) {
               {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
             </div>
 
-            {/* Sender */}
+            {/* Accounts to use */}
             <div className="rounded-xl border bg-card p-5 space-y-3">
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sender</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Leave blank to use SMTP account defaults</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Accounts to Send From <span className="text-destructive">*</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Selected accounts rotate equally per email. The From name & address come from each account.
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">From Name</Label>
-                  <Input {...register('from_name')} placeholder="John Smith" className="mt-1 h-9 text-sm" />
+              {errors.smtp_account_ids && (
+                <p className="text-xs text-destructive">{errors.smtp_account_ids.message as string}</p>
+              )}
+              {(smtpAccounts || []).length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">No SMTP accounts yet.</p>
+                  <a href="/smtp" className="text-sm text-primary hover:underline">Add a sending account →</a>
                 </div>
-                <div>
-                  <Label className="text-xs">From Email</Label>
-                  <Input {...register('from_email')} type="email" placeholder="john@company.com" className="mt-1 h-9 text-sm" />
+              ) : (
+                <div className="grid grid-cols-1 gap-2">
+                  {smtpAccounts.map((acc: any) => {
+                    const selected = selectedSmtp.includes(acc.id)
+                    return (
+                      <label key={acc.id} className={cn(
+                        'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors text-sm',
+                        selected ? 'border-primary bg-primary/5' : 'hover:bg-muted',
+                        !acc.is_active && 'opacity-60'
+                      )}>
+                        <div className={cn('w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                          selected ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+                        )}>
+                          {selected && <Check size={10} className="text-primary-foreground" />}
+                        </div>
+                        <input type="checkbox" checked={selected} onChange={() => toggleSmtp(acc.id)} className="sr-only" />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium truncate">{acc.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{acc.from_email}</p>
+                        </div>
+                        {!acc.is_active && <span className="text-xs text-amber-600 shrink-0">inactive</span>}
+                      </label>
+                    )
+                  })}
                 </div>
-              </div>
-              <div>
-                <Label className="text-xs">Reply-To</Label>
+              )}
+              <div className="pt-1">
+                <Label className="text-xs">Reply-To <span className="text-muted-foreground font-normal">(optional)</span></Label>
                 <Input {...register('reply_to')} type="email" placeholder="replies@company.com" className="mt-1 h-9 text-sm" />
               </div>
             </div>
@@ -711,14 +751,18 @@ export function CampaignForm({ campaign, initialName }: Props) {
                 </div>
 
                 <div className="border-t pt-3">
-                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5"><Mail size={12} /> Sender</p>
-                  {fromEmail || fromName ? (
-                    <p className="text-xs leading-relaxed">
-                      {fromName && <span className="font-medium">{fromName}</span>}
-                      {fromEmail && <span className="text-muted-foreground"> &lt;{fromEmail}&gt;</span>}
-                    </p>
+                  <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5"><Mail size={12} /> Sending Accounts</p>
+                  {selectedSmtpObjs.length ? (
+                    <>
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {selectedSmtpObjs.map((a: any) => (
+                          <span key={a.id} className="text-xs rounded-full bg-muted px-2 py-0.5 truncate max-w-full">{a.name}</span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{selectedSmtpObjs.length} account(s) · rotate equally</p>
+                    </>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Uses SMTP account defaults</p>
+                    <p className="text-xs text-destructive">No sending accounts selected</p>
                   )}
                 </div>
 
@@ -799,9 +843,9 @@ export function CampaignForm({ campaign, initialName }: Props) {
           ['city',            'San Francisco'],
           ['state',           'CA'],
           ['country',         'USA'],
-          // Sender tags: use campaign From fields if set, else fall back to logged-in user profile.
-          ['sender_name',    fromName || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Your Name'],
-          ['sender_email',   fromEmail || user?.email || 'you@example.com'],
+          // Sender tags: use the first selected sending account, else fall back to logged-in user profile.
+          ['sender_name',    selectedSmtpObjs[0]?.from_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Your Name'],
+          ['sender_email',   selectedSmtpObjs[0]?.from_email || user?.email || 'you@example.com'],
           ['sender_company', user?.company_name || 'Your Company'],
         ]
         // Mirrors the backend spin() — picks one option at random from {a|b|c}.

@@ -15,6 +15,9 @@ class Campaign(SendWindowMixin, models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='campaigns')
     name = models.CharField(max_length=255)
     contact_lists = models.ManyToManyField('contacts.ContactList', related_name='campaigns')
+    # Sending mailboxes for this campaign (Instantly-style). All selected active
+    # accounts rotate equally per send. Empty = fall back to every active account.
+    smtp_accounts = models.ManyToManyField('smtp_accounts.SMTPAccount', related_name='campaigns', blank=True)
     from_name = models.CharField(max_length=255, blank=True)
     from_email = models.EmailField(blank=True)
     reply_to = models.EmailField(blank=True)

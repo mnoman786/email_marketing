@@ -13,6 +13,13 @@ class ContactListRefOut(Schema):
         return obj.contact_count
 
 
+class SmtpAccountRefOut(Schema):
+    id: int
+    name: str
+    from_email: str
+    is_active: bool
+
+
 
 class CampaignStepVariantOut(Schema):
     id: int
@@ -112,6 +119,8 @@ class CampaignOut(Schema):
     name: str
     contact_list_ids: List[int]
     contact_lists_detail: List[ContactListRefOut]
+    smtp_account_ids: List[int]
+    smtp_accounts_detail: List[SmtpAccountRefOut]
     from_name: str
     from_email: str
     reply_to: str
@@ -135,6 +144,14 @@ class CampaignOut(Schema):
     @staticmethod
     def resolve_contact_lists_detail(obj):
         return list(obj.contact_lists.all())
+
+    @staticmethod
+    def resolve_smtp_account_ids(obj):
+        return list(obj.smtp_accounts.values_list('id', flat=True))
+
+    @staticmethod
+    def resolve_smtp_accounts_detail(obj):
+        return list(obj.smtp_accounts.all())
 
     @staticmethod
     def resolve_steps(obj):
@@ -186,6 +203,7 @@ class CampaignListOut(Schema):
 class CampaignIn(Schema):
     name: str
     contact_list_ids: List[int] = []
+    smtp_account_ids: List[int] = []
     from_name: str = ''
     from_email: str = ''
     reply_to: str = ''
@@ -202,6 +220,7 @@ class CampaignIn(Schema):
 class CampaignUpdateIn(Schema):
     name: Optional[str] = None
     contact_list_ids: Optional[List[int]] = None
+    smtp_account_ids: Optional[List[int]] = None
     from_name: Optional[str] = None
     from_email: Optional[str] = None
     reply_to: Optional[str] = None
