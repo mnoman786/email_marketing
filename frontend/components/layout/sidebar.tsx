@@ -11,15 +11,15 @@ import {
 import { useEffect, useRef, useState } from 'react'
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/inbox', label: 'Inbox', icon: Inbox },
-  { href: '/contacts', label: 'Leads', icon: Users },
-  { href: '/lists', label: 'Lead Lists', icon: ListFilter },
-  { href: '/lead-finder', label: 'Lead Finder', icon: Search },
-  { href: '/suppressions', label: 'Suppression', icon: ShieldBan },
-  { href: '/smtp', label: 'SMTP Accounts', icon: Server },
+  { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
+  { href: '/inbox', label: 'Unibox', icon: Inbox },
+  { href: '/contacts', label: 'Leads', icon: Users },
+  { href: '/lists', label: 'Lists', icon: ListFilter },
+  { href: '/lead-finder', label: 'Lead Finder', icon: Search },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/smtp', label: 'Accounts', icon: Server },
+  { href: '/suppressions', label: 'Blocklist', icon: ShieldBan },
 ]
 
 const bottomItems = [
