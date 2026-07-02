@@ -62,7 +62,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
       ? contactsApi.update(contact.id, data)
       : contactsApi.create(data),
     onSuccess: () => {
-      toast.success(contact ? 'Contact updated' : 'Contact created')
+      toast.success(contact ? 'Lead updated' : 'Lead created')
       onSaved()
     },
     onError: (err: any) => {
@@ -80,7 +80,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{contact ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
+          <DialogTitle>{contact ? 'Edit Lead' : 'Add Lead'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="space-y-4">
           <div>

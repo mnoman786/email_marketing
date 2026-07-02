@@ -526,7 +526,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
             <div className="rounded-xl border bg-card p-5 space-y-3">
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Target Lists <span className="text-destructive">*</span></p>
-                <p className="text-xs text-muted-foreground mt-0.5">Contacts are enrolled automatically, including ones added later</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Leads are enrolled automatically, including ones added later</p>
               </div>
               {errors.contact_list_ids && (
                 <p className="text-xs text-destructive">{errors.contact_list_ids.message}</p>
@@ -547,7 +547,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
                       <input type="checkbox" checked={selected} onChange={() => toggleList(list.id)} className="sr-only" />
                       <div className="min-w-0">
                         <p className="font-medium truncate">{list.name}</p>
-                        <p className="text-xs text-muted-foreground">{list.contact_count?.toLocaleString()} contacts</p>
+                        <p className="text-xs text-muted-foreground">{list.contact_count?.toLocaleString()} leads</p>
                       </div>
                     </label>
                   )
@@ -769,7 +769,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-medium flex items-center gap-1.5"><GitBranch size={14} /> Branching</p>
-                          <p className="text-xs text-muted-foreground">Route contacts to different steps based on engagement</p>
+                          <p className="text-xs text-muted-foreground">Route leads to different steps based on engagement</p>
                         </div>
                         <Switch
                           checked={step.transitions.length > 0}
@@ -918,7 +918,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
                           <span key={l.id} className="text-xs rounded-full bg-muted px-2 py-0.5">{l.name}</span>
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground">{totalContacts.toLocaleString()} contacts enrolled</p>
+                      <p className="text-xs text-muted-foreground">{totalContacts.toLocaleString()} leads enrolled</p>
                     </>
                   ) : (
                     <p className="text-xs text-destructive">No lists selected</p>

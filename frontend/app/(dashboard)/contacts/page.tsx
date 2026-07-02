@@ -75,7 +75,7 @@ export default function ContactsPage() {
     mutationFn: (id: number) => contactsApi.delete(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['contacts'] })
-      toast.success('Contact deleted')
+      toast.success('Lead deleted')
       setDeleteId(null)
     },
   })
@@ -84,7 +84,7 @@ export default function ContactsPage() {
     mutationFn: (ids: number[]) => contactsApi.bulkDelete(ids),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['contacts'] })
-      toast.success(`${selected.length} contacts deleted`)
+      toast.success(`${selected.length} leads deleted`)
       setSelected([])
     },
   })
@@ -104,15 +104,15 @@ export default function ContactsPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Contacts</h1>
-          <p className="text-sm text-muted-foreground">Manage your subscriber base</p>
+          <h1 className="text-2xl font-bold">Leads</h1>
+          <p className="text-sm text-muted-foreground">Manage your lead base</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <Upload size={16} /> Import
           </Button>
           <Button onClick={() => { setEditContact(null); setShowForm(true) }}>
-            <Plus size={16} /> Add Contact
+            <Plus size={16} /> Add Lead
           </Button>
         </div>
       </div>
@@ -161,9 +161,9 @@ export default function ContactsPage() {
         ) : contacts.length === 0 ? (
           <EmptyState
             icon={Users}
-            title="No contacts found"
-            description="Import contacts or add them manually to get started."
-            action={{ label: 'Add Contact', onClick: () => setShowForm(true) }}
+            title="No leads found"
+            description="Import leads or add them manually to get started."
+            action={{ label: 'Add Lead', onClick: () => setShowForm(true) }}
           />
         ) : (
           <>
@@ -278,7 +278,7 @@ export default function ContactsPage() {
         open={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
-        title="Delete Contact"
+        title="Delete Lead"
         description="Are you sure? This action cannot be undone."
         confirmLabel="Delete"
         destructive

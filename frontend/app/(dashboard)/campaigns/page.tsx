@@ -159,7 +159,7 @@ export default function CampaignsPage() {
           <EmptyState
             icon={Megaphone}
             title="No campaigns yet"
-            description="Create a campaign to send a single email or a multi-step drip to your contacts."
+            description="Create a campaign to send a single email or a multi-step drip to your leads."
             action={{ label: 'Create Campaign', onClick: () => router.push('/campaigns/new') }}
           />
         ) : (

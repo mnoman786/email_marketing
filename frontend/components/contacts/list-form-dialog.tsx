@@ -57,7 +57,7 @@ export function ListFormDialog({ open, onClose, list, onSaved }: Props) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{list ? 'Edit List' : 'Create Contact List'}</DialogTitle>
+          <DialogTitle>{list ? 'Edit List' : 'Create Lead List'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="space-y-4">
           <div>

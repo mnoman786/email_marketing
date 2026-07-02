@@ -40,8 +40,8 @@ export default function ListsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Contact Lists</h1>
-          <p className="text-sm text-muted-foreground">Organize contacts into targeted groups</p>
+          <h1 className="text-2xl font-bold">Lead Lists</h1>
+          <p className="text-sm text-muted-foreground">Organize leads into targeted groups</p>
         </div>
         <Button onClick={() => { setEditList(null); setShowForm(true) }}>
           <Plus size={16} /> New List
@@ -66,7 +66,7 @@ export default function ListsPage() {
         <EmptyState
           icon={ListFilter}
           title="No lists yet"
-          description="Create contact lists to organize your subscribers for targeted campaigns."
+          description="Create lead lists to organize your leads for targeted campaigns."
           action={{ label: 'Create List', onClick: () => setShowForm(true) }}
         />
       ) : (
@@ -81,7 +81,7 @@ export default function ListsPage() {
                   <div>
                     <h3 className="font-semibold">{list.name}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {list.contact_count.toLocaleString()} active contacts
+                      {list.contact_count.toLocaleString()} active leads
                     </p>
                   </div>
                 </div>
@@ -131,7 +131,7 @@ export default function ListsPage() {
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && deleteMut.mutate(deleteId)}
         title="Delete List"
-        description="This will remove the list but not the contacts. Are you sure?"
+        description="This will remove the list but not the leads. Are you sure?"
         confirmLabel="Delete"
         destructive
         loading={deleteMut.isPending}

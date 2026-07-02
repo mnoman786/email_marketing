@@ -305,7 +305,7 @@ export default function CampaignDetailPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Contact</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Lead</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Current Step</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Next Send</th>
@@ -316,7 +316,7 @@ export default function CampaignDetailPage() {
                   {enrollments.items.map((e: any) => (
                     <tr key={e.id} className="hover:bg-muted/30">
                       <td className="px-4 py-2.5">
-                        <p className="font-medium text-xs">{e.contact_name || <span className="text-muted-foreground italic">Deleted contact</span>}</p>
+                        <p className="font-medium text-xs">{e.contact_name || <span className="text-muted-foreground italic">Deleted lead</span>}</p>
                         <p className="text-muted-foreground text-xs">{e.contact_email}</p>
                       </td>
                       <td className="px-4 py-2.5 text-xs">{e.current_step_order ?? '—'}</td>
@@ -330,7 +330,7 @@ export default function CampaignDetailPage() {
             </div>
           ) : (
             <div className="p-10 text-center text-muted-foreground text-sm">
-              No contacts enrolled yet.
+              No leads enrolled yet.
             </div>
           )}
         </div>

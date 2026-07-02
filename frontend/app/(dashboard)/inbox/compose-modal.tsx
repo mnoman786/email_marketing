@@ -94,7 +94,7 @@ export function ComposeModal({ open, onOpenChange, smtpAccounts, onSent }: Props
             ) : (
               <div className="relative">
                 <Input
-                  placeholder="Search contacts by name or email…"
+                  placeholder="Search leads by name or email…"
                   value={contactQuery}
                   onChange={e => setContactQuery(e.target.value)}
                   className="text-sm"

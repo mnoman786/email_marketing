@@ -21,7 +21,7 @@ export function ContactStatsPanel({ threadId }: { threadId: number }) {
 
   return (
     <div className="w-[260px] border-l bg-card shrink-0 p-4 space-y-4 overflow-y-auto">
-      <h3 className="text-sm font-semibold">Contact activity</h3>
+      <h3 className="text-sm font-semibold">Lead activity</h3>
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}

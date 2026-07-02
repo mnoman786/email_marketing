@@ -78,14 +78,14 @@ export function BulkImportDialog({ open, onClose, onImported }: Props) {
         if (!csvText.trim()) throw new Error('Please paste CSV data.')
         contacts = parseCsv(csvText)
       }
-      if (contacts.length === 0) throw new Error('No valid contacts found in the CSV.')
+      if (contacts.length === 0) throw new Error('No valid leads found in the CSV.')
       const payload: any = { contacts }
       if (listId) payload.list_id = listId
       const res = await contactsApi.bulkImport(payload)
       return res.data
     },
     onSuccess: (data) => {
-      toast.success(`Importing ${data.total} contacts in the background…`)
+      toast.success(`Importing ${data.total} leads in the background…`)
       handleClose()
       onImported(data.task_id, data.total)
     },
@@ -110,7 +110,7 @@ export function BulkImportDialog({ open, onClose, onImported }: Props) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Upload size={18} /> Import Contacts
+            <Upload size={18} /> Import Leads
           </DialogTitle>
         </DialogHeader>
 
