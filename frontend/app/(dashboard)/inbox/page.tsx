@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { addDays, addHours, set } from 'date-fns'
 import { inboxApi, smtpApi } from '@/lib/api'
-import { ThreadListItem, ThreadDetail, PaginatedResponse, SMTPAccount, ReplyTemplate } from '@/lib/types'
+import { ThreadListItem, ThreadDetail, PaginatedResponse, SMTPAccount } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/shared/loading-skeleton'
 import { cn, formatDateTime, formatRelativeTime, avatarColor, initials } from '@/lib/utils'
 import {
   Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox,
-  Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, X, FileText, Plus,
+  Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, X, Plus,
   Square, CheckSquare, UserPlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -78,7 +78,6 @@ export default function InboxPage() {
   const [replyFiles, setReplyFiles] = useState<File[]>([])
   const [includeSignature, setIncludeSignature] = useState(true)
   const [expandedQuotes, setExpandedQuotes] = useState<Set<number>>(new Set())
-  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false)
   const [composeOpen, setComposeOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -121,11 +120,6 @@ export default function InboxPage() {
     queryKey: ['inbox-thread', selectedId],
     queryFn: () => inboxApi.getThread(selectedId as number).then(r => r.data as ThreadDetail),
     enabled: !!selectedId,
-  })
-
-  const { data: templates } = useQuery({
-    queryKey: ['reply-templates'],
-    queryFn: () => inboxApi.templates().then(r => r.data as ReplyTemplate[]),
   })
 
   const threads = data?.items || []
@@ -294,19 +288,6 @@ export default function InboxPage() {
     onError: () => toast.error('Bulk action failed'),
   })
 
-  const createTemplateMut = useMutation({
-    mutationFn: (data: { name: string; body_html: string; body_text: string }) => inboxApi.createTemplate(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reply-templates'] })
-      toast.success('Template saved')
-    },
-    onError: () => toast.error('Failed to save template'),
-  })
-
-  const deleteTemplateMut = useMutation({
-    mutationFn: (id: number) => inboxApi.deleteTemplate(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['reply-templates'] }),
-  })
 
   const followupDraftMut = useMutation({
     mutationFn: () => inboxApi.followupDraft(selectedId as number),
@@ -747,50 +728,6 @@ export default function InboxPage() {
                     className="hidden"
                     onChange={e => setReplyFiles(fs => [...fs, ...Array.from(e.target.files || [])])}
                   />
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setTemplatesOpen(v => !v)}
-                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                    >
-                      <FileText size={13} /> Templates
-                    </button>
-                    {templatesOpen && (
-                      <div className="absolute left-0 bottom-full mb-1 w-56 border rounded-lg bg-card shadow-md z-10 py-1 max-h-60 overflow-y-auto">
-                        {(templates || []).length === 0 && (
-                          <p className="px-3 py-2 text-xs text-muted-foreground">No saved templates yet.</p>
-                        )}
-                        {(templates || []).map(tpl => (
-                          <div key={tpl.id} className="flex items-center justify-between group hover:bg-muted/60">
-                            <button
-                              onClick={() => { editorRef.current?.insertHTML(tpl.body_html || tpl.body_text); setTemplatesOpen(false) }}
-                              className="flex-1 text-left px-3 py-1.5 text-xs truncate"
-                            >
-                              {tpl.name}
-                            </button>
-                            <button
-                              onClick={() => deleteTemplateMut.mutate(tpl.id)}
-                              className="px-2 text-muted-foreground opacity-0 group-hover:opacity-100"
-                            >
-                              <X size={11} />
-                            </button>
-                          </div>
-                        ))}
-                        <div className="border-t mt-1 pt-1">
-                          <button
-                            onClick={() => {
-                              const name = window.prompt('Template name')
-                              if (name) createTemplateMut.mutate({ name, body_html: replyHtml, body_text: replyText })
-                              setTemplatesOpen(false)
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs text-primary"
-                          >
-                            + Save current draft as template
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                   {thread.last_message_direction === 'outbound' && (
                     <button
                       type="button"
