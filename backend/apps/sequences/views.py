@@ -245,11 +245,27 @@ def campaign_stats(request, campaign_id: int):
         for row in campaign.enrollments.values('status').annotate(count=Count('id'))
     }
 
+    # Opportunities (Instantly-style): enrolled contacts whose inbox thread was
+    # marked as a positive lead (interested / meeting booked).
+    from apps.inbox.models import Thread
+    enrolled_contact_ids = campaign.enrollments.values_list('contact_id', flat=True)
+    opportunities = (
+        Thread.objects.filter(
+            user=campaign.user,
+            contact_id__in=enrolled_contact_ids,
+            lead_status__in=('interested', 'meeting_booked'),
+        )
+        .values('contact_id')
+        .distinct()
+        .count()
+    )
+
     return {
         'id': campaign.id,
         'name': campaign.name,
         'status': campaign.status,
         'total_enrolled': campaign.enrollments.count(),
         'enrollment_counts': enrollment_counts,
+        'opportunities': opportunities,
         'steps': step_stats,
     }

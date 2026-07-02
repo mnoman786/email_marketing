@@ -207,8 +207,10 @@ class CampaignIn(Schema):
     from_name: str = ''
     from_email: str = ''
     reply_to: str = ''
-    track_opens: bool = True
-    track_clicks: bool = True
+    # Off by default: open/click tracking pixels & rewritten links hurt cold-email
+    # deliverability, and Apple MPP makes open data unreliable (Instantly default).
+    track_opens: bool = False
+    track_clicks: bool = False
     stop_on_reply: bool = True
     schedule_enabled: bool = False
     schedule_days: List[int] = [0, 1, 2, 3, 4]

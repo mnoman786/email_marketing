@@ -118,12 +118,14 @@ export default function CampaignDetailPage() {
     { sent: 0, failed: 0, opened: 0, clicked: 0, replied: 0 }
   )
 
+  const opportunities = stats?.opportunities || 0
   const kpis = [
     { label: 'Enrolled', value: totalEnrolled.toLocaleString(), sub: `${counts.active || 0} active`, tone: 'text-foreground' },
     { label: 'Sent', value: perf.sent.toLocaleString(), sub: perf.failed ? `${perf.failed} failed` : 'delivered', tone: 'text-foreground' },
     { label: 'Open rate', value: `${pct(perf.opened, perf.sent)}%`, sub: `${perf.opened.toLocaleString()} opens`, tone: 'text-purple-600' },
     { label: 'Click rate', value: `${pct(perf.clicked, perf.sent)}%`, sub: `${perf.clicked.toLocaleString()} clicks`, tone: 'text-blue-600' },
     { label: 'Reply rate', value: `${pct(perf.replied, perf.sent)}%`, sub: `${perf.replied.toLocaleString()} replies`, tone: 'text-green-600' },
+    { label: 'Opportunities', value: opportunities.toLocaleString(), sub: 'interested leads', tone: 'text-emerald-600' },
   ]
 
   return (
@@ -207,7 +209,7 @@ export default function CampaignDetailPage() {
       {tab === 'analytics' && (
         <div className="space-y-6">
           {/* KPI cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             {kpis.map(kpi => (
               <Card key={kpi.label}>
                 <CardContent className="p-5">

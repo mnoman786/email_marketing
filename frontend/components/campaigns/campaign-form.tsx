@@ -136,8 +136,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
       reply_to: campaign?.reply_to || '',
       contact_list_ids: campaign?.contact_list_ids || [],
       smtp_account_ids: campaign?.smtp_account_ids || [],
-      track_opens: campaign?.track_opens ?? true,
-      track_clicks: campaign?.track_clicks ?? true,
+      track_opens: campaign?.track_opens ?? false,
+      track_clicks: campaign?.track_clicks ?? false,
       stop_on_reply: campaign?.stop_on_reply ?? true,
       schedule_enabled: campaign?.schedule_enabled ?? false,
       schedule_days: campaign?.schedule_days ?? [0, 1, 2, 3, 4],
@@ -520,7 +520,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
               {[
                 {
                   label: 'Open & click tracking',
-                  desc: 'Track when recipients open emails and click links',
+                  desc: 'Recommended OFF for cold email — tracking pixels/links hurt deliverability and Apple Mail inflates opens',
                   checked: !!(trackOpens && trackClicks),
                   onChange: (v: boolean) => { setValue('track_opens', v); setValue('track_clicks', v) },
                 },
