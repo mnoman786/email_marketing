@@ -14,7 +14,6 @@ class SMTPAccountOut(Schema):
     from_email: str
     from_name: str
     security: str
-    weight: int
     is_active: bool
     daily_limit: int
     hourly_limit: int
@@ -52,7 +51,6 @@ class SMTPAccountIn(Schema):
     from_email: EmailStr
     from_name: str
     security: str = 'tls'
-    weight: int = 10
     is_active: bool = True
     daily_limit: int = 0
     hourly_limit: int = 0
@@ -75,7 +73,6 @@ class SMTPAccountUpdateIn(Schema):
     from_email: Optional[EmailStr] = None
     from_name: Optional[str] = None
     security: Optional[str] = None
-    weight: Optional[int] = None
     is_active: Optional[bool] = None
     daily_limit: Optional[int] = None
     hourly_limit: Optional[int] = None
@@ -107,7 +104,6 @@ class SMTPStatOut(Schema):
     id: int
     name: str
     from_email: str
-    weight: int
     probability: float
     is_active: bool
     last_tested_at: Optional[datetime] = None

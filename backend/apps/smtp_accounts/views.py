@@ -31,16 +31,16 @@ def smtp_stats(request):
         return cached
 
     accounts = SMTPAccount.objects.filter(user=request.auth)
-    total_weight = sum(a.weight for a in accounts if a.is_active)
+    # All active accounts rotate equally per campaign (weighting was removed).
+    active_count = sum(1 for a in accounts if a.is_active)
+    equal_prob = round(100 / active_count, 1) if active_count > 0 else 0.0
     result = []
     for account in accounts:
-        prob = round(account.weight / total_weight * 100, 1) if total_weight > 0 and account.is_active else 0.0
         result.append({
             'id': account.id,
             'name': account.name,
             'from_email': account.from_email,
-            'weight': account.weight,
-            'probability': prob,
+            'probability': equal_prob if account.is_active else 0.0,
             'is_active': account.is_active,
             'last_tested_at': account.last_tested_at,
             'last_test_success': account.last_test_success,
