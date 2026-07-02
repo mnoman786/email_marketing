@@ -51,7 +51,7 @@ export default function SMTPPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">SMTP Accounts</h1>
-          <p className="text-sm text-muted-foreground">Sending accounts — all active accounts rotate equally per campaign</p>
+          <p className="text-sm text-muted-foreground">Connect the mailboxes you send from. Each campaign picks its own accounts, which rotate equally.</p>
         </div>
         <Button onClick={() => { setEditAccount(null); setShowForm(true) }}>
           <Plus size={16} /> Add SMTP Account
