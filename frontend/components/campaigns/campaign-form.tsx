@@ -93,9 +93,11 @@ function nextVariantLabel(variants: LocalVariant[]) {
 
 interface Props {
   campaign?: Campaign
+  /** Pre-fills the name field when creating a fresh campaign (from the name modal). */
+  initialName?: string
 }
 
-export function CampaignForm({ campaign }: Props) {
+export function CampaignForm({ campaign, initialName }: Props) {
   const router = useRouter()
   const { user } = useAuth()
   const [tab, setTab] = useState<'sequence' | 'settings'>('sequence')
@@ -125,7 +127,7 @@ export function CampaignForm({ campaign }: Props) {
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: campaign?.name || '',
+      name: campaign?.name || initialName || '',
       from_name: campaign?.from_name || '',
       from_email: campaign?.from_email || '',
       reply_to: campaign?.reply_to || '',
