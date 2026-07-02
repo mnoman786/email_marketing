@@ -148,6 +148,10 @@ class CampaignListOut(Schema):
     contact_list_count: int
     step_count: int
     enrollment_count: int
+    sent: int
+    opened: int
+    clicked: int
+    replied: int
     created_at: datetime
 
     @staticmethod
@@ -161,6 +165,22 @@ class CampaignListOut(Schema):
     @staticmethod
     def resolve_enrollment_count(obj):
         return obj.enrollments.count()
+
+    @staticmethod
+    def resolve_sent(obj):
+        return getattr(obj, 'sent_count', 0) or 0
+
+    @staticmethod
+    def resolve_opened(obj):
+        return getattr(obj, 'opened_count', 0) or 0
+
+    @staticmethod
+    def resolve_clicked(obj):
+        return getattr(obj, 'clicked_count', 0) or 0
+
+    @staticmethod
+    def resolve_replied(obj):
+        return getattr(obj, 'replied_count', 0) or 0
 
 
 class CampaignIn(Schema):

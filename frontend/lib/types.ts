@@ -152,6 +152,10 @@ export interface CampaignListItem {
   contact_list_count: number
   step_count: number
   enrollment_count: number
+  sent: number
+  opened: number
+  clicked: number
+  replied: number
   created_at: string
 }
 

@@ -21,7 +21,16 @@ router = Router(tags=['Campaigns'])
 @router.get('/', response=List[CampaignListOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
 def list_campaigns(request, status: Optional[str] = None, search: Optional[str] = None):
-    qs = Campaign.objects.filter(user=request.auth).prefetch_related('contact_lists', 'steps', 'enrollments')
+    qs = (
+        Campaign.objects.filter(user=request.auth)
+        .prefetch_related('contact_lists', 'steps', 'enrollments')
+        .annotate(
+            sent_count=Count('send_logs', filter=Q(send_logs__status__in=['sent', 'opened', 'clicked', 'replied'])),
+            opened_count=Count('send_logs', filter=Q(send_logs__status__in=['opened', 'clicked', 'replied'])),
+            clicked_count=Count('send_logs', filter=Q(send_logs__status__in=['clicked', 'replied'])),
+            replied_count=Count('send_logs', filter=Q(send_logs__status='replied')),
+        )
+    )
     if status:
         qs = qs.filter(status=status)
     if search:
