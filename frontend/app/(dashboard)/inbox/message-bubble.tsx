@@ -7,9 +7,6 @@ import { cn, formatDateTime, avatarColor, initials } from '@/lib/utils'
 import { ChevronDown, ChevronRight, Paperclip, Download, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// Structural markers different mail clients wrap quoted history in. Far more
-// reliable than guessing from flattened plain text, which loses line breaks
-// and silently fails the moment a client hard-wraps the attribution line.
 const QUOTE_SELECTOR = [
   'blockquote',
   '.gmail_quote',
@@ -20,8 +17,6 @@ const QUOTE_SELECTOR = [
   '.OutlookMessageHeader',
 ].join(',')
 
-// Apple Mail / Outlook Web / Yahoo put the "On ... wrote:" attribution as a
-// plain sibling just before the quote container rather than inside it.
 const ATTRIBUTION_RE = /^On .{1,150}wrote:\s*$/i
 
 function escapeHtml(text: string): string {
@@ -88,10 +83,9 @@ interface Props {
 
 export function MessageBubble({ message: m, contactName, expanded, onToggleQuote }: Props) {
   const outbound = m.direction === 'outbound'
+  const senderName = outbound ? 'You' : (contactName || m.from_email)
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
 
-  // The download endpoint requires a Bearer token, which a plain <a href> can't
-  // send — fetch it through the authenticated axios instance and save the blob.
   const downloadAttachment = async (id: number, filename: string) => {
     setDownloadingId(id)
     try {
@@ -118,44 +112,53 @@ export function MessageBubble({ message: m, contactName, expanded, onToggleQuote
   }, [m.body_html, m.body_text])
 
   return (
-    <div className={cn('flex gap-2', outbound ? 'justify-end' : 'justify-start')}>
-      {!outbound && (
-        <div
-          className={cn('rounded-full flex items-center justify-center text-white font-semibold shrink-0', avatarColor(contactName))}
-          style={{ width: 28, height: 28, fontSize: 28 * 0.4 }}
-        >
-          {initials(contactName)}
-        </div>
-      )}
+    <div className={cn(
+      'rounded-xl border overflow-hidden shadow-sm',
+      outbound
+        ? 'border-primary/20 bg-primary/3'
+        : 'border-border bg-card'
+    )}>
+      {/* Email header */}
       <div className={cn(
-        'max-w-[65%] rounded-2xl px-4 py-2.5 text-sm shadow-sm',
-        outbound ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-card border rounded-bl-md'
+        'flex items-center justify-between gap-3 px-4 py-2.5 border-b',
+        outbound ? 'border-primary/15 bg-primary/5' : 'border-border bg-muted/30'
       )}>
-        {m.subject && <p className="text-[11px] font-medium mb-1 opacity-70">{m.subject}</p>}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={cn(
+            'w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0',
+            outbound ? 'bg-primary' : avatarColor(senderName)
+          )}>
+            {outbound ? 'Me' : initials(senderName)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold">{senderName}</p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {outbound ? `to ${m.to_email}` : m.from_email}
+            </p>
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(m.occurred_at)}</p>
+      </div>
 
+      {/* Email body */}
+      <div className="px-4 py-4">
         <div
-          className={cn(
-            'leading-relaxed break-words [&_p]:my-1.5 [&_div]:my-0 [&_ul]:my-1 [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:pl-5 [&_a]:underline first:[&>*]:mt-0 last:[&>*]:mb-0',
-            outbound ? '[&_a]:text-primary-foreground' : '[&_a]:text-primary'
-          )}
-          dangerouslySetInnerHTML={{ __html: mainHtml || '<span class="opacity-60 italic">(no content)</span>' }}
+          className="text-sm leading-relaxed wrap-break-word [&_p]:my-1.5 [&_div]:my-0 [&_ul]:my-1 [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:pl-5 [&_a]:text-primary [&_a]:underline first:*:mt-0 last:*:mb-0"
+          dangerouslySetInnerHTML={{ __html: mainHtml || '<span class="text-muted-foreground italic text-xs">(no content)</span>' }}
         />
 
         {m.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t">
             {m.attachments.map(att => (
               <button
                 key={att.id}
                 onClick={() => downloadAttachment(att.id, att.filename)}
                 disabled={downloadingId === att.id}
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border disabled:opacity-60',
-                  outbound ? 'border-primary-foreground/30 hover:bg-primary-foreground/10' : 'border-border hover:bg-muted'
-                )}
+                className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border bg-muted/50 hover:bg-muted disabled:opacity-60 transition-colors"
               >
                 <Paperclip size={11} />
                 <span className="truncate max-w-[140px]">{att.filename}</span>
-                <span className="opacity-60">{formatBytes(att.size)}</span>
+                <span className="text-muted-foreground">{formatBytes(att.size)}</span>
                 {downloadingId === att.id ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
               </button>
             ))}
@@ -166,29 +169,19 @@ export function MessageBubble({ message: m, contactName, expanded, onToggleQuote
           <>
             <button
               onClick={onToggleQuote}
-              className={cn(
-                'flex items-center gap-1 text-[11px] mt-1.5 opacity-70 hover:opacity-100 transition-opacity',
-                outbound ? 'text-primary-foreground' : 'text-muted-foreground'
-              )}
+              className="flex items-center gap-1 text-[11px] mt-2.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
               {expanded ? 'Hide quoted text' : 'Show quoted text'}
             </button>
             {expanded && (
               <div
-                className={cn(
-                  'leading-relaxed break-words mt-1.5 pt-1.5 border-t text-[12px] opacity-70 [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:ml-1 [&_p]:my-1',
-                  outbound ? 'border-primary-foreground/20' : 'border-border'
-                )}
+                className="mt-2 pt-2 border-t text-[12px] text-muted-foreground leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_blockquote]:ml-1 [&_p]:my-1"
                 dangerouslySetInnerHTML={{ __html: quotedHtml }}
               />
             )}
           </>
         )}
-
-        <p className={cn('text-[10px] mt-1.5', outbound ? 'opacity-70' : 'text-muted-foreground')}>
-          {formatDateTime(m.occurred_at)}
-        </p>
       </div>
     </div>
   )

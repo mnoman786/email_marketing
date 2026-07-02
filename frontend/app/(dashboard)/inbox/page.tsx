@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/shared/loading-skeleton'
 import { cn, formatDateTime, formatRelativeTime, avatarColor, initials } from '@/lib/utils'
 import {
   Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox,
-  Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, Info, X, FileText, Plus,
+  Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, X, FileText, Plus,
   Square, CheckSquare, UserPlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -78,7 +78,6 @@ export default function InboxPage() {
   const [replyFiles, setReplyFiles] = useState<File[]>([])
   const [includeSignature, setIncludeSignature] = useState(true)
   const [expandedQuotes, setExpandedQuotes] = useState<Set<number>>(new Set())
-  const [showStats, setShowStats] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false)
   const [composeOpen, setComposeOpen] = useState(false)
@@ -525,29 +524,35 @@ export default function InboxPage() {
                   key={t.id}
                   onClick={() => setSelectedId(t.id)}
                   className={cn(
-                    'w-full text-left px-3 py-3 border-b flex gap-2 hover:bg-muted/60 transition-colors cursor-pointer group',
-                    selectedId === t.id && 'bg-primary/5 hover:bg-primary/5'
+                    'relative w-full text-left px-3 py-3.5 border-b flex gap-2.5 hover:bg-muted/50 transition-colors cursor-pointer group border-l-2',
+                    selectedId === t.id ? 'bg-primary/5 hover:bg-primary/5 border-l-primary' : 'border-l-transparent',
+                    t.is_unread && selectedId !== t.id && 'border-l-primary/60'
                   )}
                 >
                   <button
                     onClick={e => { e.stopPropagation(); toggleSelected(t.id) }}
-                    className="shrink-0 mt-1.5 text-muted-foreground hover:text-foreground"
+                    className="shrink-0 mt-1 text-muted-foreground hover:text-foreground"
                   >
-                    {checked ? <CheckSquare size={15} className="text-primary" /> : <Square size={15} />}
+                    {checked ? <CheckSquare size={14} className="text-primary" /> : <Square size={14} />}
                   </button>
                   <Avatar name={name} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={cn('text-sm truncate', t.is_unread ? 'font-semibold' : 'font-medium text-foreground/90')}>
-                        {name}
-                      </p>
-                      <span className="text-[11px] text-muted-foreground shrink-0">{formatRelativeTime(t.last_message_at)}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className={cn('text-sm truncate leading-tight', t.is_unread ? 'font-semibold' : 'font-medium')}>
+                          {name}
+                        </p>
+                        {t.contact_name && (
+                          <p className="text-[11px] text-muted-foreground truncate">{t.contact_email}</p>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-muted-foreground shrink-0 mt-0.5">{formatRelativeTime(t.last_message_at)}</span>
                     </div>
-                    <p className={cn('text-xs truncate mt-0.5', t.is_unread ? 'text-foreground font-medium' : 'text-muted-foreground')}>
+                    <p className={cn('text-xs truncate mt-1', t.is_unread ? 'text-foreground font-medium' : 'text-muted-foreground')}>
                       {t.subject || '(no subject)'}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{t.last_message_preview}</p>
-                    <div className="flex items-center gap-1 mt-1">
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-snug">{t.last_message_preview}</p>
+                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                       {smtpAccounts && smtpAccounts.length > 1 && (
                         <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                           <Mailbox size={9} />
@@ -572,37 +577,30 @@ export default function InboxPage() {
                       {isDueFollowup(t) && (
                         <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
                           <Clock size={9} />
-                          Needs follow-up
+                          Follow-up
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <div className="relative w-2 h-2 mt-1.5">
-                      {t.is_unread && (
-                        <span className="absolute inset-0 rounded-full bg-primary group-hover:opacity-0 transition-opacity" />
-                      )}
-                    </div>
-                    <div className="hidden group-hover:flex items-center gap-1">
-                      {t.is_unread && (
-                        <button
-                          onClick={e => { e.stopPropagation(); quickReadMut.mutate(t.id) }}
-                          title="Mark as read"
-                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                        >
-                          <MailCheck size={14} />
-                        </button>
-                      )}
-                      {view === 'archived' && (
-                        <button
-                          onClick={e => { e.stopPropagation(); quickUnarchiveMut.mutate(t.id) }}
-                          title="Move to inbox"
-                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                        >
-                          <ArchiveRestore size={14} />
-                        </button>
-                      )}
-                    </div>
+                  <div className="hidden group-hover:flex flex-col items-end gap-1 shrink-0">
+                    {t.is_unread && (
+                      <button
+                        onClick={e => { e.stopPropagation(); quickReadMut.mutate(t.id) }}
+                        title="Mark as read"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                      >
+                        <MailCheck size={13} />
+                      </button>
+                    )}
+                    {view === 'archived' && (
+                      <button
+                        onClick={e => { e.stopPropagation(); quickUnarchiveMut.mutate(t.id) }}
+                        title="Move to inbox"
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                      >
+                        <ArchiveRestore size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               )
@@ -623,8 +621,7 @@ export default function InboxPage() {
           </div>
         ) : (
           <>
-            <div className="px-5 py-3.5 border-b bg-card flex items-center gap-2">
-              <Avatar name={thread.contact_name || thread.contact_email} size={32} />
+            <div className="px-5 py-3 border-b bg-card flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-sm truncate flex items-center gap-1.5">
                   {thread.contact_name || thread.contact_email}
@@ -638,36 +635,8 @@ export default function InboxPage() {
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
-                  <span>{thread.contact_email}</span>
-                  <span className="opacity-50">•</span>
-                  <Mailbox size={11} className="shrink-0" />
-                  <span className="truncate">{thread.smtp_account_name}</span>
-                </p>
+                <p className="text-xs text-muted-foreground truncate">{thread.subject || '(no subject)'}</p>
               </div>
-              <Select
-                value={thread.lead_status}
-                onValueChange={v => statusMut.mutate(v)}
-              >
-                <SelectTrigger className="h-8 text-xs rounded-lg w-[150px] shrink-0">
-                  <span className={cn('w-1.5 h-1.5 rounded-full mr-1.5', leadStatusMeta(thread.lead_status).dot)} />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LEAD_STATUSES.map(s => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant={showStats ? 'default' : 'outline'}
-                size="icon-sm"
-                className="rounded-lg shrink-0"
-                title="Contact activity"
-                onClick={() => setShowStats(v => !v)}
-              >
-                <Info size={14} />
-              </Button>
               <Button
                 variant="outline"
                 size="icon-sm"
@@ -735,7 +704,7 @@ export default function InboxPage() {
                 ))}
                 <div ref={bottomRef} />
               </div>
-              {showStats && <ContactStatsPanel threadId={thread.id} />}
+              <ContactStatsPanel threadId={thread.id} thread={thread} onStatusChange={v => statusMut.mutate(v)} />
             </div>
 
             <div className="p-4 border-t bg-card space-y-2.5">
