@@ -5,17 +5,22 @@
 #  and restarts the matching systemd unit(s) created by setup.sh.
 #
 #  Usage:
-#    ./build.sh                          # interactive numbered menu
-#    ./build.sh [backend|frontend|celery|beat|all|status|logs] [--no-pull]
-#    ./build.sh [1|2|3|4|5|6|7]           # same targets, by number
+#    ./build.sh                                    # interactive numbered menu
+#    ./build.sh [backend|frontend|celery|beat|all|status|logs] ... [--no-pull]
+#    ./build.sh [1|2|3|4|5|6|7] ...                 # same targets, by number
+#
+#  You can pass SEVERAL targets at once — they're pulled once, then rebuilt
+#  in a fixed order (backend → frontend → celery → beat), deduplicated.
 #
 #  Examples:
-#    ./build.sh                # show menu, pick a number
-#    ./build.sh backend        # just the Django/gunicorn service
-#    ./build.sh 2              # = frontend
-#    ./build.sh celery         # just the Celery worker
-#    ./build.sh beat           # just Celery beat
-#    ./build.sh backend --no-pull   # rebuild without git pull first
+#    ./build.sh                     # show menu (accepts e.g. "1 2 4")
+#    ./build.sh backend             # just the Django/gunicorn service
+#    ./build.sh 2                   # = frontend
+#    ./build.sh backend frontend    # rebuild both
+#    ./build.sh 1 3 4               # backend + celery + beat
+#    ./build.sh celery              # just the Celery worker
+#    ./build.sh beat                # just Celery beat
+#    ./build.sh backend frontend --no-pull   # rebuild both without git pull
 #
 #  Extra subcommands:
 #    ./build.sh status         # systemctl status for all four services
@@ -42,8 +47,13 @@ SERVICE_CELERY=mailflow-celery
 SERVICE_BEAT=mailflow-beat
 
 PULL=true
+TOKENS=()
 for arg in "$@"; do
-    [ "$arg" = "--no-pull" ] && PULL=false
+    if [ "$arg" = "--no-pull" ]; then
+        PULL=false
+    else
+        TOKENS+=("$arg")
+    fi
 done
 
 command -v systemctl >/dev/null 2>&1 || error "systemctl not found — this script requires a systemd-based Linux system."
@@ -62,7 +72,7 @@ number_to_target() {
     esac
 }
 
-# Sets the global MENU_TARGET rather than echoing+capturing via $(...) —
+# Populates the global TOKENS array rather than echoing+capturing via $(...) —
 # command substitution runs in a subshell, where `exit` only kills the
 # subshell, not the whole script (choosing "Exit" wouldn't actually exit).
 show_menu() {
@@ -78,28 +88,34 @@ show_menu() {
     echo "  7) Logs (pick a service)"
     echo "  0) Exit"
     echo ""
-    read -p "  Enter your choice [0-7]: " CHOICE
-    if [ "$CHOICE" = "0" ]; then
+    echo "  Tip: pick several at once, e.g. '1 2 4' or '1,2,4'."
+    echo ""
+    read -p "  Enter your choice(s) [0-7]: " CHOICE
+    if [ "$CHOICE" = "0" ] || [ -z "$CHOICE" ]; then
         echo "Bye."
         exit 0
     fi
-    MENU_TARGET="$(number_to_target "$CHOICE")"
-    if [ -z "$MENU_TARGET" ]; then
-        error "Invalid choice '${CHOICE}' — expected a number 0-7."
-    fi
-    return 0
+    # Split the reply on spaces and/or commas into the TOKENS array.
+    IFS=', ' read -r -a TOKENS <<< "$CHOICE"
 }
 
-RAW="${1:-}"
-if [ -z "$RAW" ]; then
+if [ ${#TOKENS[@]} -eq 0 ]; then
     show_menu
-    TARGET="$MENU_TARGET"
-elif [[ "$RAW" =~ ^[0-9]+$ ]]; then
-    TARGET="$(number_to_target "$RAW")"
-    [ -z "$TARGET" ] && error "Invalid choice '${RAW}' — expected a number 1-7."
-else
-    TARGET="$RAW"
 fi
+
+# Normalise every token (number or name) into a canonical target name.
+TARGETS=()
+for tok in "${TOKENS[@]}"; do
+    [ -z "$tok" ] && continue
+    if [[ "$tok" =~ ^[0-9]+$ ]]; then
+        t="$(number_to_target "$tok")"
+        [ -z "$t" ] && error "Invalid choice '${tok}' — expected a number 0-7."
+    else
+        t="$tok"
+    fi
+    TARGETS+=("$t")
+done
+[ ${#TARGETS[@]} -eq 0 ] && error "No target given."
 
 git_pull() {
     if [ "$PULL" = true ]; then
@@ -188,42 +204,67 @@ show_logs() {
     esac
 }
 
-case "$TARGET" in
-    backend)
-        git_pull
-        build_backend
-        ;;
-    frontend)
-        git_pull
-        build_frontend
-        ;;
-    celery)
-        git_pull
-        restart_celery
-        ;;
-    beat)
-        git_pull
-        restart_beat
-        ;;
-    all)
-        git_pull
-        build_backend
-        build_frontend
-        restart_celery
-        restart_beat
-        ;;
-    status)
-        show_status
-        exit 0
-        ;;
-    logs)
-        show_logs "$2"
-        exit 0
-        ;;
-    *)
-        error "Unknown target '${TARGET}'. Use: backend | frontend | celery | beat | all | status | logs <service>"
-        ;;
-esac
+# status/logs are standalone actions (logs blocks on -f), so if either is
+# requested we run just that and exit — ignoring any other tokens.
+for t in "${TARGETS[@]}"; do
+    case "$t" in
+        status)
+            show_status
+            exit 0
+            ;;
+        logs)
+            # The token after `logs` (if any) names the service to tail.
+            svc=""
+            for i in "${!TARGETS[@]}"; do
+                if [ "${TARGETS[$i]}" = "logs" ]; then
+                    svc="${TARGETS[$((i + 1))]:-}"
+                    break
+                fi
+            done
+            show_logs "$svc"
+            exit 0
+            ;;
+    esac
+done
+
+# Expand `all`, then de-duplicate while forcing a sensible build order
+# (backend → frontend → celery → beat) regardless of how they were typed.
+for t in "${TARGETS[@]}"; do
+    if [ "$t" = "all" ]; then
+        TARGETS=(backend frontend celery beat)
+        break
+    fi
+done
+
+# Reject unknown targets before doing any work.
+for t in "${TARGETS[@]}"; do
+    case "$t" in
+        backend|frontend|celery|beat) ;;
+        *) error "Unknown target '${t}'. Use: backend | frontend | celery | beat | all | status | logs <service>" ;;
+    esac
+done
+
+SELECTED=()
+for canon in backend frontend celery beat; do
+    for t in "${TARGETS[@]}"; do
+        if [ "$t" = "$canon" ]; then
+            SELECTED+=("$canon")
+            break
+        fi
+    done
+done
+
+info "Targets: ${SELECTED[*]}"
+git_pull   # pull once, up front, no matter how many services we rebuild
+
+for t in "${SELECTED[@]}"; do
+    case "$t" in
+        backend)  build_backend ;;
+        frontend) build_frontend ;;
+        celery)   restart_celery ;;
+        beat)     restart_beat ;;
+    esac
+done
 
 echo ""
-success "Done."
+success "Done — restarted: ${SELECTED[*]}"
