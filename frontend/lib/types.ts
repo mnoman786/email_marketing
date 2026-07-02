@@ -7,6 +7,7 @@ export interface User {
   company_name: string
   timezone: string
   is_email_verified: boolean
+  apollo_api_key: string
   created_at: string
 }
 
@@ -94,6 +95,15 @@ export interface SMTPAccount {
 }
 
 
+export interface StepTransition {
+  id: number
+  step: number
+  condition: 'opened' | 'not_opened' | 'clicked' | 'replied' | 'default'
+  next_step: number | null
+  wait_days: number
+  wait_hours: number
+}
+
 export interface CampaignStepVariant {
   id: number
   step: number
@@ -121,6 +131,7 @@ export interface CampaignStep {
   auto_optimize_metric: 'open_rate' | 'click_rate' | 'reply_rate'
   auto_optimize_min_sends: number
   variants: CampaignStepVariant[]
+  transitions: StepTransition[]
 }
 
 export interface CampaignSmtpRef {

@@ -169,6 +169,39 @@ class CampaignStepVariant(models.Model):
         return self.step.track_clicks
 
 
+class StepTransition(models.Model):
+    """Conditional branching rule for a campaign step.
+
+    When a step has transitions, the send pipeline checks the contact's
+    engagement with that step and routes them to the matching next_step.
+    next_step=None means "end the campaign at this branch."
+    """
+    CONDITION_CHOICES = [
+        ('opened', 'Opened'),
+        ('not_opened', 'Not Opened'),
+        ('clicked', 'Clicked'),
+        ('replied', 'Replied'),
+        ('default', 'Default (always)'),
+    ]
+
+    step = models.ForeignKey(CampaignStep, on_delete=models.CASCADE, related_name='transitions')
+    condition = models.CharField(max_length=20, choices=CONDITION_CHOICES)
+    next_step = models.ForeignKey(
+        CampaignStep, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+'
+    )
+    wait_days = models.PositiveIntegerField(default=1)
+    wait_hours = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['condition']
+        unique_together = [['step', 'condition']]
+
+    def __str__(self):
+        dest = f'step {self.next_step.order}' if self.next_step_id else 'end'
+        return f'{self.step} → [{self.condition}] → {dest}'
+
+
 class CampaignEnrollment(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),

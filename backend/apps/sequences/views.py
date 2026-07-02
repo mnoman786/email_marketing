@@ -5,11 +5,12 @@ from ninja.pagination import paginate, PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
 from typing import Optional, List
-from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment
+from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment, StepTransition
 from .schemas import (
     CampaignOut, CampaignListOut, CampaignIn, CampaignUpdateIn,
     CampaignStepOut, CampaignStepIn, CampaignStepUpdateIn,
     CampaignStepVariantOut, CampaignStepVariantIn, CampaignStepVariantUpdateIn,
+    StepTransitionOut, StepTransitionIn, StepTransitionUpdateIn,
     EnrollmentOut,
 )
 from apps.accounts.auth import auth
@@ -57,7 +58,7 @@ def create_campaign(request, data: CampaignIn):
 @router.get('/{campaign_id}/', response=CampaignOut, auth=auth)
 def get_campaign(request, campaign_id: int):
     return get_object_or_404(
-        Campaign.objects.prefetch_related('contact_lists', 'steps__variants'),
+        Campaign.objects.prefetch_related('contact_lists', 'steps__variants', 'steps__transitions'),
         id=campaign_id, user=request.auth
     )
 
@@ -149,6 +150,52 @@ def update_step_variant(request, campaign_id: int, step_id: int, variant_id: int
 def delete_step_variant(request, campaign_id: int, step_id: int, variant_id: int):
     get_object_or_404(
         CampaignStepVariant, id=variant_id, step_id=step_id,
+        step__campaign_id=campaign_id, step__campaign__user=request.auth
+    ).delete()
+    return {'detail': 'Deleted.'}
+
+
+@router.get('/{campaign_id}/steps/{step_id}/transitions/', response=List[StepTransitionOut], auth=auth)
+def list_step_transitions(request, campaign_id: int, step_id: int):
+    step = get_object_or_404(CampaignStep, id=step_id, campaign_id=campaign_id, campaign__user=request.auth)
+    return list(step.transitions.all())
+
+
+@router.post('/{campaign_id}/steps/{step_id}/transitions/', response=StepTransitionOut, auth=auth)
+def create_step_transition(request, campaign_id: int, step_id: int, data: StepTransitionIn):
+    step = get_object_or_404(CampaignStep, id=step_id, campaign_id=campaign_id, campaign__user=request.auth)
+    payload = data.dict()
+    next_step_id = payload.pop('next_step', None)
+    transition = StepTransition(step=step, **payload)
+    if next_step_id is not None:
+        transition.next_step = get_object_or_404(CampaignStep, id=next_step_id, campaign_id=campaign_id)
+    transition.save()
+    return transition
+
+
+@router.patch('/{campaign_id}/steps/{step_id}/transitions/{transition_id}/', response=StepTransitionOut, auth=auth)
+def update_step_transition(request, campaign_id: int, step_id: int, transition_id: int, data: StepTransitionUpdateIn):
+    transition = get_object_or_404(
+        StepTransition, id=transition_id, step_id=step_id,
+        step__campaign_id=campaign_id, step__campaign__user=request.auth
+    )
+    payload = data.dict(exclude_unset=True)
+    next_step_id = payload.pop('next_step', ...)
+    for field, value in payload.items():
+        setattr(transition, field, value)
+    if next_step_id is not ...:
+        if next_step_id is None:
+            transition.next_step = None
+        else:
+            transition.next_step = get_object_or_404(CampaignStep, id=next_step_id, campaign_id=campaign_id)
+    transition.save()
+    return transition
+
+
+@router.delete('/{campaign_id}/steps/{step_id}/transitions/{transition_id}/', auth=auth)
+def delete_step_transition(request, campaign_id: int, step_id: int, transition_id: int):
+    get_object_or_404(
+        StepTransition, id=transition_id, step_id=step_id,
         step__campaign_id=campaign_id, step__campaign__user=request.auth
     ).delete()
     return {'detail': 'Deleted.'}

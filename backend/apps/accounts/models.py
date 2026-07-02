@@ -9,6 +9,7 @@ class User(AbstractUser):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     timezone = models.CharField(max_length=50, default='UTC')
     is_email_verified = models.BooleanField(default=False)
+    apollo_api_key = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

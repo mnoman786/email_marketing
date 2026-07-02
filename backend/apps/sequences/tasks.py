@@ -73,11 +73,22 @@ def process_due_campaign_steps():
 
     for enrollment in due:
         campaign = enrollment.campaign
-        steps = list(campaign.steps.order_by('order'))
+        steps = list(campaign.steps.order_by('order').prefetch_related('transitions'))
         if not steps:
             continue
 
-        # Stop if the contact replied to any step sent so far (checked first — strongest signal)
+        # Fetch last SendLog + transitions for current step once (used by both
+        # stop-condition checks and branching logic below).
+        last_log = None
+        transitions = []
+        if enrollment.current_step:
+            last_log = SendLog.objects.filter(
+                sequence_step=enrollment.current_step, contact=enrollment.contact
+            ).order_by('-created_at').first()
+            transitions = list(enrollment.current_step.transitions.select_related('next_step').all())
+
+        # Stop if the contact replied to any step (strongest signal; applies even
+        # when branching is enabled for the step).
         if enrollment.current_step and campaign.stop_on_reply:
             replied = SendLog.objects.filter(
                 sequence_step__campaign=campaign, contact=enrollment.contact, status='replied'
@@ -89,11 +100,33 @@ def process_due_campaign_steps():
                 stopped += 1
                 continue
 
-        # Check stop conditions from the step just sent before advancing
-        if enrollment.current_step:
-            last_log = SendLog.objects.filter(
-                sequence_step=enrollment.current_step, contact=enrollment.contact
-            ).order_by('-created_at').first()
+        # Determine next step via branching or legacy order-based logic.
+        if enrollment.current_step is None:
+            next_step = steps[0]
+        elif transitions:
+            # Branching mode: pick the transition whose condition matches the
+            # contact's engagement with the last step.
+            status = last_log.status if last_log else 'pending'
+            if status == 'replied':
+                cond = 'replied'
+            elif status == 'clicked':
+                cond = 'clicked'
+            elif status == 'opened':
+                cond = 'opened'
+            else:
+                cond = 'not_opened'
+
+            matched = (
+                next((t for t in transitions if t.condition == cond), None)
+                or next((t for t in transitions if t.condition == 'default'), None)
+            )
+            if matched is not None:
+                next_step = matched.next_step  # None = end campaign via this branch
+            else:
+                remaining = [s for s in steps if s.order > enrollment.current_step.order]
+                next_step = remaining[0] if remaining else None
+        else:
+            # Legacy stop-condition checks (only when no transitions are defined).
             if last_log and (
                 (enrollment.current_step.stop_on_open and last_log.status in ('opened', 'clicked'))
                 or (enrollment.current_step.stop_on_click and last_log.status == 'clicked')
@@ -103,10 +136,6 @@ def process_due_campaign_steps():
                 enrollment.save(update_fields=['status', 'completed_at'])
                 stopped += 1
                 continue
-
-        if enrollment.current_step is None:
-            next_step = steps[0]
-        else:
             remaining = [s for s in steps if s.order > enrollment.current_step.order]
             next_step = remaining[0] if remaining else None
 
@@ -173,13 +202,30 @@ def process_due_campaign_steps():
             )
 
         enrollment.current_step = next_step
-        following = [s for s in steps if s.order > next_step.order]
-        if following:
-            delay = timezone.timedelta(days=following[0].delay_days, hours=following[0].delay_hours)
-            enrollment.next_send_at = timezone.now() + delay
+
+        if next_step is not None:
+            # If next_step has transitions, schedule the check-in at the minimum
+            # wait time across all branches so we can evaluate them when due.
+            next_transitions = list(next_step.transitions.all())
+            if next_transitions:
+                min_wait = min(
+                    timezone.timedelta(days=t.wait_days, hours=t.wait_hours)
+                    for t in next_transitions
+                )
+                enrollment.next_send_at = timezone.now() + min_wait
+            else:
+                following = [s for s in steps if s.order > next_step.order]
+                if following:
+                    delay = timezone.timedelta(days=following[0].delay_days, hours=following[0].delay_hours)
+                    enrollment.next_send_at = timezone.now() + delay
+                else:
+                    enrollment.status = 'completed'
+                    enrollment.completed_at = timezone.now()
         else:
+            # A branch transition with next_step=None means "end here."
             enrollment.status = 'completed'
             enrollment.completed_at = timezone.now()
+
         enrollment.save()
         sent += 1
 

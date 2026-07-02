@@ -131,6 +131,21 @@ export const campaignsApi = {
     api.patch(`/api/campaigns/${id}/steps/${stepId}/variants/${variantId}/`, data),
   deleteVariant: (id: number, stepId: number, variantId: number) =>
     api.delete(`/api/campaigns/${id}/steps/${stepId}/variants/${variantId}/`),
+  getTransitions: (id: number, stepId: number) =>
+    api.get(`/api/campaigns/${id}/steps/${stepId}/transitions/`),
+  createTransition: (id: number, stepId: number, data: any) =>
+    api.post(`/api/campaigns/${id}/steps/${stepId}/transitions/`, data),
+  updateTransition: (id: number, stepId: number, transitionId: number, data: any) =>
+    api.patch(`/api/campaigns/${id}/steps/${stepId}/transitions/${transitionId}/`, data),
+  deleteTransition: (id: number, stepId: number, transitionId: number) =>
+    api.delete(`/api/campaigns/${id}/steps/${stepId}/transitions/${transitionId}/`),
+}
+
+// Lead Finder (Apollo.io)
+export const leadsApi = {
+  search: (data: any) => api.post('/api/leads/search/', data),
+  reveal: (person_id: string) => api.post('/api/leads/reveal/', { person_id }),
+  import: (data: { people: any[]; list_id?: number | null }) => api.post('/api/leads/import/', data),
 }
 
 // Inbox

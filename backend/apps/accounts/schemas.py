@@ -13,6 +13,7 @@ class UserOut(Schema):
     company_name: str
     timezone: str
     is_email_verified: bool
+    apollo_api_key: str
     created_at: datetime
 
 
@@ -76,6 +77,7 @@ class ProfileUpdateIn(Schema):
     last_name: Optional[str] = None
     company_name: Optional[str] = None
     timezone: Optional[str] = None
+    apollo_api_key: Optional[str] = None
 
 
 class ChangePasswordIn(Schema):

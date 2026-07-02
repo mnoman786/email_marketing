@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { TrackingDomainsCard } from '@/components/settings/tracking-domains-card'
 import { SessionsCard } from '@/components/settings/sessions-card'
-import { User, Lock, Laptop, Globe, BadgeCheck, ShieldAlert, Building2, AtSign, Clock3, KeyRound, Sparkles } from 'lucide-react'
+import { User, Lock, Laptop, Globe, BadgeCheck, ShieldAlert, Building2, AtSign, Clock3, KeyRound, Sparkles, Puzzle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -36,6 +36,7 @@ const tabs = [
   { key: 'security', label: 'Security', icon: Lock },
   { key: 'sessions', label: 'Sessions', icon: Laptop },
   { key: 'domains', label: 'Domains', icon: Globe },
+  { key: 'integrations', label: 'Integrations', icon: Puzzle },
 ] as const
 
 type TabKey = typeof tabs[number]['key']
@@ -44,6 +45,8 @@ export default function SettingsPage() {
   const { user, updateUser } = useAuth()
   const [tab, setTab] = useState<TabKey>('profile')
   const [pwLoading, setPwLoading] = useState(false)
+  const [apolloKey, setApolloKey] = useState(user?.apollo_api_key || '')
+  const [apolloLoading, setApolloLoading] = useState(false)
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -197,6 +200,46 @@ export default function SettingsPage() {
           {tab === 'sessions' && <SessionsCard />}
 
           {tab === 'domains' && <TrackingDomainsCard />}
+
+          {tab === 'integrations' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Puzzle size={16} className="text-primary" /> Apollo.io Integration</CardTitle>
+                <CardDescription>Connect your Apollo.io account to search and import B2B leads directly into your contact lists</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 max-w-md">
+                <div>
+                  <Label className="flex items-center gap-1.5"><KeyRound size={12} /> Apollo API Key</Label>
+                  <Input
+                    type="password"
+                    value={apolloKey}
+                    onChange={e => setApolloKey(e.target.value)}
+                    placeholder="Enter your Apollo.io API key"
+                    className="mt-1 font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Find your API key at apollo.io → Settings → Integrations → API Keys
+                  </p>
+                </div>
+                <Button
+                  loading={apolloLoading}
+                  onClick={async () => {
+                    setApolloLoading(true)
+                    try {
+                      await updateUser({ apollo_api_key: apolloKey })
+                      toast.success('Apollo API key saved')
+                    } catch {
+                      toast.error('Failed to save API key')
+                    } finally {
+                      setApolloLoading(false)
+                    }
+                  }}
+                >
+                  Save API Key
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

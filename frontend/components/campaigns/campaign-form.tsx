@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
 import { EmailBodyEditor } from '@/components/campaigns/email-body-editor'
-import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Info, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye } from 'lucide-react'
+import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Info, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye, GitBranch, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -44,6 +44,14 @@ interface LocalVariant {
   text_content: string
 }
 
+interface LocalTransition {
+  id?: number
+  condition: 'opened' | 'not_opened' | 'clicked' | 'replied' | 'default'
+  next_step_order: number | null  // null = end campaign
+  wait_days: number
+  wait_hours: number
+}
+
 interface LocalStep {
   id?: number
   order: number
@@ -58,9 +66,11 @@ interface LocalStep {
   auto_optimize_metric: 'open_rate' | 'click_rate' | 'reply_rate'
   auto_optimize_min_sends: number
   variants: LocalVariant[]
+  transitions: LocalTransition[]
 }
 
 function toLocalSteps(steps?: CampaignStep[]): LocalStep[] {
+  const stepById = Object.fromEntries((steps || []).map(s => [s.id, s]))
   return (steps || []).map(s => ({
     id: s.id,
     order: s.order,
@@ -80,6 +90,13 @@ function toLocalSteps(steps?: CampaignStep[]): LocalStep[] {
       subject: v.subject,
       html_content: v.html_content,
       text_content: v.text_content,
+    })),
+    transitions: (s.transitions || []).map(t => ({
+      id: t.id,
+      condition: t.condition as LocalTransition['condition'],
+      next_step_order: t.next_step != null ? (stepById[t.next_step]?.order ?? null) : null,
+      wait_days: t.wait_days,
+      wait_hours: t.wait_hours,
     })),
   }))
 }
@@ -106,12 +123,13 @@ export function CampaignForm({ campaign, initialName }: Props) {
         order: 1, subject: '', html_content: '', text_content: '', delay_days: 0, delay_hours: 0,
         stop_on_open: false, stop_on_click: false,
         auto_optimize: false, auto_optimize_metric: 'reply_rate', auto_optimize_min_sends: 30,
-        variants: [],
+        variants: [], transitions: [],
       },
     ]
   )
   const [deletedStepIds, setDeletedStepIds] = useState<number[]>([])
   const [deletedVariants, setDeletedVariants] = useState<{ stepId: number; variantId: number }[]>([])
+  const [deletedTransitions, setDeletedTransitions] = useState<{ stepId: number; transitionId: number }[]>([])
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
   // active variant tab per step index — undefined means "no variants / plain step"
   const [activeVarTab, setActiveVarTab] = useState<Record<number, number>>({})
@@ -202,7 +220,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
       delay_days: prev.length === 0 ? 0 : 3, delay_hours: 0,
       stop_on_open: false, stop_on_click: false,
       auto_optimize: false, auto_optimize_metric: 'reply_rate', auto_optimize_min_sends: 30,
-      variants: [],
+      variants: [], transitions: [],
     }])
   }
 
@@ -278,9 +296,13 @@ export function CampaignForm({ campaign, initialName }: Props) {
       await campaignsApi.deleteStep(campaignId, stepId)
     }
     for (const { stepId, variantId } of deletedVariants) {
-      if (deletedStepIds.includes(stepId)) continue // cascade already removed it
+      if (deletedStepIds.includes(stepId)) continue
       await campaignsApi.deleteVariant(campaignId, stepId, variantId)
     }
+
+    // First pass: save all steps and build order → saved stepId map (needed for transitions).
+    const orderToStepId: Record<number, number> = {}
+    const savedSteps: { local: LocalStep; savedId: number }[] = []
     for (const step of steps) {
       const payload = {
         order: step.order,
@@ -295,10 +317,15 @@ export function CampaignForm({ campaign, initialName }: Props) {
         auto_optimize_metric: step.auto_optimize_metric,
         auto_optimize_min_sends: step.auto_optimize_min_sends,
       }
-      const stepId = step.id
+      const savedId = step.id
         ? (await campaignsApi.updateStep(campaignId, step.id, payload)).data.id
         : (await campaignsApi.createStep(campaignId, payload)).data.id
+      orderToStepId[step.order] = savedId
+      savedSteps.push({ local: step, savedId })
+    }
 
+    // Second pass: variants and transitions.
+    for (const { local: step, savedId: stepId } of savedSteps) {
       for (const variant of step.variants) {
         const variantPayload = {
           label: variant.label,
@@ -310,6 +337,20 @@ export function CampaignForm({ campaign, initialName }: Props) {
           await campaignsApi.updateVariant(campaignId, stepId, variant.id, variantPayload)
         } else {
           await campaignsApi.createVariant(campaignId, stepId, variantPayload)
+        }
+      }
+
+      // Transitions: delete removed, then create/update.
+      for (const dt of deletedTransitions.filter(dt => dt.stepId === (step.id ?? stepId))) {
+        await campaignsApi.deleteTransition(campaignId, stepId, dt.transitionId)
+      }
+      for (const tr of step.transitions) {
+        const nextStepId = tr.next_step_order != null ? (orderToStepId[tr.next_step_order] ?? null) : null
+        const payload = { condition: tr.condition, next_step: nextStepId, wait_days: tr.wait_days, wait_hours: tr.wait_hours }
+        if (tr.id) {
+          await campaignsApi.updateTransition(campaignId, stepId, tr.id, payload)
+        } else {
+          await campaignsApi.createTransition(campaignId, stepId, payload)
         }
       }
     }
@@ -721,6 +762,108 @@ export function CampaignForm({ campaign, initialName }: Props) {
                           <Switch checked={step[row.key]} onCheckedChange={v => updateStep(index, { [row.key]: v })} />
                         </div>
                       ))}
+                    </div>
+
+                    {/* Branching */}
+                    <div className="space-y-3 pt-1 border-t">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium flex items-center gap-1.5"><GitBranch size={14} /> Branching</p>
+                          <p className="text-xs text-muted-foreground">Route contacts to different steps based on engagement</p>
+                        </div>
+                        <Switch
+                          checked={step.transitions.length > 0}
+                          onCheckedChange={v => {
+                            if (v) {
+                              updateStep(index, {
+                                transitions: [{ condition: 'opened', next_step_order: null, wait_days: 1, wait_hours: 0 }],
+                              })
+                            } else {
+                              // Delete existing saved transitions
+                              for (const tr of step.transitions) {
+                                if (tr.id && step.id) setDeletedTransitions(d => [...d, { stepId: step.id!, transitionId: tr.id! }])
+                              }
+                              updateStep(index, { transitions: [] })
+                            }
+                          }}
+                        />
+                      </div>
+
+                      {step.transitions.length > 0 && (
+                        <div className="space-y-2 pl-1">
+                          {step.transitions.map((tr, ti) => (
+                            <div key={ti} className="flex items-center gap-2 flex-wrap">
+                              <select
+                                value={tr.condition}
+                                onChange={e => updateStep(index, {
+                                  transitions: step.transitions.map((t, i) =>
+                                    i === ti ? { ...t, condition: e.target.value as LocalTransition['condition'] } : t
+                                  ),
+                                })}
+                                className="text-xs border rounded px-2 py-1.5 bg-background"
+                              >
+                                <option value="opened">If opened</option>
+                                <option value="not_opened">If not opened</option>
+                                <option value="clicked">If clicked</option>
+                                <option value="replied">If replied</option>
+                                <option value="default">Always (default)</option>
+                              </select>
+                              <ArrowRight size={12} className="text-muted-foreground flex-none" />
+                              <select
+                                value={tr.next_step_order ?? ''}
+                                onChange={e => updateStep(index, {
+                                  transitions: step.transitions.map((t, i) =>
+                                    i === ti ? { ...t, next_step_order: e.target.value === '' ? null : Number(e.target.value) } : t
+                                  ),
+                                })}
+                                className="text-xs border rounded px-2 py-1.5 bg-background flex-1 min-w-0"
+                              >
+                                <option value="">End campaign</option>
+                                {steps
+                                  .filter(s => s.order !== step.order)
+                                  .map(s => (
+                                    <option key={s.order} value={s.order}>
+                                      Step {s.order}{s.subject ? `: ${s.subject.slice(0, 30)}` : ''}
+                                    </option>
+                                  ))}
+                              </select>
+                              <span className="text-xs text-muted-foreground flex-none">after</span>
+                              <input
+                                type="number" min={0} value={tr.wait_days}
+                                onChange={e => updateStep(index, {
+                                  transitions: step.transitions.map((t, i) =>
+                                    i === ti ? { ...t, wait_days: Number(e.target.value) } : t
+                                  ),
+                                })}
+                                className="text-xs border rounded px-2 py-1.5 w-14 bg-background"
+                              />
+                              <span className="text-xs text-muted-foreground flex-none">days</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (tr.id && step.id) setDeletedTransitions(d => [...d, { stepId: step.id!, transitionId: tr.id! }])
+                                  updateStep(index, { transitions: step.transitions.filter((_, i) => i !== ti) })
+                                }}
+                                className="text-muted-foreground hover:text-destructive flex-none"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => updateStep(index, {
+                              transitions: [
+                                ...step.transitions,
+                                { condition: 'not_opened', next_step_order: null, wait_days: 3, wait_hours: 0 },
+                              ],
+                            })}
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                          >
+                            <Plus size={12} /> Add condition
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

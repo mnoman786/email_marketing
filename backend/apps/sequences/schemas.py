@@ -21,6 +21,37 @@ class SmtpAccountRefOut(Schema):
 
 
 
+class StepTransitionOut(Schema):
+    id: int
+    step: int
+    condition: str
+    next_step: Optional[int] = None
+    wait_days: int
+    wait_hours: int
+
+    @staticmethod
+    def resolve_step(obj):
+        return obj.step_id
+
+    @staticmethod
+    def resolve_next_step(obj):
+        return obj.next_step_id
+
+
+class StepTransitionIn(Schema):
+    condition: str
+    next_step: Optional[int] = None
+    wait_days: int = 1
+    wait_hours: int = 0
+
+
+class StepTransitionUpdateIn(Schema):
+    condition: Optional[str] = None
+    next_step: Optional[int] = None
+    wait_days: Optional[int] = None
+    wait_hours: Optional[int] = None
+
+
 class CampaignStepVariantOut(Schema):
     id: int
     step: int
@@ -68,6 +99,7 @@ class CampaignStepOut(Schema):
     auto_optimize_metric: str
     auto_optimize_min_sends: int
     variants: List[CampaignStepVariantOut]
+    transitions: List[StepTransitionOut]
 
     @staticmethod
     def resolve_campaign(obj):
@@ -80,6 +112,10 @@ class CampaignStepOut(Schema):
     @staticmethod
     def resolve_variants(obj):
         return list(obj.variants.all())
+
+    @staticmethod
+    def resolve_transitions(obj):
+        return list(obj.transitions.all())
 
 
 class CampaignStepIn(Schema):
