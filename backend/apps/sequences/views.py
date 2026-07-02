@@ -44,7 +44,7 @@ def create_campaign(request, data: CampaignIn):
 @router.get('/{campaign_id}/', response=CampaignOut, auth=auth)
 def get_campaign(request, campaign_id: int):
     return get_object_or_404(
-        Campaign.objects.prefetch_related('contact_lists', 'steps', 'smtp_routes__smtp_account'),
+        Campaign.objects.prefetch_related('contact_lists', 'steps__variants'),
         id=campaign_id, user=request.auth
     )
 
