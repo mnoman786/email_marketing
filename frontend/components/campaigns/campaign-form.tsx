@@ -488,7 +488,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
               {(smtpAccounts || []).length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-center">
                   <p className="text-sm text-muted-foreground">No SMTP accounts yet.</p>
-                  <a href="/smtp" className="text-sm text-primary hover:underline">Add a sending account →</a>
+                  <a href="/accounts" className="text-sm text-primary hover:underline">Add a sending account →</a>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2">

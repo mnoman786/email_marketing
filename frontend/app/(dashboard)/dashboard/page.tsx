@@ -229,7 +229,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { href: '/campaigns', label: 'Create Campaign', desc: 'Launch a new email campaign', icon: Megaphone, color: 'from-blue-500 to-blue-600' },
-          { href: '/contacts', label: 'Import Leads', desc: 'Add leads to your lists', icon: Users, color: 'from-green-500 to-green-600' },
+          { href: '/leads', label: 'Import Leads', desc: 'Add leads to your lists', icon: Users, color: 'from-green-500 to-green-600' },
           { href: '/templates', label: 'New Template', desc: 'Design a reusable template', icon: Mail, color: 'from-purple-500 to-purple-600' },
         ].map(a => (
           <Link key={a.href} href={a.href}>

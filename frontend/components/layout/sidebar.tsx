@@ -13,13 +13,13 @@ import { useEffect, useRef, useState } from 'react'
 const navItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
-  { href: '/inbox', label: 'Unibox', icon: Inbox },
-  { href: '/contacts', label: 'Leads', icon: Users },
+  { href: '/unibox', label: 'Unibox', icon: Inbox },
+  { href: '/leads', label: 'Leads', icon: Users },
   { href: '/lists', label: 'Lists', icon: ListFilter },
   { href: '/lead-finder', label: 'Lead Finder', icon: Search },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/smtp', label: 'Accounts', icon: Server },
-  { href: '/suppressions', label: 'Blocklist', icon: ShieldBan },
+  { href: '/accounts', label: 'Accounts', icon: Server },
+  { href: '/blocklist', label: 'Blocklist', icon: ShieldBan },
 ]
 
 const bottomItems = [
@@ -95,7 +95,7 @@ export function Sidebar() {
             >
               <Icon className="w-4.5 h-4.5 shrink-0" size={18} />
               {!collapsed && <span className="flex-1">{label}</span>}
-              {href === '/inbox' && unreadCount > 0 && (
+              {href === '/unibox' && unreadCount > 0 && (
                 <span className={cn(
                   'flex items-center justify-center text-[10px] font-semibold rounded-full bg-primary text-primary-foreground',
                   collapsed ? 'absolute top-1 right-1 w-2 h-2' : 'min-w-4.5 h-4.5 px-1'
