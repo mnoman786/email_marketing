@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -18,6 +18,19 @@ import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Inf
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+
+const SUBJECT_CONTACT_TAGS = [
+  { label: 'First Name', tag: 'first_name' },
+  { label: 'Last Name',  tag: 'last_name'  },
+  { label: 'Full Name',  tag: 'full_name'  },
+  { label: 'Company',    tag: 'company'    },
+  { label: 'Job Title',  tag: 'title'      },
+  { label: 'City',       tag: 'city'       },
+]
+const SUBJECT_SENDER_TAGS = [
+  { label: 'Your Name',    tag: 'sender_name'    },
+  { label: 'Your Company', tag: 'sender_company' },
+]
 
 const schema = z.object({
   name: z.string().min(1, 'Name required'),
@@ -131,6 +144,35 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const [deletedVariants, setDeletedVariants] = useState<{ stepId: number; variantId: number }[]>([])
   const [deletedTransitions, setDeletedTransitions] = useState<{ stepId: number; transitionId: number }[]>([])
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
+  const [subjectTagsOpen, setSubjectTagsOpen] = useState<string | null>(null)
+  const subjectInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+
+  useEffect(() => {
+    if (!subjectTagsOpen) return
+    const close = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (!(target as Element).closest?.('[data-subject-tag-menu]')) setSubjectTagsOpen(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [subjectTagsOpen])
+
+  const insertSubjectTag = (key: string, tag: string, currentValue: string, setter: (v: string) => void) => {
+    const el = subjectInputRefs.current.get(key)
+    if (el) {
+      const start = el.selectionStart ?? currentValue.length
+      const end = el.selectionEnd ?? currentValue.length
+      const next = currentValue.slice(0, start) + tag + currentValue.slice(end)
+      setter(next)
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(start + tag.length, start + tag.length)
+      })
+    } else {
+      setter(currentValue + tag)
+    }
+    setSubjectTagsOpen(null)
+  }
   // active variant tab per step index — undefined means "no variants / plain step"
   const [activeVarTab, setActiveVarTab] = useState<Record<number, number>>({})
 
@@ -681,11 +723,58 @@ export function CampaignForm({ campaign, initialName }: Props) {
 
                   <CardContent className="pt-4 space-y-4">
                     {/* Subject */}
-                    <div>
-                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject *</Label>
-                      <Input value={editSubject} onChange={e => setSubject(e.target.value)}
-                        placeholder="Quick question about {{company}}" className="mt-1.5 h-10" />
-                    </div>
+                    {(() => {
+                      const key = `${index}-${activeTab}`
+                      return (
+                        <div>
+                          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject *</Label>
+                          <div className="flex gap-1.5 items-start mt-1.5">
+                            <Input
+                              ref={el => { if (el) subjectInputRefs.current.set(key, el); else subjectInputRefs.current.delete(key) }}
+                              value={editSubject}
+                              onChange={e => setSubject(e.target.value)}
+                              placeholder="Quick question about {{company}}"
+                              className="h-10 flex-1"
+                            />
+                            <div className="relative" data-subject-tag-menu>
+                              <button
+                                type="button"
+                                onClick={() => setSubjectTagsOpen(v => v === key ? null : key)}
+                                className="h-10 px-3 rounded-md border text-xs font-mono bg-muted/50 hover:bg-muted whitespace-nowrap flex items-center gap-1"
+                                title="Insert personalization tag"
+                              >
+                                {'{{ }}'}
+                              </button>
+                              {subjectTagsOpen === key && (
+                                <div className="absolute right-0 top-full mt-1 z-30 w-56 rounded-md border bg-popover shadow-md py-1 max-h-72 overflow-y-auto">
+                                  <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Contact</p>
+                                  {SUBJECT_CONTACT_TAGS.map(t => (
+                                    <button key={t.tag} type="button"
+                                      onClick={() => insertSubjectTag(key, `{{${t.tag}}}`, editSubject, setSubject)}
+                                      className="flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-muted"
+                                    >
+                                      <span>{t.label}</span>
+                                      <span className="font-mono text-muted-foreground text-[10px]">{`{{${t.tag}}}`}</span>
+                                    </button>
+                                  ))}
+                                  <div className="border-t my-1" />
+                                  <p className="px-3 pt-0.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sender</p>
+                                  {SUBJECT_SENDER_TAGS.map(t => (
+                                    <button key={t.tag} type="button"
+                                      onClick={() => insertSubjectTag(key, `{{${t.tag}}}`, editSubject, setSubject)}
+                                      className="flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-muted"
+                                    >
+                                      <span>{t.label}</span>
+                                      <span className="font-mono text-muted-foreground text-[10px]">{`{{${t.tag}}}`}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {/* Body */}
                     <div>
