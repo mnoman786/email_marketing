@@ -33,6 +33,8 @@ export interface ContactList {
 export interface VerificationDetail {
   sub_status?: string
   score?: number
+  spam_score?: number         // 0–100 send risk (higher = spammier/riskier)
+  risk?: 'low' | 'medium' | 'high'
   is_disposable?: boolean
   is_role?: boolean
   is_free?: boolean

@@ -46,6 +46,29 @@ function VerificationDot({ contact }: { contact: Contact }) {
   return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${m.color}`} title={parts.join(' · ')} />
 }
 
+// Per-lead spam / send-risk badge derived from verification_detail.
+const RISK_META: Record<string, { color: string; label: string }> = {
+  low: { color: 'bg-green-100 text-green-700', label: 'Low' },
+  medium: { color: 'bg-amber-100 text-amber-700', label: 'Medium' },
+  high: { color: 'bg-red-100 text-red-700', label: 'High' },
+}
+
+function SpamRiskBadge({ contact }: { contact: Contact }) {
+  const d = contact.verification_detail || {}
+  if (typeof d.spam_score !== 'number' || !d.risk) {
+    return <span className="text-muted-foreground text-xs">—</span>
+  }
+  const m = RISK_META[d.risk] || RISK_META.low
+  return (
+    <span
+      className={`badge ${m.color} text-xs`}
+      title={`Spam risk ${d.spam_score}/100 — higher means more likely to hurt sender reputation`}
+    >
+      {m.label} · {d.spam_score}
+    </span>
+  )
+}
+
 export default function ContactsPage() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
@@ -254,6 +277,7 @@ export default function ContactsPage() {
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Company</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Lists</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Spam risk</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Added</th>
                     <th className="px-4 py-3 w-16" />
                   </tr>
@@ -305,6 +329,9 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={contact.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <SpamRiskBadge contact={contact} />
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">{formatDateTime(contact.created_at)}</td>
                       <td className="px-4 py-3">

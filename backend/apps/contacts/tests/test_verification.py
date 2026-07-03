@@ -104,6 +104,35 @@ class VerificationLayerTests(TestCase):
         self.assertIn('sub_status', detail)
         self.assertIn('score', detail)
 
+    def test_spam_score_clean_address_is_low(self):
+        with _mx(True):
+            r = verify_email_detailed('jane.doe@acme-corp.com')
+        self.assertLess(r.spam_score, 30)
+        self.assertEqual(r.risk, 'low')
+
+    def test_spam_score_disposable_is_high(self):
+        with _mx(True):
+            r = verify_email_detailed('x@mailinator.com')
+        self.assertGreaterEqual(r.spam_score, 70)
+        self.assertEqual(r.risk, 'high')
+
+    def test_spam_score_role_account_is_medium(self):
+        with _mx(True):
+            r = verify_email_detailed('info@acme-corp.com')
+        self.assertEqual(r.risk, 'medium')
+
+    def test_spam_score_no_mx_is_high(self):
+        with _mx(False):
+            r = verify_email_detailed('nobody@no-mail-domain.example')
+        self.assertEqual(r.spam_score, 100)
+        self.assertEqual(r.risk, 'high')
+
+    def test_spam_score_in_as_detail(self):
+        with _mx(True):
+            detail = verify_email_detailed('jane@acme-corp.com').as_detail()
+        self.assertIn('spam_score', detail)
+        self.assertIn('risk', detail)
+
     @override_settings(EMAIL_VERIFY_SMTP_PROBE=True)
     def test_smtp_probe_rejection_is_invalid(self):
         with _mx(True), patch.object(verification, '_smtp_probe', return_value=False):

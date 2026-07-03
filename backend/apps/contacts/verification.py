@@ -53,7 +53,9 @@ class VerificationResult:
     contract; the rest is stored on Contact.verification_detail."""
     status: str = UNKNOWN
     sub_status: str = ''          # ok | invalid_syntax | disposable | no_mx | possible_typo | role_account | mailbox_not_found | mx_lookup_failed
-    score: int = 0               # 0–10 quality score (Kickbox-style)
+    score: int = 0               # 0–10 quality score (Kickbox-style; higher = better)
+    spam_score: int = 0          # 0–100 send RISK for this lead (higher = spammier/riskier)
+    risk: str = 'low'            # low | medium | high (bucketed spam_score)
     is_disposable: bool = False
     is_role: bool = False
     is_free: bool = False
@@ -228,6 +230,41 @@ def _smtp_probe(email, domain):
         return None
 
 
+# --- spam / send-risk scoring -----------------------------------------------
+
+# Base send-RISK (0–100, higher = riskier to mail) per verification sub_status.
+# Reflects reputation damage: undeliverable = guaranteed bounce, role/typo = spam
+# trap & complaint risk, inconclusive = uncertain.
+_RISK_BY_SUB_STATUS = {
+    'invalid_syntax': 100,   # can never deliver — pure bounce
+    'no_mx': 100,            # domain takes no mail — pure bounce
+    'disposable': 95,        # throwaway; frequent trap/abuse source
+    'mailbox_not_found': 90, # address doesn't exist — hard bounce
+    'possible_typo': 70,     # likely mistyped — bounce or lands on a trap
+    'mx_lookup_failed': 50,  # inconclusive — unknown risk
+    'role_account': 45,      # info@/sales@ — spam-trap & complaint prone
+    'ok': 5,                 # clean, deliverable
+}
+
+
+def _finalize(result):
+    """Derive the per-lead spam_score (0–100) and risk bucket from the gathered
+    signals, then return the result. Called on every exit path so every lead gets
+    a score."""
+    score = _RISK_BY_SUB_STATUS.get(result.sub_status, 50)
+    # Soft adjustments layered on the deliverable ('ok') baseline.
+    if result.sub_status == 'ok':
+        if result.is_role:
+            score += 40   # role mailbox that also passed MX
+        if result.is_free:
+            score += 5    # free webmail: slightly higher cold-complaint rate
+    score = max(0, min(100, score))
+
+    result.spam_score = score
+    result.risk = 'high' if score >= 70 else 'medium' if score >= 30 else 'low'
+    return result
+
+
 # --- orchestration ----------------------------------------------------------
 
 def verify_email_detailed(email, mx_cache=None):
@@ -243,7 +280,7 @@ def verify_email_detailed(email, mx_cache=None):
         result.status = INVALID
         result.sub_status = 'invalid_syntax'
         result.score = 0
-        return result
+        return _finalize(result)
 
     result.normalized = normalized
     local, domain = normalized.rsplit('@', 1)
@@ -257,7 +294,7 @@ def verify_email_detailed(email, mx_cache=None):
         result.status = INVALID
         result.sub_status = 'disposable'
         result.score = 0
-        return result
+        return _finalize(result)
 
     # Likely typo (gmial.com -> gmail.com). Not fatal, but a strong quality signal.
     suggested_domain = _suggest_domain(domain)
@@ -276,12 +313,12 @@ def verify_email_detailed(email, mx_cache=None):
         result.status = UNKNOWN
         result.sub_status = 'mx_lookup_failed'
         result.score = 4
-        return result
+        return _finalize(result)
     if has_mx is False:
         result.status = INVALID
         result.sub_status = 'no_mx'
         result.score = 0
-        return result
+        return _finalize(result)
 
     # Optional SMTP mailbox probe.
     if getattr(settings, 'EMAIL_VERIFY_SMTP_PROBE', False):
@@ -290,7 +327,7 @@ def verify_email_detailed(email, mx_cache=None):
             result.status = INVALID
             result.sub_status = 'mailbox_not_found'
             result.score = 1
-            return result
+            return _finalize(result)
         # exists True or None -> fall through as valid/unknown-but-deliverable
 
     # Passed everything reachable. Score reflects remaining soft signals.
@@ -304,7 +341,7 @@ def verify_email_detailed(email, mx_cache=None):
     else:
         result.sub_status = 'ok'
         result.score = 9 if result.is_free else 10
-    return result
+    return _finalize(result)
 
 
 def verify_email(email, mx_cache=None):
