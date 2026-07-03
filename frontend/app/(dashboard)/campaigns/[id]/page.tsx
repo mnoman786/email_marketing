@@ -46,6 +46,15 @@ function StatusPill({ status }: { status: string }) {
 
 const pct = (num: number, denom: number) => (denom > 0 ? Math.round((num / denom) * 100) : 0)
 
+// Human label for a step's delay since the previous step (or enrollment).
+function delayLabel(days: number, hours: number): string {
+  if (!days && !hours) return 'Immediately'
+  const parts: string[] = []
+  if (days) parts.push(`${days}d`)
+  if (hours) parts.push(`${hours}h`)
+  return `+${parts.join(' ')}`
+}
+
 export default function CampaignDetailPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -353,6 +362,7 @@ export default function CampaignDetailPage() {
                   <tr className="border-b bg-muted/30">
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Step</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Subject</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Timing</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Sent</th>
                     {trackOpens && <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Opened</th>}
                     {trackClicks && <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Clicked</th>}
@@ -366,6 +376,19 @@ export default function CampaignDetailPage() {
                       <tr>
                         <td className="px-4 py-2.5 font-medium whitespace-nowrap">Step {step.order}</td>
                         <td className="px-4 py-2.5 text-muted-foreground truncate max-w-xs">{step.subject}</td>
+                        <td className="px-4 py-2.5 whitespace-nowrap text-xs">
+                          <span className="text-muted-foreground">
+                            {step.order === 1
+                              ? (delayLabel(step.delay_days, step.delay_hours) === 'Immediately' ? 'On enrollment' : `${delayLabel(step.delay_days, step.delay_hours)} after enrollment`)
+                              : `${delayLabel(step.delay_days, step.delay_hours)} after step ${step.order - 1}`}
+                          </span>
+                          {step.waiting > 0 && (
+                            <span className="ml-1 text-amber-600">· {step.waiting} waiting</span>
+                          )}
+                          {step.order > 1 && step.sent === 0 && step.waiting === 0 && (
+                            <span className="ml-1 italic text-muted-foreground">· no leads reached yet</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5 tabular-nums font-medium">{step.sent}</td>
                         {trackOpens && <td className="px-4 py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></td>}
                         {trackClicks && <td className="px-4 py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></td>}
@@ -383,6 +406,7 @@ export default function CampaignDetailPage() {
                               {!variant.is_active && <span className="ml-1 italic">(disabled)</span>}
                             </td>
                             <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-xs">{variant.subject}</td>
+                            <td className="px-4 py-2" />
                             <td className="px-4 py-2 text-xs tabular-nums">{variant.sent}</td>
                             {trackOpens && <td className="px-4 py-2 text-xs tabular-nums text-purple-600">{variant.opened} ({pct(variant.opened, variant.sent)}%)</td>}
                             {trackClicks && <td className="px-4 py-2 text-xs tabular-nums text-blue-600">{variant.clicked} ({pct(variant.clicked, variant.sent)}%)</td>}
@@ -394,7 +418,7 @@ export default function CampaignDetailPage() {
                     </Fragment>
                   ))}
                   {steps.length === 0 && (
-                    <tr><td colSpan={5 + (trackOpens ? 1 : 0) + (trackClicks ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground text-sm">No steps yet</td></tr>
+                    <tr><td colSpan={6 + (trackOpens ? 1 : 0) + (trackClicks ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground text-sm">No steps yet</td></tr>
                   )}
                 </tbody>
               </table>

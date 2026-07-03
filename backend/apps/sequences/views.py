@@ -268,7 +268,7 @@ def campaign_stats(request, campaign_id: int):
         }
 
     step_stats = []
-    for step in steps:
+    for idx, step in enumerate(steps):
         logs = SendLog.objects.filter(sequence_step=step)
         variants = list(step.variants.all())
         variant_stats = [
@@ -281,11 +281,23 @@ def campaign_stats(request, campaign_id: int):
             }
             for variant in variants
         ]
+        # How many active leads are currently waiting to receive THIS step next.
+        # `current_step` holds the step a lead was LAST sent, so a lead is waiting
+        # for this step when their last step was the previous one (or, for the
+        # first step, when they've not been sent anything yet). Explains "0 sent"
+        # when nobody has reached the step — or all replied/stopped before it.
+        if idx == 0:
+            waiting = campaign.enrollments.filter(status='active', current_step__isnull=True).count()
+        else:
+            waiting = campaign.enrollments.filter(status='active', current_step=steps[idx - 1]).count()
         step_stats.append({
             'step_id': step.id,
             'order': step.order,
             'subject': step.subject,
             'auto_optimize': step.auto_optimize,
+            'delay_days': step.delay_days,
+            'delay_hours': step.delay_hours,
+            'waiting': waiting,
             **bucket_counts(logs),
             'variants': variant_stats,
         })
