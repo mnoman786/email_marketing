@@ -145,13 +145,23 @@ export default function ContactsPage() {
       toast.success('Lead deleted')
       setDeleteId(null)
     },
+    onError: (err: any) => {
+      // 409 when the lead is linked to a campaign.
+      toast.error(err.response?.data?.detail || 'Failed to delete lead')
+      setDeleteId(null)
+    },
   })
 
   const bulkDeleteMut = useMutation({
     mutationFn: (ids: number[]) => contactsApi.bulkDelete(ids),
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['contacts'] })
-      toast.success(`${selected.length} leads deleted`)
+      const { deleted = 0, skipped = 0 } = res.data || {}
+      if (skipped) {
+        toast.success(`${deleted} deleted · ${skipped} kept (linked to a campaign)`)
+      } else {
+        toast.success(`${deleted} leads deleted`)
+      }
       setSelected([])
     },
   })

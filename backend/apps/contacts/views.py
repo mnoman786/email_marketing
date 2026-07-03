@@ -180,8 +180,17 @@ def import_status(request, task_id: str):
 
 @router.post('/bulk-delete/', auth=auth)
 def bulk_delete(request, data: BulkDeleteIn):
-    deleted, _ = Contact.objects.filter(user=request.auth, id__in=data.ids).delete()
-    return {'deleted': deleted}
+    # Protect leads that are linked to a campaign (have an enrollment): skip them
+    # so a "delete all" can never wipe out contacts mid-campaign.
+    linked_ids = set(
+        Contact.objects.filter(
+            user=request.auth, id__in=data.ids, campaign_enrollments__isnull=False
+        ).values_list('id', flat=True).distinct()
+    )
+    deletable = Contact.objects.filter(user=request.auth, id__in=data.ids).exclude(id__in=linked_ids)
+    deleted = deletable.count()
+    deletable.delete()
+    return {'deleted': deleted, 'skipped': len(linked_ids)}
 
 
 # --- Email verification (re-run the in-house validator) ---
@@ -275,7 +284,16 @@ def update_contact(request, contact_id: int, data: ContactUpdateIn):
 
 @router.delete('/{contact_id}/', auth=auth)
 def delete_contact(request, contact_id: int):
-    get_object_or_404(Contact, id=contact_id, user=request.auth).delete()
+    contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
+    # A lead enrolled in a campaign can't be deleted outright — surface why so the
+    # user can remove it from the campaign first.
+    campaign_names = list(
+        contact.campaign_enrollments.values_list('campaign__name', flat=True).distinct()
+    )
+    if campaign_names:
+        joined = ', '.join(campaign_names)
+        raise HttpError(409, f'This lead is linked to a campaign ({joined}) and can\'t be deleted. Remove it from the campaign first.')
+    contact.delete()
     return {'detail': 'Deleted.'}
 
 
