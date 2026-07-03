@@ -119,6 +119,7 @@ class ImportStatusOut(Schema):
     created: int
     updated: int
     failed: int
+    blocked: int = 0
     errors: List[Dict[str, Any]]
 
 

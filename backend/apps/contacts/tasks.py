@@ -1,4 +1,5 @@
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from .models import ContactList, Contact
@@ -21,8 +22,9 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
             pass
 
     total = len(contacts_data)
-    created, updated, failed = 0, 0, 0
+    created, updated, failed, blocked = 0, 0, 0, 0
     errors = []
+    block_disposable = getattr(settings, 'BLOCK_DISPOSABLE_ON_IMPORT', True)
     # MX results reused across the whole import (on top of the Redis per-domain
     # cache), and contact ids collected so the list M2M is added in one query at
     # the end instead of one INSERT per row.
@@ -37,6 +39,10 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
                 failed += 1
                 continue
             result = verify_email_detailed(email, mx_cache=mx_cache)
+            # Auto-block temp-mail addresses at the door: skip without storing.
+            if result.is_disposable and block_disposable:
+                blocked += 1
+                continue
             contact, is_new = Contact.objects.update_or_create(
                 user=user, email=email,
                 defaults={
@@ -73,6 +79,7 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
                     'created': created,
                     'updated': updated,
                     'failed': failed,
+                    'blocked': blocked,
                 }
             )
 
@@ -88,6 +95,7 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
         'created': created,
         'updated': updated,
         'failed': failed,
+        'blocked': blocked,
         'errors': errors[:20],
     }
 

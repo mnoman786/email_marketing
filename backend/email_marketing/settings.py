@@ -171,6 +171,14 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Email verification / temp-mail blocking.
+# When True, disposable (temp-mail) addresses are rejected on import and manual add
+# instead of being stored as invalid — keeps the lead base clean at the door.
+BLOCK_DISPOSABLE_ON_IMPORT = config('BLOCK_DISPOSABLE_ON_IMPORT', default=True, cast=bool)
+# Opt-in SMTP RCPT mailbox probe (see apps/contacts/verification.py). Off by default
+# to protect the sending IP's reputation.
+EMAIL_VERIFY_SMTP_PROBE = config('EMAIL_VERIFY_SMTP_PROBE', default=False, cast=bool)
+
 # Encryption key for SMTP passwords
 ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='')
 

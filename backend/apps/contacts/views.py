@@ -1,6 +1,7 @@
 from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
@@ -124,6 +125,9 @@ def create_contact(request, data: ContactIn):
         # Verify on add — one MX lookup (cached per-domain in Redis), so adding a
         # contact whose domain you've seen before costs no DNS at all.
         result = verify_email_detailed(payload['email'])
+        # Auto-block temp-mail addresses at the door (configurable).
+        if result.is_disposable and getattr(settings, 'BLOCK_DISPOSABLE_ON_IMPORT', True):
+            raise HttpError(422, 'This looks like a disposable / temporary email address and was blocked.')
         payload['verification_status'] = result.status
         payload['verification_detail'] = result.as_detail()
         payload['verified_at'] = timezone.now()
@@ -161,14 +165,17 @@ def import_status(request, task_id: str):
         info = result.info or {}
         return {'state': 'progress', 'current': info.get('current', 0), 'total': info.get('total', 0),
                 'percent': info.get('percent', 0), 'created': info.get('created', 0),
-                'updated': info.get('updated', 0), 'failed': info.get('failed', 0), 'errors': []}
+                'updated': info.get('updated', 0), 'failed': info.get('failed', 0),
+                'blocked': info.get('blocked', 0), 'errors': []}
     if state == 'SUCCESS':
         info = result.result or {}
         return {'state': 'success', 'current': info.get('current', 0), 'total': info.get('total', 0),
                 'percent': 100, 'created': info.get('created', 0), 'updated': info.get('updated', 0),
-                'failed': info.get('failed', 0), 'errors': info.get('errors', [])}
+                'failed': info.get('failed', 0), 'blocked': info.get('blocked', 0),
+                'errors': info.get('errors', [])}
     return {'state': 'failure', 'current': 0, 'total': 0, 'percent': 0,
-            'created': 0, 'updated': 0, 'failed': 0, 'errors': [{'row': 0, 'error': str(result.info)}]}
+            'created': 0, 'updated': 0, 'failed': 0, 'blocked': 0,
+            'errors': [{'row': 0, 'error': str(result.info)}]}
 
 
 @router.post('/bulk-delete/', auth=auth)
