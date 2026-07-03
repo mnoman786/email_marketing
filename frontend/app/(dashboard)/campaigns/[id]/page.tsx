@@ -139,15 +139,20 @@ export default function CampaignDetailPage() {
   const timeline: { date: string; count: number }[] = stats?.sends_timeline || []
   const deliveryRate = pct(perf.sent, perf.sent + perf.failed)
 
+  // Only surface open/click metrics if the campaign was created with that tracking
+  // enabled — otherwise the counts are always zero and misleading.
+  const trackOpens = campaign.track_opens
+  const trackClicks = campaign.track_clicks
+
   const opportunities = stats?.opportunities || 0
   const kpis = [
     { label: 'Enrolled', value: totalEnrolled.toLocaleString(), sub: `${counts.active || 0} active`, tone: 'text-foreground' },
     { label: 'Sent', value: perf.sent.toLocaleString(), sub: perf.failed ? `${perf.failed} failed` : 'delivered', tone: 'text-foreground' },
-    { label: 'Open rate', value: `${pct(perf.opened, perf.sent)}%`, sub: `${perf.opened.toLocaleString()} opens`, tone: 'text-purple-600' },
-    { label: 'Click rate', value: `${pct(perf.clicked, perf.sent)}%`, sub: `${perf.clicked.toLocaleString()} clicks`, tone: 'text-blue-600' },
+    trackOpens && { label: 'Open rate', value: `${pct(perf.opened, perf.sent)}%`, sub: `${perf.opened.toLocaleString()} opens`, tone: 'text-purple-600' },
+    trackClicks && { label: 'Click rate', value: `${pct(perf.clicked, perf.sent)}%`, sub: `${perf.clicked.toLocaleString()} clicks`, tone: 'text-blue-600' },
     { label: 'Reply rate', value: `${pct(perf.replied, perf.sent)}%`, sub: `${perf.replied.toLocaleString()} replies`, tone: 'text-green-600' },
     { label: 'Opportunities', value: opportunities.toLocaleString(), sub: 'interested leads', tone: 'text-emerald-600' },
-  ]
+  ].filter(Boolean) as { label: string; value: string; sub: string; tone: string }[]
 
   return (
     <div className="p-6 space-y-6">
@@ -333,8 +338,14 @@ export default function CampaignDetailPage() {
 
           {/* Step-by-step performance */}
           <div className="rounded-xl border bg-card overflow-hidden">
-            <div className="px-4 py-3 border-b">
+            <div className="px-4 py-3 border-b flex items-center justify-between gap-2">
               <p className="font-semibold text-sm">Step-by-step performance</p>
+              {(!trackOpens || !trackClicks) && (
+                <p className="text-[11px] text-muted-foreground">
+                  {!trackOpens && !trackClicks ? 'Open & click tracking off'
+                    : !trackOpens ? 'Open tracking off' : 'Click tracking off'} for this campaign
+                </p>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -343,8 +354,8 @@ export default function CampaignDetailPage() {
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Step</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Subject</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Sent</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Opened</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Clicked</th>
+                    {trackOpens && <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Opened</th>}
+                    {trackClicks && <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Clicked</th>}
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Replied</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Failed</th>
                   </tr>
@@ -356,8 +367,8 @@ export default function CampaignDetailPage() {
                         <td className="px-4 py-2.5 font-medium whitespace-nowrap">Step {step.order}</td>
                         <td className="px-4 py-2.5 text-muted-foreground truncate max-w-xs">{step.subject}</td>
                         <td className="px-4 py-2.5 tabular-nums font-medium">{step.sent}</td>
-                        <td className="px-4 py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></td>
-                        <td className="px-4 py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></td>
+                        {trackOpens && <td className="px-4 py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></td>}
+                        {trackClicks && <td className="px-4 py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></td>}
                         <td className="px-4 py-2.5 tabular-nums text-green-600">{step.replied} <span className="text-xs text-muted-foreground">({pct(step.replied, step.sent)}%)</span></td>
                         <td className="px-4 py-2.5 tabular-nums text-red-500">{step.failed}</td>
                       </tr>
@@ -373,8 +384,8 @@ export default function CampaignDetailPage() {
                             </td>
                             <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-xs">{variant.subject}</td>
                             <td className="px-4 py-2 text-xs tabular-nums">{variant.sent}</td>
-                            <td className="px-4 py-2 text-xs tabular-nums text-purple-600">{variant.opened} ({pct(variant.opened, variant.sent)}%)</td>
-                            <td className="px-4 py-2 text-xs tabular-nums text-blue-600">{variant.clicked} ({pct(variant.clicked, variant.sent)}%)</td>
+                            {trackOpens && <td className="px-4 py-2 text-xs tabular-nums text-purple-600">{variant.opened} ({pct(variant.opened, variant.sent)}%)</td>}
+                            {trackClicks && <td className="px-4 py-2 text-xs tabular-nums text-blue-600">{variant.clicked} ({pct(variant.clicked, variant.sent)}%)</td>}
                             <td className="px-4 py-2 text-xs tabular-nums text-green-600">{variant.replied} ({pct(variant.replied, variant.sent)}%)</td>
                             <td className="px-4 py-2 text-xs tabular-nums text-red-500">{variant.failed}</td>
                           </tr>
@@ -383,7 +394,7 @@ export default function CampaignDetailPage() {
                     </Fragment>
                   ))}
                   {steps.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">No steps yet</td></tr>
+                    <tr><td colSpan={5 + (trackOpens ? 1 : 0) + (trackClicks ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground text-sm">No steps yet</td></tr>
                   )}
                 </tbody>
               </table>
