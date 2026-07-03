@@ -100,7 +100,7 @@ export default function ContactsPage() {
       qc.invalidateQueries({ queryKey: ['contacts'] })
       qc.invalidateQueries({ queryKey: ['lists-all'] })
       const st = importStatus as any
-      const blocked = st.blocked ? `, ${st.blocked} temp-mail blocked` : ''
+      const blocked = st.blocked ? `, ${st.blocked} fake/undeliverable blocked` : ''
       toast.success(`Import done: ${st.created} created, ${st.updated} updated${blocked}`)
       setImportTaskId(null)
     } else if (s === 'failure') {

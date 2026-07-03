@@ -38,9 +38,17 @@ def bulk_import_contacts_task(self, user_id, contacts_data, list_id=None):
             if not email:
                 failed += 1
                 continue
-            result = verify_email_detailed(email, mx_cache=mx_cache)
-            # Auto-block temp-mail addresses at the door: skip without storing.
-            if result.is_disposable and block_disposable:
+            # Force the SMTP mailbox-existence probe so a CSV of fake / dead
+            # addresses is filtered at the door, same as a manual add. Runs in the
+            # worker, so the probe latency never blocks a web request; the probe
+            # fails open (greylist / catch-all -> UNKNOWN) so real leads aren't lost.
+            result = verify_email_detailed(email, mx_cache=mx_cache, smtp_probe=True)
+            # Skip anything undeliverable without storing it: bad syntax, dead domain
+            # (no MX), a mailbox the server rejected, or disposable/temp-mail. The
+            # disposable case still respects the BLOCK_DISPOSABLE_ON_IMPORT opt-out.
+            if result.status == 'invalid' and (
+                result.sub_status != 'disposable' or block_disposable
+            ):
                 blocked += 1
                 continue
             contact, is_new = Contact.objects.update_or_create(
