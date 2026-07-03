@@ -45,6 +45,18 @@ class VerificationLayerTests(TestCase):
         self.assertEqual(r.sub_status, 'disposable')
         self.assertTrue(r.is_disposable)
 
+    def test_temp_mail_domain_from_large_list_is_disposable(self):
+        # asitrai.com is a Boomlify-style throwaway that only the large vendored
+        # blocklist catches — guards against regressing to the tiny seed.
+        with _mx(True):
+            r = verify_email_detailed('hahake9952@asitrai.com')
+        self.assertEqual(r.status, INVALID)
+        self.assertTrue(r.is_disposable)
+
+    def test_disposable_list_is_comprehensive(self):
+        # Sanity: we ship the merged public blocklist, not just the seed.
+        self.assertGreater(len(verification._disposable_domains()), 10000)
+
     def test_role_account_flagged_but_valid(self):
         with _mx(True):
             r = verify_email_detailed('info@somecompany.com')
@@ -53,8 +65,10 @@ class VerificationLayerTests(TestCase):
         self.assertEqual(r.sub_status, 'role_account')
 
     def test_typo_produces_suggestion(self):
+        # A gmail typo that is NOT itself a known disposable/typo-squat domain, so it
+        # reaches the suggestion path rather than short-circuiting as disposable.
         with _mx(True):
-            r = verify_email_detailed('john@gmial.com')
+            r = verify_email_detailed('john@gmqil.com')
         self.assertEqual(r.status, VALID)
         self.assertEqual(r.suggestion, 'john@gmail.com')
         self.assertEqual(r.sub_status, 'possible_typo')

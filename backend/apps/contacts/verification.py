@@ -23,8 +23,7 @@ DNS lookups, not 10k.
 import re
 import logging
 import smtplib
-from dataclasses import dataclass, field, asdict
-from functools import lru_cache
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import dns.resolver
@@ -68,13 +67,29 @@ class VerificationResult:
         return d
 
 
-# --- vendored data loading (once, lazily) -----------------------------------
+# --- vendored data loading (mtime-aware) ------------------------------------
+# Sets are cached per file and transparently reloaded when the file changes on
+# disk — so `refresh_disposable_domains` (which rewrites disposable_domains.txt,
+# 74k+ entries) takes effect in long-running web/worker processes without a
+# restart. Cache holds (mtime, frozenset) keyed by filename.
+_SET_CACHE = {}
+
 
 def _load_set(filename):
     path = _DATA_DIR / filename
     try:
+        mtime = path.stat().st_mtime
+    except OSError as e:
+        logger.warning('Could not stat verification data %s: %s', filename, e)
+        return frozenset()
+
+    cached = _SET_CACHE.get(filename)
+    if cached and cached[0] == mtime:
+        return cached[1]
+
+    try:
         with path.open('r', encoding='utf-8') as fh:
-            return frozenset(
+            data = frozenset(
                 line.strip().lower()
                 for line in fh
                 if line.strip() and not line.startswith('#')
@@ -83,18 +98,18 @@ def _load_set(filename):
         logger.warning('Could not load verification data %s: %s', filename, e)
         return frozenset()
 
+    _SET_CACHE[filename] = (mtime, data)
+    return data
 
-@lru_cache(maxsize=1)
+
 def _disposable_domains():
     return _load_set('disposable_domains.txt')
 
 
-@lru_cache(maxsize=1)
 def _role_accounts():
     return _load_set('role_accounts.txt')
 
 
-@lru_cache(maxsize=1)
 def _free_providers():
     return _load_set('free_providers.txt')
 

@@ -1,0 +1,9 @@
+# Local seed for disposable domains — hand-maintained additions that must always
+# be present, merged into disposable_domains.txt by `refresh_disposable_domains`.
+# Add any throwaway domain you spot in the wild here (one per line, lowercased).
+asitrai.com
+mailinator.com
+guerrillamail.com
+10minutemail.com
+temp-mail.org
+yopmail.com

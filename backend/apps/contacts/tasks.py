@@ -132,3 +132,12 @@ def verify_contacts_task(self, user_id, contact_ids=None, list_id=None):
             )
 
     return {'current': total, 'total': total, 'percent': 100, **counts}
+
+
+@shared_task
+def refresh_disposable_domains_task():
+    """Weekly refresh of the disposable-domain blocklist from public sources so new
+    temp-mail platforms/domains are caught without a code change. The verifier's
+    loader is mtime-aware, so the new file is picked up automatically."""
+    from django.core.management import call_command
+    call_command('refresh_disposable_domains')

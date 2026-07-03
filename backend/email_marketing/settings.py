@@ -165,6 +165,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.sequences.tasks.auto_optimize_campaign_steps',
         'schedule': 1800.0,  # every 30 min
     },
+    'refresh-disposable-domains': {
+        'task': 'apps.contacts.tasks.refresh_disposable_domains_task',
+        'schedule': 604800.0,  # weekly — keep the temp-mail blocklist current
+    },
 }
 
 # Encryption key for SMTP passwords
