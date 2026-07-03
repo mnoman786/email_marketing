@@ -1,9 +1,12 @@
 import logging
+from datetime import timedelta
 from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.shortcuts import get_object_or_404
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Min, Max
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 from typing import Optional, List
 from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment, StepTransition
 from .schemas import (
@@ -307,6 +310,32 @@ def campaign_stats(request, campaign_id: int):
         .count()
     )
 
+    # --- Scheduling insights: when does the next email go out? ---
+    now = timezone.now()
+    due_qs = campaign.enrollments.filter(status='active', next_send_at__isnull=False)
+    next_send_at = due_qs.aggregate(m=Min('next_send_at'))['m']
+    upcoming_count = due_qs.count()
+    # How many are due right now (would send on the next worker tick).
+    due_now = due_qs.filter(next_send_at__lte=now).count()
+
+    all_logs = SendLog.objects.filter(sequence_step__campaign=campaign)
+    sent_filter = ('sent', 'opened', 'clicked', 'replied')
+    last_sent_at = all_logs.filter(status__in=sent_filter).aggregate(m=Max('sent_at'))['m']
+
+    # 14-day send timeline for a sparkline/bar chart (fills gaps with 0).
+    since = (now - timedelta(days=13)).date()
+    rows = (
+        all_logs.filter(status__in=sent_filter, sent_at__date__gte=since)
+        .annotate(day=TruncDate('sent_at')).values('day')
+        .annotate(count=Count('id')).order_by('day')
+    )
+    by_day = {r['day'].isoformat(): r['count'] for r in rows if r['day']}
+    timeline = [
+        {'date': (since + timedelta(days=i)).isoformat(),
+         'count': by_day.get((since + timedelta(days=i)).isoformat(), 0)}
+        for i in range(14)
+    ]
+
     return {
         'id': campaign.id,
         'name': campaign.name,
@@ -315,4 +344,10 @@ def campaign_stats(request, campaign_id: int):
         'enrollment_counts': enrollment_counts,
         'opportunities': opportunities,
         'steps': step_stats,
+        # scheduling
+        'next_send_at': next_send_at.isoformat() if next_send_at else None,
+        'upcoming_count': upcoming_count,
+        'due_now': due_now,
+        'last_sent_at': last_sent_at.isoformat() if last_sent_at else None,
+        'sends_timeline': timeline,
     }

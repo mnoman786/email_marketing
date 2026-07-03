@@ -10,9 +10,22 @@ import { PageSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { formatDateTime, cn } from '@/lib/utils'
-import { ArrowLeft, Play, Pause, Pencil, Trash2, BarChart3, Users, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Play, Pause, Pencil, Trash2, BarChart3, Users, RefreshCw, Clock, Send, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
+
+// Compact relative time, e.g. "in 3h" / "5m ago". Null-safe.
+function fromNow(iso?: string | null): string | null {
+  if (!iso) return null
+  const diff = new Date(iso).getTime() - Date.now()
+  const abs = Math.abs(diff)
+  const mins = Math.round(abs / 60000)
+  const hrs = Math.round(abs / 3600000)
+  const days = Math.round(abs / 86400000)
+  const s = abs < 60000 ? 'just now' : mins < 60 ? `${mins}m` : hrs < 24 ? `${hrs}h` : `${days}d`
+  if (s === 'just now') return s
+  return diff >= 0 ? `in ${s}` : `${s} ago`
+}
 
 const STATUS_META: Record<string, { label: string; dot: string; text: string; bg: string }> = {
   active:    { label: 'Active',    dot: 'bg-green-500',        text: 'text-green-700 dark:text-green-400', bg: 'bg-green-500/10' },
@@ -118,6 +131,14 @@ export default function CampaignDetailPage() {
     { sent: 0, failed: 0, opened: 0, clicked: 0, replied: 0 }
   )
 
+  // Scheduling insights
+  const nextSendAt: string | null = stats?.next_send_at || null
+  const upcoming: number = stats?.upcoming_count || 0
+  const dueNow: number = stats?.due_now || 0
+  const lastSentAt: string | null = stats?.last_sent_at || null
+  const timeline: { date: string; count: number }[] = stats?.sends_timeline || []
+  const deliveryRate = pct(perf.sent, perf.sent + perf.failed)
+
   const opportunities = stats?.opportunities || 0
   const kpis = [
     { label: 'Enrolled', value: totalEnrolled.toLocaleString(), sub: `${counts.active || 0} active`, tone: 'text-foreground' },
@@ -208,6 +229,50 @@ export default function CampaignDetailPage() {
 
       {tab === 'analytics' && (
         <div className="space-y-6">
+          {/* Scheduling: when does the next email go out? */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-2xl border bg-linear-to-br from-primary/10 to-transparent p-5 md:col-span-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Clock size={15} /> Next email
+              </div>
+              {campaign.status === 'active' ? (
+                nextSendAt ? (
+                  <div className="mt-2">
+                    <p className="text-3xl font-bold tabular-nums">
+                      {dueNow > 0 ? 'Sending now' : fromNow(nextSendAt)}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {dueNow > 0
+                        ? `${dueNow.toLocaleString()} email(s) queued for the next send cycle`
+                        : `Scheduled for ${formatDateTime(nextSendAt)}`}
+                      {upcoming > 0 && ` · ${upcoming.toLocaleString()} upcoming`}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-lg font-semibold mt-2 text-muted-foreground">
+                    No emails scheduled — all enrolled leads have completed the sequence.
+                  </p>
+                )
+              ) : (
+                <p className="text-lg font-semibold mt-2 text-muted-foreground">
+                  {campaign.status === 'paused' ? 'Paused — resume to continue sending.'
+                    : campaign.status === 'draft' ? 'Draft — activate to start sending.'
+                    : 'Campaign completed.'}
+                </p>
+              )}
+            </div>
+            <div className="rounded-2xl border bg-card p-5 flex flex-col justify-center gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground"><Send size={13} /> Last sent</div>
+                <p className="text-sm font-semibold mt-0.5">{lastSentAt ? fromNow(lastSentAt) : '—'}</p>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground"><CheckCircle2 size={13} /> Delivery rate</div>
+                <p className="text-sm font-semibold mt-0.5 tabular-nums">{deliveryRate}%</p>
+              </div>
+            </div>
+          </div>
+
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
             {kpis.map(kpi => (
@@ -236,6 +301,35 @@ export default function CampaignDetailPage() {
               </div>
             ))}
           </div>
+
+          {/* Sends over the last 14 days */}
+          {(() => {
+            const max = Math.max(1, ...timeline.map(d => d.count))
+            const totalWindow = timeline.reduce((a, d) => a + d.count, 0)
+            return (
+              <div className="rounded-xl border bg-card p-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-sm">Sends · last 14 days</p>
+                  <p className="text-xs text-muted-foreground tabular-nums">{totalWindow.toLocaleString()} total</p>
+                </div>
+                <div className="mt-4 flex items-end gap-1.5 h-28">
+                  {timeline.map(d => (
+                    <div key={d.date} className="flex-1 flex flex-col items-center justify-end group">
+                      <div
+                        className="w-full rounded-t bg-primary/70 group-hover:bg-primary transition-colors min-h-0.5"
+                        style={{ height: `${(d.count / max) * 100}%` }}
+                        title={`${d.date}: ${d.count} sent`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+                  <span>{timeline[0]?.date?.slice(5)}</span>
+                  <span>{timeline[timeline.length - 1]?.date?.slice(5)}</span>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Step-by-step performance */}
           <div className="rounded-xl border bg-card overflow-hidden">
@@ -321,7 +415,11 @@ export default function CampaignDetailPage() {
                       </td>
                       <td className="px-4 py-2.5 text-xs">{e.current_step_order ?? '—'}</td>
                       <td className="px-4 py-2.5"><StatusBadge status={e.status} /></td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{e.status === 'active' && e.next_send_at ? formatDateTime(e.next_send_at) : '—'}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                        {e.status === 'active' && e.next_send_at
+                          ? <span title={formatDateTime(e.next_send_at)}>{fromNow(e.next_send_at)}</span>
+                          : '—'}
+                      </td>
                       <td className="px-4 py-2.5 text-xs text-muted-foreground">{formatDateTime(e.enrolled_at)}</td>
                     </tr>
                   ))}
