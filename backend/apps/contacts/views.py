@@ -107,6 +107,20 @@ def list_contacts(
     return qs
 
 
+# Reason-specific message for a rejected (undeliverable) manual lead add, so the
+# user sees *why* the address was refused rather than a generic error.
+_REJECT_MESSAGES = {
+    'invalid_syntax': 'That doesn\'t look like a valid email address.',
+    'disposable': 'This looks like a disposable / temporary email address and was blocked.',
+    'no_mx': 'This email\'s domain can\'t receive mail, so the address isn\'t real.',
+    'mailbox_not_found': 'This mailbox doesn\'t exist at that domain, so the address isn\'t real.',
+}
+
+
+def _reject_message(sub_status):
+    return _REJECT_MESSAGES.get(sub_status, 'This email address appears to be undeliverable and was blocked.')
+
+
 @router.post('/', response=ContactOut, auth=auth)
 def create_contact(request, data: ContactIn):
     from .verification import verify_email_detailed
@@ -122,12 +136,22 @@ def create_contact(request, data: ContactIn):
     if existing:
         contact = existing
     else:
-        # Verify on add — one MX lookup (cached per-domain in Redis), so adding a
-        # contact whose domain you've seen before costs no DNS at all.
-        result = verify_email_detailed(payload['email'])
-        # Auto-block temp-mail addresses at the door (configurable).
-        if result.is_disposable and getattr(settings, 'BLOCK_DISPOSABLE_ON_IMPORT', True):
-            raise HttpError(422, 'This looks like a disposable / temporary email address and was blocked.')
+        # Verify on add. Force the SMTP mailbox-existence probe for this single
+        # manual add — the reputation cost of one RCPT probe is negligible, and it
+        # lets us reject addresses whose mailbox doesn't actually exist so a fake /
+        # non-original email never gets stored or shown. (The probe fails open:
+        # greylisting / blocked port 25 / catch-all domains come back as UNKNOWN,
+        # not INVALID, so we never wrongly reject a real address.)
+        result = verify_email_detailed(payload['email'], smtp_probe=True)
+        # An undeliverable address (bad syntax, dead domain, or a mailbox the server
+        # rejected) is not a real lead — block it at the door instead of storing it.
+        # Disposable/temp-mail stays behind its own opt-out toggle; everything else
+        # that came back INVALID is always refused.
+        if result.status == 'invalid' and (
+            result.sub_status != 'disposable'
+            or getattr(settings, 'BLOCK_DISPOSABLE_ON_IMPORT', True)
+        ):
+            raise HttpError(422, _reject_message(result.sub_status))
         payload['verification_status'] = result.status
         payload['verification_detail'] = result.as_detail()
         payload['verified_at'] = timezone.now()

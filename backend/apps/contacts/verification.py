@@ -353,11 +353,16 @@ def _finalize(result):
 
 # --- orchestration ----------------------------------------------------------
 
-def verify_email_detailed(email, mx_cache=None):
+def verify_email_detailed(email, mx_cache=None, smtp_probe=None):
     """Run the full layered engine and return a VerificationResult.
 
     `mx_cache` is an optional dict {domain: list[str]|None} for reuse within a
     single bulk run, layered on top of the cross-request Redis cache.
+
+    `smtp_probe` overrides the global EMAIL_VERIFY_SMTP_PROBE setting for this
+    one call: pass True to force the mailbox-existence probe (e.g. a single manual
+    lead add, where the reputation cost of one RCPT probe is negligible) or False
+    to skip it. Leave None to follow the global setting (the bulk-import default).
     """
     result = VerificationResult()
 
@@ -417,7 +422,8 @@ def verify_email_detailed(email, mx_cache=None):
         return _finalize(result)
 
     # Optional SMTP mailbox-existence probe (opt-in; see _smtp_probe caveats).
-    if getattr(settings, 'EMAIL_VERIFY_SMTP_PROBE', False):
+    do_probe = getattr(settings, 'EMAIL_VERIFY_SMTP_PROBE', False) if smtp_probe is None else smtp_probe
+    if do_probe:
         outcome = _smtp_probe(normalized, domain, hosts)
         if outcome == SMTP_UNDELIVERABLE:
             result.status = INVALID
