@@ -11,7 +11,7 @@ import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime } from '@/lib/utils'
 import {
-  Plus, Search, Trash2, Upload, UserX, Download, MoreHorizontal, Users
+  Plus, Search, Trash2, Upload, UserX, Download, MoreHorizontal, Users, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
@@ -25,9 +25,25 @@ const VERIFY_META: Record<string, { color: string; title: string }> = {
   unverified: { color: 'bg-gray-300', title: 'Not yet verified' },
 }
 
-function VerificationDot({ status }: { status: string }) {
-  const m = VERIFY_META[status] || VERIFY_META.unverified
-  return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${m.color}`} title={m.title} />
+// Human-readable labels for the verifier's sub_status.
+const SUB_STATUS_LABEL: Record<string, string> = {
+  ok: 'Deliverable',
+  invalid_syntax: 'Invalid format',
+  disposable: 'Disposable / temp address',
+  no_mx: 'Domain has no mail server',
+  mx_lookup_failed: 'DNS lookup inconclusive',
+  possible_typo: 'Possible typo',
+  role_account: 'Role-based mailbox',
+  mailbox_not_found: 'Mailbox does not exist',
+}
+
+function VerificationDot({ contact }: { contact: Contact }) {
+  const m = VERIFY_META[contact.verification_status] || VERIFY_META.unverified
+  const d = contact.verification_detail || {}
+  const parts = [m.title]
+  if (d.sub_status && SUB_STATUS_LABEL[d.sub_status]) parts.push(SUB_STATUS_LABEL[d.sub_status])
+  if (typeof d.score === 'number') parts.push(`Score ${d.score}/10`)
+  return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${m.color}`} title={parts.join(' · ')} />
 }
 
 export default function ContactsPage() {
@@ -41,6 +57,7 @@ export default function ContactsPage() {
   const [showImport, setShowImport] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [importTaskId, setImportTaskId] = useState<string | null>(null)
+  const [verifyTaskId, setVerifyTaskId] = useState<string | null>(null)
 
   const { data: importStatus } = useQuery({
     queryKey: ['import-status', importTaskId],
@@ -66,6 +83,30 @@ export default function ContactsPage() {
     }
   }, [importStatus])
 
+  const { data: verifyStatus } = useQuery({
+    queryKey: ['verify-status', verifyTaskId],
+    queryFn: () => contactsApi.verifyStatus(verifyTaskId!).then(r => r.data),
+    enabled: !!verifyTaskId,
+    refetchInterval: (query) => {
+      const state = (query.state.data as any)?.state
+      return state === 'success' || state === 'failure' ? false : 2000
+    },
+  })
+
+  useEffect(() => {
+    if (!verifyStatus) return
+    const s = (verifyStatus as any).state
+    if (s === 'success') {
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+      const v = verifyStatus as any
+      toast.success(`Verified ${v.total}: ${v.valid} valid, ${v.invalid} invalid, ${v.unknown} unknown`)
+      setVerifyTaskId(null)
+    } else if (s === 'failure') {
+      toast.error('Verification failed')
+      setVerifyTaskId(null)
+    }
+  }, [verifyStatus])
+
   const { data, isLoading } = useQuery({
     queryKey: ['contacts', { search, status, page }],
     queryFn: () => contactsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<Contact>),
@@ -86,6 +127,23 @@ export default function ContactsPage() {
       qc.invalidateQueries({ queryKey: ['contacts'] })
       toast.success(`${selected.length} leads deleted`)
       setSelected([])
+    },
+  })
+
+  const verifyBulkMut = useMutation({
+    mutationFn: (ids?: number[]) => contactsApi.verifyBulk(ids?.length ? { contact_ids: ids } : {}),
+    onSuccess: (res) => {
+      setVerifyTaskId(res.data.task_id)
+      toast.success(`Verifying ${res.data.total} lead(s)…`)
+      setSelected([])
+    },
+  })
+
+  const verifyOneMut = useMutation({
+    mutationFn: (id: number) => contactsApi.verify(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['contacts'] })
+      toast.success('Lead re-verified')
     },
   })
 
@@ -139,6 +197,19 @@ export default function ContactsPage() {
           <option value="bounced">Bounced</option>
           <option value="complained">Complained</option>
         </select>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => verifyBulkMut.mutate(selected.length ? selected : undefined)}
+          loading={verifyBulkMut.isPending || !!verifyTaskId}
+          title={selected.length ? `Verify ${selected.length} selected` : 'Verify all leads'}
+        >
+          <ShieldCheck size={14} />
+          {verifyTaskId
+            ? `Verifying ${(verifyStatus as any)?.percent ?? 0}%`
+            : selected.length ? `Verify ${selected.length}` : 'Verify all'}
+        </Button>
 
         {selected.length > 0 && (
           <Button
@@ -201,11 +272,24 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div>
-                          <p className="font-medium">{contact.full_name}</p>
+                          <p className="font-medium flex items-center gap-1.5">
+                            {contact.full_name}
+                            {contact.verification_detail?.is_disposable && (
+                              <span className="badge bg-red-100 text-red-700 text-[10px]">Disposable</span>
+                            )}
+                            {contact.verification_detail?.is_role && (
+                              <span className="badge bg-amber-100 text-amber-700 text-[10px]">Role</span>
+                            )}
+                          </p>
                           <p className="text-muted-foreground text-xs flex items-center gap-1">
-                            <VerificationDot status={contact.verification_status} />
+                            <VerificationDot contact={contact} />
                             {contact.email}
                           </p>
+                          {contact.verification_detail?.suggestion && (
+                            <p className="text-[11px] text-amber-600">
+                              Did you mean {contact.verification_detail.suggestion}?
+                            </p>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{contact.company || '—'}</td>
@@ -225,6 +309,15 @@ export default function ContactsPage() {
                       <td className="px-4 py-3 text-muted-foreground text-xs">{formatDateTime(contact.created_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            title="Re-verify email"
+                            loading={verifyOneMut.isPending && verifyOneMut.variables === contact.id}
+                            onClick={() => verifyOneMut.mutate(contact.id)}
+                          >
+                            <ShieldCheck size={14} />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"

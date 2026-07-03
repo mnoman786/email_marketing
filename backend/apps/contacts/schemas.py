@@ -46,6 +46,7 @@ class ContactOut(Schema):
     company: str
     status: str
     verification_status: str
+    verification_detail: Dict[str, Any] = {}
     verified_at: Optional[datetime] = None
     custom_fields: Dict[str, Any]
     full_name: str
@@ -123,6 +124,23 @@ class ImportStatusOut(Schema):
 
 class BulkDeleteIn(Schema):
     ids: List[int]
+
+
+class VerifyBulkIn(Schema):
+    # Re-verify a specific set, everyone in a list, or (both omitted) all of the
+    # user's contacts.
+    contact_ids: Optional[List[int]] = None
+    list_id: Optional[int] = None
+
+
+class VerifyStatusOut(Schema):
+    state: str
+    current: int
+    total: int
+    percent: int
+    valid: int
+    invalid: int
+    unknown: int
 
 
 class AddRemoveContactsIn(Schema):

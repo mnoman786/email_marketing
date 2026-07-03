@@ -55,6 +55,9 @@ class Contact(models.Model):
     verification_status = models.CharField(
         max_length=20, choices=VERIFICATION_CHOICES, default='unverified', db_index=True
     )
+    # Rich verifier output: sub_status, score, is_disposable/is_role/is_free,
+    # suggestion, normalized. See apps/contacts/verification.py:VerificationResult.
+    verification_detail = models.JSONField(default=dict, blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     custom_fields = models.JSONField(default=dict, blank=True)
     subscribed_at = models.DateTimeField(auto_now_add=True)

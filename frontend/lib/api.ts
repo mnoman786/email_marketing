@@ -77,6 +77,10 @@ export const contactsApi = {
   bulkImport: (data: any) => api.post('/api/contacts/bulk-import/', data),
   importStatus: (taskId: string) => api.get(`/api/contacts/import-status/${taskId}/`),
   bulkDelete: (ids: number[]) => api.post('/api/contacts/bulk-delete/', { ids }),
+  verify: (id: number) => api.post(`/api/contacts/${id}/verify/`),
+  verifyBulk: (data: { contact_ids?: number[]; list_id?: number }) =>
+    api.post('/api/contacts/verify-bulk/', data),
+  verifyStatus: (taskId: string) => api.get(`/api/contacts/verify-status/${taskId}/`),
   unsubscribe: (id: number) => api.post(`/api/contacts/${id}/unsubscribe/`),
   suppressions: (params?: any) => api.get('/api/contacts/suppressions/', { params }),
   addSuppressions: (emails: string[], note = '') => api.post('/api/contacts/suppressions/', { emails, note }),

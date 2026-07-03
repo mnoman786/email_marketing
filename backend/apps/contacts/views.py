@@ -12,6 +12,7 @@ from .schemas import (
     BulkImportIn, BulkImportOut, BulkDeleteIn, AddRemoveContactsIn,
     BulkImportStartOut, ImportStatusOut,
     SuppressionOut, SuppressionIn, SuppressionDeleteIn,
+    VerifyBulkIn, VerifyStatusOut,
 )
 from apps.accounts.auth import auth
 
@@ -86,12 +87,15 @@ def remove_contacts_from_list(request, list_id: int, data: AddRemoveContactsIn):
 def list_contacts(
     request,
     status: Optional[str] = None,
+    verification_status: Optional[str] = None,
     list_id: Optional[int] = None,
     search: Optional[str] = None,
 ):
     qs = Contact.objects.filter(user=request.auth).prefetch_related('lists')
     if status:
         qs = qs.filter(status=status)
+    if verification_status:
+        qs = qs.filter(verification_status=verification_status)
     if list_id:
         qs = qs.filter(lists__id=list_id)
     if search:
@@ -104,7 +108,7 @@ def list_contacts(
 
 @router.post('/', response=ContactOut, auth=auth)
 def create_contact(request, data: ContactIn):
-    from .verification import verify_email
+    from .verification import verify_email_detailed
 
     list_ids = data.list_ids
     payload = data.dict(exclude={'list_ids'})
@@ -119,7 +123,9 @@ def create_contact(request, data: ContactIn):
     else:
         # Verify on add — one MX lookup (cached per-domain in Redis), so adding a
         # contact whose domain you've seen before costs no DNS at all.
-        payload['verification_status'] = verify_email(payload['email'])
+        result = verify_email_detailed(payload['email'])
+        payload['verification_status'] = result.status
+        payload['verification_detail'] = result.as_detail()
         payload['verified_at'] = timezone.now()
         contact = Contact.objects.create(**payload)
 
@@ -169,6 +175,47 @@ def import_status(request, task_id: str):
 def bulk_delete(request, data: BulkDeleteIn):
     deleted, _ = Contact.objects.filter(user=request.auth, id__in=data.ids).delete()
     return {'deleted': deleted}
+
+
+# --- Email verification (re-run the in-house validator) ---
+
+@router.post('/verify-bulk/', response=BulkImportStartOut, auth=auth)
+def verify_bulk(request, data: VerifyBulkIn):
+    """Re-verify a set of contacts / a list / all contacts, in the background."""
+    from .tasks import verify_contacts_task
+    qs = Contact.objects.filter(user=request.auth)
+    if data.contact_ids:
+        qs = qs.filter(id__in=data.contact_ids)
+    elif data.list_id:
+        get_object_or_404(ContactList, id=data.list_id, user=request.auth)
+        qs = qs.filter(lists__id=data.list_id)
+    total = qs.count()
+    task = verify_contacts_task.delay(
+        user_id=request.auth.id,
+        contact_ids=data.contact_ids,
+        list_id=data.list_id,
+    )
+    return {'task_id': task.id, 'total': total}
+
+
+@router.get('/verify-status/{task_id}/', response=VerifyStatusOut, auth=auth)
+def verify_status(request, task_id: str):
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    state = result.state
+    info = (result.info if state in ('PROGRESS', 'SUCCESS') else None) or {}
+
+    if state == 'PENDING':
+        return {'state': 'pending', 'current': 0, 'total': 0, 'percent': 0,
+                'valid': 0, 'invalid': 0, 'unknown': 0}
+    if state in ('PROGRESS', 'SUCCESS'):
+        return {'state': 'success' if state == 'SUCCESS' else 'progress',
+                'current': info.get('current', 0), 'total': info.get('total', 0),
+                'percent': 100 if state == 'SUCCESS' else info.get('percent', 0),
+                'valid': info.get('valid', 0), 'invalid': info.get('invalid', 0),
+                'unknown': info.get('unknown', 0)}
+    return {'state': 'failure', 'current': 0, 'total': 0, 'percent': 0,
+            'valid': 0, 'invalid': 0, 'unknown': 0}
 
 
 # --- Suppression list (account-wide do-not-send) ---
@@ -235,3 +282,16 @@ def unsubscribe_contact(request, contact_id: int):
     # can reach them, even if re-imported under a different list.
     suppress_email(request.auth, contact.email, reason='unsubscribed')
     return {'status': 'unsubscribed'}
+
+
+@router.post('/{contact_id}/verify/', response=ContactOut, auth=auth)
+def verify_contact(request, contact_id: int):
+    """Re-run the in-house validator for a single contact, synchronously."""
+    from .verification import verify_email_detailed
+    contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
+    result = verify_email_detailed(contact.email)
+    contact.verification_status = result.status
+    contact.verification_detail = result.as_detail()
+    contact.verified_at = timezone.now()
+    contact.save(update_fields=['verification_status', 'verification_detail', 'verified_at'])
+    return contact

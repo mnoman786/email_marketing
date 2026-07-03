@@ -30,6 +30,16 @@ export interface ContactList {
   updated_at: string
 }
 
+export interface VerificationDetail {
+  sub_status?: string
+  score?: number
+  is_disposable?: boolean
+  is_role?: boolean
+  is_free?: boolean
+  suggestion?: string
+  normalized?: string
+}
+
 export interface Contact {
   id: number
   email: string
@@ -39,6 +49,7 @@ export interface Contact {
   company: string
   status: 'active' | 'unsubscribed' | 'bounced' | 'complained'
   verification_status: 'unverified' | 'valid' | 'invalid' | 'unknown'
+  verification_detail: VerificationDetail
   verified_at: string | null
   custom_fields: Record<string, any>
   full_name: string

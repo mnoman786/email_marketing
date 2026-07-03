@@ -32,10 +32,15 @@ def enroll_due_contacts():
             continue
 
         suppressed = Suppression.objects.filter(user=campaign.user).values('email')
+        # Exclude addresses the in-house validator flagged as invalid (bad syntax,
+        # disposable, or no mail server). 'unknown'/'unverified' stay eligible so an
+        # inconclusive DNS lookup never silently drops a real contact.
         contact_ids = Contact.objects.filter(
             lists__in=campaign.contact_lists.all(),
             status='active'
-        ).exclude(email__in=suppressed).values_list('id', flat=True).distinct()
+        ).exclude(email__in=suppressed).exclude(
+            verification_status='invalid'
+        ).values_list('id', flat=True).distinct()
 
         already_enrolled = set(
             CampaignEnrollment.objects.filter(campaign=campaign).values_list('contact_id', flat=True)

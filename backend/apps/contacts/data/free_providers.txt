@@ -1,0 +1,30 @@
+# Free webmail providers. One domain per line, lowercased.
+# Not bad in themselves — just a signal (B2B campaigns often prefer corporate domains).
+aol.com
+gmail.com
+googlemail.com
+hotmail.co.uk
+hotmail.com
+hotmail.fr
+icloud.com
+live.com
+mail.com
+mail.ru
+me.com
+msn.com
+outlook.com
+protonmail.com
+proton.me
+rediffmail.com
+yahoo.co.in
+yahoo.co.uk
+yahoo.com
+yahoo.fr
+yandex.com
+yandex.ru
+zoho.com
+gmx.com
+gmx.de
+gmx.net
+web.de
+t-online.de
