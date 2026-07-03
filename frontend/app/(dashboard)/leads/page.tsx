@@ -34,6 +34,7 @@ const SUB_STATUS_LABEL: Record<string, string> = {
   mx_lookup_failed: 'DNS lookup inconclusive',
   possible_typo: 'Possible typo',
   role_account: 'Role-based mailbox',
+  gibberish: 'Gibberish / random address',
   mailbox_not_found: 'Mailbox does not exist',
 }
 
@@ -305,6 +306,9 @@ export default function ContactsPage() {
                             )}
                             {contact.verification_detail?.is_role && (
                               <span className="badge bg-amber-100 text-amber-700 text-[10px]">Role</span>
+                            )}
+                            {contact.verification_detail?.is_gibberish && (
+                              <span className="badge bg-red-100 text-red-700 text-[10px]">Fake?</span>
                             )}
                           </p>
                           <p className="text-muted-foreground text-xs flex items-center gap-1">

@@ -52,13 +52,14 @@ class VerificationResult:
     """Rich result of verifying one address. `status` keeps the original 3-value
     contract; the rest is stored on Contact.verification_detail."""
     status: str = UNKNOWN
-    sub_status: str = ''          # ok | invalid_syntax | disposable | no_mx | possible_typo | role_account | mailbox_not_found | mx_lookup_failed
+    sub_status: str = ''          # ok | invalid_syntax | disposable | no_mx | possible_typo | role_account | gibberish | mailbox_not_found | mx_lookup_failed
     score: int = 0               # 0–10 quality score (Kickbox-style; higher = better)
     spam_score: int = 0          # 0–100 send RISK for this lead (higher = spammier/riskier)
     risk: str = 'low'            # low | medium | high (bucketed spam_score)
     is_disposable: bool = False
     is_role: bool = False
     is_free: bool = False
+    is_gibberish: bool = False    # random/keyboard-mash local part (likely fake)
     suggestion: str = ''          # corrected address when a likely typo is detected
     normalized: str = ''          # normalized address (lowercased domain, etc.)
 
@@ -174,6 +175,41 @@ def _syntax_ok(email):
         return email.lower() if _EMAIL_RE.match(email or '') else None
 
 
+_VOWELS = set('aeiou')
+
+
+def _looks_gibberish(local):
+    """Heuristic: True if the local-part looks like a random/keyboard-mash string
+    (e.g. hdhwahdwahwdjadkawkldwadlawkdla) rather than a real handle.
+
+    Deliberately conservative — only judges local-parts with >=12 letters, so short
+    real handles (initials, surnames) are never flagged. Signals: unusually low
+    vowel ratio for the length, or a very long consonant run.
+    """
+    core = local.split('+', 1)[0]
+    core = re.sub(r'[._\-]', '', core)
+    letters = [c for c in core if c.isalpha()]
+    n = len(letters)
+    if n < 12:
+        return False
+
+    vowel_ratio = sum(c in _VOWELS for c in letters) / n
+
+    run = maxrun = 0
+    for c in core:
+        if c.isalpha() and c not in _VOWELS:
+            run += 1
+            maxrun = max(maxrun, run)
+        else:
+            run = 0
+
+    return (
+        (n >= 15 and vowel_ratio < 0.35)
+        or maxrun >= 6
+        or (n >= 20 and vowel_ratio < 0.40)
+    )
+
+
 def _levenshtein(a, b):
     if a == b:
         return 0
@@ -226,42 +262,56 @@ def _domain_mx_hosts(domain):
     return hosts
 
 
-def _mx_host(domain):
-    """Lowest-preference MX host for a domain, or None."""
-    try:
-        answers = _RESOLVER.resolve(domain, 'MX')
-        record = min(answers, key=lambda r: r.preference)
-        return str(record.exchange).rstrip('.')
-    except Exception:
-        return None
+import uuid
+
+# SMTP probe outcomes.
+SMTP_DELIVERABLE = 'deliverable'      # mailbox accepts (and domain is not catch-all)
+SMTP_UNDELIVERABLE = 'undeliverable'  # mailbox rejected — does not exist
+SMTP_CATCH_ALL = 'catch_all'          # domain accepts every address — can't confirm this one
+SMTP_UNKNOWN = 'unknown'              # greylisted / blocked / no connection
 
 
-def _smtp_probe(email, domain):
-    """OPTIONAL mailbox existence check via SMTP RCPT TO (no DATA sent).
+def _smtp_probe(email, domain, hosts=None):
+    """OPTIONAL mailbox-existence check via SMTP RCPT TO (no DATA sent).
 
-    Returns True (accepted), False (rejected), or None (inconclusive/greylisted).
-    Off by default — see EMAIL_VERIFY_SMTP_PROBE. Enabling this from a shared IP can
-    get that IP greylisted/blocklisted; only use it on a dedicated verification IP.
+    Returns one of SMTP_DELIVERABLE / SMTP_UNDELIVERABLE / SMTP_CATCH_ALL /
+    SMTP_UNKNOWN. Off by default — see EMAIL_VERIFY_SMTP_PROBE.
+
+    Caveats (why it's opt-in):
+      * Probing from a shared/app-server IP can get that IP greylisted or
+        blocklisted, and many networks block outbound port 25 entirely.
+      * Big providers (Gmail, Outlook, Yahoo) often accept-all or refuse probes,
+        so they come back CATCH_ALL/UNKNOWN rather than a definitive answer — the
+        gibberish heuristic is the more reliable signal there.
     """
-    host = _mx_host(domain)
-    if not host:
-        return None
+    hosts = hosts or _domain_mx_hosts(domain) or []
+    if not hosts:
+        return SMTP_UNKNOWN
     from_addr = getattr(settings, 'EMAIL_VERIFY_SMTP_FROM', None) or getattr(
         settings, 'DEFAULT_FROM_EMAIL', 'verify@example.com'
     )
-    try:
-        with smtplib.SMTP(host, 25, timeout=8) as smtp:
-            smtp.ehlo_or_helo_if_needed()
-            smtp.mail(from_addr)
-            code, _ = smtp.rcpt(email)
-            if code in (250, 251):
-                return True
-            if 500 <= code < 600:
-                return False
-            return None  # 4xx greylisting / temporary
-    except Exception as e:
-        logger.info('SMTP probe failed for %s: %s', email, e)
-        return None
+    # A random address that cannot exist — if the server also accepts THIS, the
+    # domain is catch-all and a 250 for the real address means nothing.
+    control = f'{uuid.uuid4().hex}@{domain}'
+
+    for host in hosts:
+        try:
+            with smtplib.SMTP(host, 25, timeout=8) as smtp:
+                smtp.ehlo_or_helo_if_needed()
+                smtp.mail(from_addr)
+                real_code, _ = smtp.rcpt(email)
+                if 500 <= real_code < 600:
+                    return SMTP_UNDELIVERABLE
+                if real_code not in (250, 251):
+                    return SMTP_UNKNOWN  # 4xx greylist/temporary — try no further
+                ctrl_code, _ = smtp.rcpt(control)
+                if ctrl_code in (250, 251):
+                    return SMTP_CATCH_ALL   # accepts everything
+                return SMTP_DELIVERABLE
+        except Exception as e:
+            logger.info('SMTP probe failed for %s via %s: %s', email, host, e)
+            continue  # try the next MX host
+    return SMTP_UNKNOWN
 
 
 # --- spam / send-risk scoring -----------------------------------------------
@@ -274,7 +324,9 @@ _RISK_BY_SUB_STATUS = {
     'no_mx': 100,            # domain takes no mail — pure bounce
     'disposable': 95,        # throwaway; frequent trap/abuse source
     'mailbox_not_found': 90, # address doesn't exist — hard bounce
+    'gibberish': 80,         # random/keyboard-mash mailbox — almost always fake
     'possible_typo': 70,     # likely mistyped — bounce or lands on a trap
+    'accept_all': 55,        # catch-all domain — can't confirm the mailbox exists
     'mx_lookup_failed': 50,  # inconclusive — unknown risk
     'role_account': 45,      # info@/sales@ — spam-trap & complaint prone
     'ok': 5,                 # clean, deliverable
@@ -364,21 +416,31 @@ def verify_email_detailed(email, mx_cache=None):
         result.score = 0
         return _finalize(result)
 
-    # Optional SMTP mailbox probe.
+    # Optional SMTP mailbox-existence probe (opt-in; see _smtp_probe caveats).
     if getattr(settings, 'EMAIL_VERIFY_SMTP_PROBE', False):
-        exists = _smtp_probe(normalized, domain)
-        if exists is False:
+        outcome = _smtp_probe(normalized, domain, hosts)
+        if outcome == SMTP_UNDELIVERABLE:
             result.status = INVALID
             result.sub_status = 'mailbox_not_found'
             result.score = 1
             return _finalize(result)
-        # exists True or None -> fall through as valid/unknown-but-deliverable
+        if outcome == SMTP_CATCH_ALL:
+            # Domain accepts every address — deliverability can't be confirmed.
+            result.status = UNKNOWN
+            result.sub_status = 'accept_all'
+            result.score = 5
+            return _finalize(result)
+        # SMTP_DELIVERABLE / SMTP_UNKNOWN -> fall through to the normal valid path
 
     # Passed everything reachable. Score reflects remaining soft signals.
     result.status = VALID
     if result.suggestion:
         result.sub_status = 'possible_typo'
         result.score = 6
+    elif _looks_gibberish(local):
+        result.is_gibberish = True
+        result.sub_status = 'gibberish'
+        result.score = 2
     elif result.is_role:
         result.sub_status = 'role_account'
         result.score = 7

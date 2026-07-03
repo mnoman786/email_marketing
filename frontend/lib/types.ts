@@ -38,6 +38,7 @@ export interface VerificationDetail {
   is_disposable?: boolean
   is_role?: boolean
   is_free?: boolean
+  is_gibberish?: boolean
   suggestion?: string
   normalized?: string
 }

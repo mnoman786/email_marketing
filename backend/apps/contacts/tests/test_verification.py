@@ -133,6 +133,21 @@ class VerificationLayerTests(TestCase):
         self.assertIn('sub_status', detail)
         self.assertIn('score', detail)
 
+    def test_gibberish_local_part_is_high_risk(self):
+        with _mx(True):
+            r = verify_email_detailed('hdhwahdwahwdjadkawkldwadlawkdla@gmail.com')
+        self.assertEqual(r.status, VALID)          # gmail is real, so still deliverable
+        self.assertEqual(r.sub_status, 'gibberish')
+        self.assertTrue(r.is_gibberish)
+        self.assertEqual(r.risk, 'high')
+
+    def test_real_handles_not_flagged_gibberish(self):
+        for addr in ['jane.doe@acme-corp.com', 'mnomanch786@gmail.com',
+                     'noman@acme-corp.com', 'john.smith@acme-corp.com']:
+            with _mx(True):
+                r = verify_email_detailed(addr)
+            self.assertFalse(r.is_gibberish, f'{addr} wrongly flagged gibberish')
+
     def test_spam_score_clean_address_is_low(self):
         with _mx(True):
             r = verify_email_detailed('jane.doe@acme-corp.com')
@@ -163,14 +178,31 @@ class VerificationLayerTests(TestCase):
         self.assertIn('risk', detail)
 
     @override_settings(EMAIL_VERIFY_SMTP_PROBE=True)
-    def test_smtp_probe_rejection_is_invalid(self):
-        with _mx(True), patch.object(verification, '_smtp_probe', return_value=False):
+    def test_smtp_probe_undeliverable_is_invalid(self):
+        with _mx(True), patch.object(verification, '_smtp_probe',
+                                     return_value=verification.SMTP_UNDELIVERABLE):
             r = verify_email_detailed('ghost@acme-corp.com')
         self.assertEqual(r.status, INVALID)
         self.assertEqual(r.sub_status, 'mailbox_not_found')
 
     @override_settings(EMAIL_VERIFY_SMTP_PROBE=True)
-    def test_smtp_probe_inconclusive_stays_valid(self):
-        with _mx(True), patch.object(verification, '_smtp_probe', return_value=None):
+    def test_smtp_probe_catch_all_is_unknown(self):
+        with _mx(True), patch.object(verification, '_smtp_probe',
+                                     return_value=verification.SMTP_CATCH_ALL):
+            r = verify_email_detailed('anyone@acme-corp.com')
+        self.assertEqual(r.status, UNKNOWN)
+        self.assertEqual(r.sub_status, 'accept_all')
+
+    @override_settings(EMAIL_VERIFY_SMTP_PROBE=True)
+    def test_smtp_probe_deliverable_stays_valid(self):
+        with _mx(True), patch.object(verification, '_smtp_probe',
+                                     return_value=verification.SMTP_DELIVERABLE):
+            r = verify_email_detailed('real@acme-corp.com')
+        self.assertEqual(r.status, VALID)
+
+    @override_settings(EMAIL_VERIFY_SMTP_PROBE=True)
+    def test_smtp_probe_unknown_stays_valid(self):
+        with _mx(True), patch.object(verification, '_smtp_probe',
+                                     return_value=verification.SMTP_UNKNOWN):
             r = verify_email_detailed('maybe@acme-corp.com')
         self.assertEqual(r.status, VALID)
