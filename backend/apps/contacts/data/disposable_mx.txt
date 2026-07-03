@@ -1,0 +1,14 @@
+# Mail-server (MX host) blocklist for disposable / temp-mail providers.
+# One registrable domain per line, lowercased. A lead is flagged disposable when
+# its domain's MX host equals, or is a subdomain of, any entry here.
+#
+# This catches temp-mail PLATFORMS generically: providers like Boomlify spin up
+# endless throwaway domains (usa.priyo.edu.pl, fan.starlight.store, …) but route
+# them all through the same few mail servers, so matching the MX host catches new
+# domains automatically — no per-domain list update needed.
+#
+# Add the registrable domain of any temp-mail MX host you spot (e.g. an address's
+# MX = mail.rakibbd.com -> add rakibbd.com).
+rakibbd.com
+priyomail.net
+asitrai.com

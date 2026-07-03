@@ -108,12 +108,42 @@ def _disposable_domains():
     return _load_set('disposable_domains.txt')
 
 
+def _disposable_mx_suffixes():
+    return _load_set('disposable_mx.txt')
+
+
 def _role_accounts():
     return _load_set('role_accounts.txt')
 
 
 def _free_providers():
     return _load_set('free_providers.txt')
+
+
+def _suffixes(host):
+    """Yield a host and its parent suffixes down to (but excluding) the bare TLD,
+    e.g. 'a.b.c.d' -> 'a.b.c.d', 'b.c.d', 'c.d'. Used for subdomain matching."""
+    parts = host.split('.')
+    for i in range(len(parts) - 1):
+        yield '.'.join(parts[i:])
+
+
+def _is_disposable_domain(domain):
+    """True if the domain — or any registrable parent of it — is blocklisted.
+    Subdomain-aware so temp-mail subdomains (usa.priyo.edu.pl) match a listed
+    parent (priyo.edu.pl)."""
+    dset = _disposable_domains()
+    return any(s in dset for s in _suffixes(domain))
+
+
+def _mx_is_disposable(hosts):
+    """True if any MX host belongs to a known temp-mail mail server. Catches whole
+    provider families (e.g. Boomlify's mail.rakibbd.com) regardless of the sending
+    domain name."""
+    blocked = _disposable_mx_suffixes()
+    if not blocked:
+        return False
+    return any(s in blocked for h in hosts for s in _suffixes(h))
 
 
 # Domains we offer typo corrections against. Kept small and high-traffic on purpose:
@@ -172,24 +202,28 @@ def _suggest_domain(domain):
     return best if best and best_dist <= 2 else ''
 
 
-def _domain_has_mx(domain):
-    """True/False if the domain has a mail server, or None on lookup failure."""
-    cache_key = f'mx:{domain}'
+def _domain_mx_hosts(domain):
+    """Return the domain's MX hostnames (lowercased list), [] if the domain takes
+    no mail, or None on lookup failure (DNS timeout/error — inconclusive).
+
+    Cached per-domain in Redis (24h). A list (including the empty list) is cached;
+    None is never cached so a transient failure is retried."""
+    cache_key = f'mxhosts:{domain}'
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached  # stored as True/False; None is never cached
+        return cached
 
     try:
         answers = _RESOLVER.resolve(domain, 'MX')
-        result = len(answers) > 0
+        hosts = sorted(str(r.exchange).rstrip('.').lower() for r in answers)
     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers):
-        result = False
+        hosts = []
     except Exception as e:  # timeout, network, etc. — inconclusive
         logger.info('MX lookup failed for %s: %s', domain, e)
         return None
 
-    cache.set(cache_key, result, _MX_CACHE_TTL)
-    return result
+    cache.set(cache_key, hosts, _MX_CACHE_TTL)
+    return hosts
 
 
 def _mx_host(domain):
@@ -270,8 +304,8 @@ def _finalize(result):
 def verify_email_detailed(email, mx_cache=None):
     """Run the full layered engine and return a VerificationResult.
 
-    `mx_cache` is an optional dict {domain: bool|None} for reuse within a single
-    bulk run, layered on top of the cross-request Redis cache.
+    `mx_cache` is an optional dict {domain: list[str]|None} for reuse within a
+    single bulk run, layered on top of the cross-request Redis cache.
     """
     result = VerificationResult()
 
@@ -285,12 +319,12 @@ def verify_email_detailed(email, mx_cache=None):
     result.normalized = normalized
     local, domain = normalized.rsplit('@', 1)
 
-    result.is_disposable = domain in _disposable_domains()
     result.is_role = local in _role_accounts()
     result.is_free = domain in _free_providers()
 
-    # Disposable domains are treated as invalid — they don't take real mail.
-    if result.is_disposable:
+    # Disposable by domain name (subdomain-aware) — decided before DNS.
+    if _is_disposable_domain(domain):
+        result.is_disposable = True
         result.status = INVALID
         result.sub_status = 'disposable'
         result.score = 0
@@ -301,22 +335,32 @@ def verify_email_detailed(email, mx_cache=None):
     if suggested_domain:
         result.suggestion = f'{local}@{suggested_domain}'
 
-    # MX lookup (cached).
+    # MX lookup (cached) — returns the actual MX hosts so we can also match the
+    # mail server against the temp-mail MX blocklist.
     if mx_cache is not None and domain in mx_cache:
-        has_mx = mx_cache[domain]
+        hosts = mx_cache[domain]
     else:
-        has_mx = _domain_has_mx(domain)
+        hosts = _domain_mx_hosts(domain)
         if mx_cache is not None:
-            mx_cache[domain] = has_mx
+            mx_cache[domain] = hosts
 
-    if has_mx is None:
+    if hosts is None:
         result.status = UNKNOWN
         result.sub_status = 'mx_lookup_failed'
         result.score = 4
         return _finalize(result)
-    if has_mx is False:
+    if not hosts:
         result.status = INVALID
         result.sub_status = 'no_mx'
+        result.score = 0
+        return _finalize(result)
+
+    # Disposable by mail server — catches temp-mail platforms (e.g. Boomlify) that
+    # use ever-changing domain names but a shared MX host.
+    if _mx_is_disposable(hosts):
+        result.is_disposable = True
+        result.status = INVALID
+        result.sub_status = 'disposable'
         result.score = 0
         return _finalize(result)
 

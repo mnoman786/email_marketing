@@ -2,6 +2,8 @@
 # be present, merged into disposable_domains.txt by `refresh_disposable_domains`.
 # Add any throwaway domain you spot in the wild here (one per line, lowercased).
 asitrai.com
+starlight.store
+priyo.edu.pl
 mailinator.com
 guerrillamail.com
 10minutemail.com

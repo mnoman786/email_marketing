@@ -12,8 +12,15 @@ from apps.contacts.verification import verify_email_detailed, verify_email, VALI
 
 
 def _mx(has_mx):
-    """Patch the MX layer to a fixed answer (True / False / None)."""
-    return patch.object(verification, '_domain_has_mx', return_value=has_mx)
+    """Patch the MX layer to a fixed answer (True / False / None), mapping to the
+    hosts-list contract of _domain_mx_hosts (['mx.example.com'] / [] / None)."""
+    val = None if has_mx is None else (['mx.example.com'] if has_mx else [])
+    return patch.object(verification, '_domain_mx_hosts', return_value=val)
+
+
+def _mx_hosts(hosts):
+    """Patch the MX layer to specific hostnames (to exercise the MX blocklist)."""
+    return patch.object(verification, '_domain_mx_hosts', return_value=hosts)
 
 
 class VerificationLayerTests(TestCase):
@@ -56,6 +63,28 @@ class VerificationLayerTests(TestCase):
     def test_disposable_list_is_comprehensive(self):
         # Sanity: we ship the merged public blocklist, not just the seed.
         self.assertGreater(len(verification._disposable_domains()), 10000)
+
+    def test_boomlify_caught_by_mx_host(self):
+        # A Boomlify throwaway whose domain isn't listed, but whose MX points to a
+        # blocklisted temp-mail server (rakibbd.com) — caught generically.
+        with _mx_hosts(['mail.rakibbd.com']):
+            r = verify_email_detailed('hello@fan.starlight.store')
+        self.assertEqual(r.status, INVALID)
+        self.assertEqual(r.sub_status, 'disposable')
+        self.assertTrue(r.is_disposable)
+
+    def test_disposable_subdomain_matches_listed_parent(self):
+        # Subdomain of a seeded parent (priyo.edu.pl) — matched before any DNS.
+        with _mx_hosts(['should.not.matter']):
+            r = verify_email_detailed('hello@usa.priyo.edu.pl')
+        self.assertEqual(r.status, INVALID)
+        self.assertTrue(r.is_disposable)
+
+    def test_normal_domain_with_clean_mx_not_disposable(self):
+        with _mx_hosts(['aspmx.l.google.com']):
+            r = verify_email_detailed('jane@acme-corp.com')
+        self.assertEqual(r.status, VALID)
+        self.assertFalse(r.is_disposable)
 
     def test_role_account_flagged_but_valid(self):
         with _mx(True):
