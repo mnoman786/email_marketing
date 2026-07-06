@@ -70,6 +70,7 @@ export const listsApi = {
 // Contacts
 export const contactsApi = {
   getAll: (params?: any) => api.get('/api/contacts/', { params }),
+  stats: (params?: { list_id?: number }) => api.get('/api/contacts/stats/', { params }),
   get: (id: number) => api.get(`/api/contacts/${id}/`),
   create: (data: any) => api.post('/api/contacts/', data),
   update: (id: number, data: any) => api.patch(`/api/contacts/${id}/`, data),
@@ -85,6 +86,17 @@ export const contactsApi = {
   suppressions: (params?: any) => api.get('/api/contacts/suppressions/', { params }),
   addSuppressions: (emails: string[], note = '') => api.post('/api/contacts/suppressions/', { emails, note }),
   deleteSuppressions: (ids: number[]) => api.post('/api/contacts/suppressions/delete/', { ids }),
+}
+
+// Import validation (staging workspace)
+export const validationApi = {
+  createBatch: (data: { name?: string; contacts: any[] }) => api.post('/api/validation/batches/', data),
+  batches: (params?: any) => api.get('/api/validation/batches/', { params }),
+  getBatch: (id: number) => api.get(`/api/validation/batches/${id}/`),
+  leads: (id: number, params?: any) => api.get(`/api/validation/batches/${id}/leads/`, { params }),
+  promote: (id: number, data: { list_id?: number; lead_ids?: number[]; bucket?: string }) =>
+    api.post(`/api/validation/batches/${id}/promote/`, data),
+  deleteBatch: (id: number) => api.delete(`/api/validation/batches/${id}/`),
 }
 
 // Templates

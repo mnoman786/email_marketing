@@ -78,6 +78,56 @@ class Contact(models.Model):
         return f'{self.first_name} {self.last_name}'.strip() or self.email
 
 
+class ImportBatch(models.Model):
+    """A raw CSV import staged for validation. Rows land here (as StagedLead) and are
+    verified in the background; the user then promotes the good ones into real
+    Contacts. Keeps unvalidated / junk addresses out of the live lead base."""
+    STATUS_CHOICES = [
+        ('verifying', 'Verifying'),   # background verification in progress
+        ('ready', 'Ready'),           # all rows verified, awaiting review
+        ('promoted', 'Promoted'),     # at least some leads pushed to Contacts
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='import_batches')
+    name = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='verifying')
+    total = models.PositiveIntegerField(default=0)
+    verified_count = models.PositiveIntegerField(default=0)
+    promoted_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.total} rows, {self.status})'
+
+
+class StagedLead(models.Model):
+    """One row of an ImportBatch, awaiting validation + promotion. Mirrors the
+    verification fields on Contact so the same bucket filters work on both."""
+    batch = models.ForeignKey(ImportBatch, on_delete=models.CASCADE, related_name='leads')
+    email = models.EmailField()
+    first_name = models.CharField(max_length=100, blank=True)
+    last_name = models.CharField(max_length=100, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    company = models.CharField(max_length=255, blank=True)
+    custom_fields = models.JSONField(default=dict, blank=True)
+    verification_status = models.CharField(
+        max_length=20, default='unverified', db_index=True
+    )
+    verification_detail = models.JSONField(default=dict, blank=True)
+    promoted = models.BooleanField(default=False, db_index=True)  # became a Contact
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.email} [{self.verification_status}]'
+
+
 class Suppression(models.Model):
     """Account-wide do-not-send list. Any email here is skipped by every campaign
     and sequence send, regardless of whether it's also a Contact. Populated on

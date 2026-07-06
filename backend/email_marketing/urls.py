@@ -6,6 +6,7 @@ from ninja import NinjaAPI
 
 from apps.accounts.views import router as accounts_router
 from apps.contacts.views import router as contacts_router
+from apps.contacts.validation_api import router as validation_router
 from apps.contacts.lead_finder import router as leads_router
 from apps.email_templates.views import router as templates_router
 from apps.smtp_accounts.views import router as smtp_router
@@ -17,6 +18,7 @@ api = NinjaAPI(title='Email Marketing API', version='1.0.0')
 
 api.add_router('/auth/', accounts_router)
 api.add_router('/contacts/', contacts_router)
+api.add_router('/validation/', validation_router)
 api.add_router('/leads/', leads_router)
 api.add_router('/templates/', templates_router)
 api.add_router('/smtp/', smtp_router)

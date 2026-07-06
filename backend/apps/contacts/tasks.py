@@ -2,7 +2,7 @@ from celery import shared_task
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from .models import ContactList, Contact
+from .models import ContactList, Contact, StagedLead
 from .verification import verify_email_detailed
 
 
@@ -148,6 +148,35 @@ def verify_contacts_task(self, user_id, contact_ids=None, list_id=None):
             )
 
     return {'current': total, 'total': total, 'percent': 100, **counts}
+
+
+@shared_task
+def verify_staged_batch_task(batch_id):
+    """Verify every StagedLead in an import batch (background), forcing the SMTP
+    mailbox-existence probe so the validation tabs reflect real deliverability.
+    Updates the batch's verified_count as it goes and flips it to 'ready' at the
+    end. Nothing is stored in the live lead base until the user promotes."""
+    from .models import ImportBatch
+    try:
+        batch = ImportBatch.objects.get(id=batch_id)
+    except ImportBatch.DoesNotExist:
+        return
+
+    mx_cache = {}
+    leads = list(batch.leads.filter(verification_status='unverified').only('id', 'email'))
+    done = batch.verified_count
+    for lead in leads:
+        result = verify_email_detailed(lead.email, mx_cache=mx_cache, smtp_probe=True)
+        StagedLead.objects.filter(id=lead.id).update(
+            verification_status=result.status,
+            verification_detail=result.as_detail(),
+        )
+        done += 1
+        # Cheap running progress; avoids a write per single row.
+        if done % 10 == 0:
+            ImportBatch.objects.filter(id=batch.id).update(verified_count=done)
+
+    ImportBatch.objects.filter(id=batch.id).update(verified_count=done, status='ready')
 
 
 @shared_task

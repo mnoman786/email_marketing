@@ -43,6 +43,45 @@ export interface VerificationDetail {
   normalized?: string
 }
 
+// Per-bucket verification counts for the list-detail tabs (from /api/contacts/stats/).
+export interface VerificationStats {
+  total: number
+  valid: number
+  risky: number
+  invalid: number
+  disposable: number
+  unknown: number
+  unverified: number
+}
+
+// --- Import validation (staging) ---
+export type VerificationBucket = 'valid' | 'risky' | 'invalid' | 'disposable' | 'unknown' | 'unverified'
+
+export interface ImportBatch {
+  id: number
+  name: string
+  status: 'verifying' | 'ready' | 'promoted'
+  total: number
+  verified_count: number
+  promoted_count: number
+  percent: number
+  counts: Partial<Record<VerificationBucket | 'total', number>>
+  created_at: string
+  updated_at: string
+}
+
+export interface StagedLead {
+  id: number
+  email: string
+  first_name: string
+  last_name: string
+  phone: string
+  company: string
+  verification_status: 'unverified' | 'valid' | 'invalid' | 'unknown'
+  verification_detail: VerificationDetail
+  promoted: boolean
+}
+
 export interface Contact {
   id: number
   email: string

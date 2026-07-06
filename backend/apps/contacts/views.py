@@ -7,6 +7,10 @@ from django.db.models import Q
 from django.utils import timezone
 from typing import Optional, List
 from .models import ContactList, Contact, Suppression, suppress_email
+from .buckets import (
+    bucket_filter, bucket_counts,
+    VERIFICATION_BUCKETS as _VERIFICATION_BUCKETS,
+)
 from .schemas import (
     ContactListOut, ContactListIn, ContactListUpdateIn,
     ContactOut, ContactIn, ContactUpdateIn,
@@ -83,12 +87,19 @@ def remove_contacts_from_list(request, list_id: int, data: AddRemoveContactsIn):
 
 # --- Contacts ---
 
+# Bucket helpers live in .buckets (shared with the import-validation workspace).
+# Re-exported here so existing importers keep working.
+VERIFICATION_BUCKETS = _VERIFICATION_BUCKETS
+_bucket_filter = bucket_filter
+
+
 @router.get('/', response=List[ContactOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
 def list_contacts(
     request,
     status: Optional[str] = None,
     verification_status: Optional[str] = None,
+    verification: Optional[str] = None,
     list_id: Optional[int] = None,
     search: Optional[str] = None,
 ):
@@ -97,6 +108,10 @@ def list_contacts(
         qs = qs.filter(status=status)
     if verification_status:
         qs = qs.filter(verification_status=verification_status)
+    # `verification` is the richer bucket filter used by the list-detail tabs
+    # (valid / risky / invalid / disposable / unknown / unverified).
+    if verification and verification != 'all':
+        qs = qs.filter(_bucket_filter(verification))
     if list_id:
         qs = qs.filter(lists__id=list_id)
     if search:
@@ -105,6 +120,16 @@ def list_contacts(
             Q(last_name__icontains=search) | Q(company__icontains=search)
         )
     return qs
+
+
+@router.get('/stats/', auth=auth)
+def contact_stats(request, list_id: Optional[int] = None):
+    """Per-bucket verification counts, optionally scoped to one list — powers the
+    tab counters on the list-detail page."""
+    qs = Contact.objects.filter(user=request.auth)
+    if list_id:
+        qs = qs.filter(lists__id=list_id)
+    return bucket_counts(qs)
 
 
 # Reason-specific message for a rejected (undeliverable) manual lead add, so the

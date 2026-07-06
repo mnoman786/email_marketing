@@ -123,6 +123,50 @@ class ImportStatusOut(Schema):
     errors: List[Dict[str, Any]]
 
 
+# --- Import validation (staging) ---
+
+class ImportBatchOut(Schema):
+    id: int
+    name: str
+    status: str
+    total: int
+    verified_count: int
+    promoted_count: int
+    percent: int
+    counts: Dict[str, int] = {}   # per-bucket counts (valid/risky/invalid/...)
+    created_at: datetime
+    updated_at: datetime
+
+    @staticmethod
+    def resolve_percent(obj):
+        return round(obj.verified_count / obj.total * 100) if obj.total else 100
+
+
+class StagedLeadOut(Schema):
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+    phone: str
+    company: str
+    verification_status: str
+    verification_detail: Dict[str, Any] = {}
+    promoted: bool
+
+
+class ValidationImportIn(Schema):
+    name: Optional[str] = None
+    contacts: List[Dict[str, Any]]
+
+
+class PromoteIn(Schema):
+    list_id: Optional[int] = None      # add promoted leads to this list (optional)
+    # Either promote an explicit set of staged-lead ids, or a whole bucket
+    # ('valid', 'risky', ...). If both are given, ids win.
+    lead_ids: Optional[List[int]] = None
+    bucket: Optional[str] = None
+
+
 class BulkDeleteIn(Schema):
     ids: List[int]
 
