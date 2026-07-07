@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { contactsApi } from '@/lib/api'
 import { Contact, PaginatedResponse } from '@/lib/types'
@@ -11,11 +11,10 @@ import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime } from '@/lib/utils'
 import {
-  Plus, Search, Trash2, Upload, UserX, Download, MoreHorizontal, Users, ShieldCheck
+  Plus, Search, Trash2, MoreHorizontal, Users, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
-import { BulkImportDialog } from '@/components/contacts/bulk-import-dialog'
 import { VerificationDot, SpamRiskBadge } from '@/components/contacts/verification-badges'
 
 export default function ContactsPage() {
@@ -26,60 +25,7 @@ export default function ContactsPage() {
   const [selected, setSelected] = useState<number[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editContact, setEditContact] = useState<Contact | null>(null)
-  const [showImport, setShowImport] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [importTaskId, setImportTaskId] = useState<string | null>(null)
-  const [verifyTaskId, setVerifyTaskId] = useState<string | null>(null)
-
-  const { data: importStatus } = useQuery({
-    queryKey: ['import-status', importTaskId],
-    queryFn: () => contactsApi.importStatus(importTaskId!).then(r => r.data),
-    enabled: !!importTaskId,
-    refetchInterval: (query) => {
-      const state = (query.state.data as any)?.state
-      return state === 'success' || state === 'failure' ? false : 2000
-    },
-  })
-
-  useEffect(() => {
-    if (!importStatus) return
-    const s = (importStatus as any).state
-    if (s === 'success') {
-      qc.invalidateQueries({ queryKey: ['contacts'] })
-      qc.invalidateQueries({ queryKey: ['lists-all'] })
-      const st = importStatus as any
-      const blocked = st.blocked ? `, ${st.blocked} fake/undeliverable blocked` : ''
-      toast.success(`Import done: ${st.created} created, ${st.updated} updated${blocked}`)
-      setImportTaskId(null)
-    } else if (s === 'failure') {
-      toast.error('Import failed')
-      setImportTaskId(null)
-    }
-  }, [importStatus])
-
-  const { data: verifyStatus } = useQuery({
-    queryKey: ['verify-status', verifyTaskId],
-    queryFn: () => contactsApi.verifyStatus(verifyTaskId!).then(r => r.data),
-    enabled: !!verifyTaskId,
-    refetchInterval: (query) => {
-      const state = (query.state.data as any)?.state
-      return state === 'success' || state === 'failure' ? false : 2000
-    },
-  })
-
-  useEffect(() => {
-    if (!verifyStatus) return
-    const s = (verifyStatus as any).state
-    if (s === 'success') {
-      qc.invalidateQueries({ queryKey: ['contacts'] })
-      const v = verifyStatus as any
-      toast.success(`Verified ${v.total}: ${v.valid} valid, ${v.invalid} invalid, ${v.unknown} unknown`)
-      setVerifyTaskId(null)
-    } else if (s === 'failure') {
-      toast.error('Verification failed')
-      setVerifyTaskId(null)
-    }
-  }, [verifyStatus])
 
   const { data, isLoading } = useQuery({
     queryKey: ['contacts', { search, status, page }],
@@ -114,15 +60,6 @@ export default function ContactsPage() {
     },
   })
 
-  const verifyBulkMut = useMutation({
-    mutationFn: (ids?: number[]) => contactsApi.verifyBulk(ids?.length ? { contact_ids: ids } : {}),
-    onSuccess: (res) => {
-      setVerifyTaskId(res.data.task_id)
-      toast.success(`Verifying ${res.data.total} lead(s)…`)
-      setSelected([])
-    },
-  })
-
   const verifyOneMut = useMutation({
     mutationFn: (id: number) => contactsApi.verify(id),
     onSuccess: () => {
@@ -150,9 +87,6 @@ export default function ContactsPage() {
           <p className="text-sm text-muted-foreground">Manage your lead base</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload size={16} /> Import
-          </Button>
           <Button onClick={() => { setEditContact(null); setShowForm(true) }}>
             <Plus size={16} /> Add Lead
           </Button>
@@ -182,19 +116,6 @@ export default function ContactsPage() {
           <option value="complained">Complained</option>
         </select>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => verifyBulkMut.mutate(selected.length ? selected : undefined)}
-          loading={verifyBulkMut.isPending || !!verifyTaskId}
-          title={selected.length ? `Verify ${selected.length} selected` : 'Verify all leads'}
-        >
-          <ShieldCheck size={14} />
-          {verifyTaskId
-            ? `Verifying ${(verifyStatus as any)?.percent ?? 0}%`
-            : selected.length ? `Verify ${selected.length}` : 'Verify all'}
-        </Button>
-
         {selected.length > 0 && (
           <Button
             variant="destructive"
@@ -217,7 +138,7 @@ export default function ContactsPage() {
           <EmptyState
             icon={Users}
             title="No leads found"
-            description="Import leads or add them manually to get started."
+            description="Add leads manually, or import them from the Email Validation section."
             action={{ label: 'Add Lead', onClick: () => setShowForm(true) }}
           />
         ) : (
@@ -352,11 +273,6 @@ export default function ContactsPage() {
         onClose={() => setShowForm(false)}
         contact={editContact}
         onSaved={() => { qc.invalidateQueries({ queryKey: ['contacts'] }); setShowForm(false) }}
-      />
-      <BulkImportDialog
-        open={showImport}
-        onClose={() => setShowImport(false)}
-        onImported={(taskId) => setImportTaskId(taskId)}
       />
       <ConfirmDialog
         open={!!deleteId}

@@ -148,7 +148,10 @@ def _verify_contacts_chunk_task(job_id, contact_ids):
     now = timezone.now()
 
     for contact in contacts:
-        result = verify_email_detailed(contact.email, mx_cache=mx_cache)
+        # Force the SMTP mailbox-existence probe, same as manual add / bulk
+        # import — re-verifying a contact should confirm the mailbox still
+        # accepts mail, not just that the domain has an MX record.
+        result = verify_email_detailed(contact.email, mx_cache=mx_cache, smtp_probe=True)
         counts[result.status] = counts.get(result.status, 0) + 1
         contact.verification_status = result.status
         contact.verification_detail = result.as_detail()

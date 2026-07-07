@@ -349,10 +349,12 @@ def unsubscribe_contact(request, contact_id: int):
 
 @router.post('/{contact_id}/verify/', response=ContactOut, auth=auth)
 def verify_contact(request, contact_id: int):
-    """Re-run the in-house validator for a single contact, synchronously."""
+    """Re-run the in-house validator for a single contact, synchronously.
+    Forces the SMTP mailbox-existence probe, same as manual add / bulk import —
+    the reputation cost of one RCPT probe is negligible for a single contact."""
     from .verification import verify_email_detailed
     contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
-    result = verify_email_detailed(contact.email)
+    result = verify_email_detailed(contact.email, smtp_probe=True)
     contact.verification_status = result.status
     contact.verification_detail = result.as_detail()
     contact.verified_at = timezone.now()
