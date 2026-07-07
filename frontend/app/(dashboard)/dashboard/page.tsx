@@ -14,7 +14,7 @@ import {
 import { Users, Megaphone, Mail, Server, TrendingUp, Laptop } from 'lucide-react'
 import Link from 'next/link'
 
-const COLORS = ['#0d6e63', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
+const COLORS = ['#573cdd', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -137,8 +137,8 @@ export default function DashboardPage() {
               <AreaChart data={data.trend}>
                 <defs>
                   <linearGradient id="sentGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0d6e63" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#0d6e63" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#573cdd" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#573cdd" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="failGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
@@ -156,7 +156,7 @@ export default function DashboardPage() {
                     fontSize: '12px',
                   }}
                 />
-                <Area type="monotone" dataKey="sent" stroke="#0d6e63" fill="url(#sentGrad)" strokeWidth={2} name="Sent" />
+                <Area type="monotone" dataKey="sent" stroke="#573cdd" fill="url(#sentGrad)" strokeWidth={2} name="Sent" />
                 <Area type="monotone" dataKey="failed" stroke="#ef4444" fill="url(#failGrad)" strokeWidth={2} name="Failed" />
               </AreaChart>
             </ResponsiveContainer>
@@ -217,7 +217,7 @@ export default function DashboardPage() {
                     fontSize: '12px',
                   }}
                 />
-                <Bar dataKey="sent" fill="#0d6e63" name="Sent" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sent" fill="#573cdd" name="Sent" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

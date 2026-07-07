@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { inboxApi } from '@/lib/api'
 import {
-  LayoutDashboard, Users, Server, Megaphone, BarChart3, Settings,
+  LayoutDashboard, Users, Server, Megaphone, BarChart3,
   ChevronLeft, ChevronRight, Zap, ListFilter, Inbox, Bell, BellOff, ShieldBan, Search, ShieldCheck
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -14,10 +14,17 @@ const topItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
 ]
 
-// Grouped so the rail reads as sections, not a flat wall of links — mirrors
-// how the app is actually organized (contact sourcing/cleanup, outbound
-// sending, the shared inbox, sending infrastructure).
+// Grouped so the rail reads as sections, not a flat wall of links — Inbox
+// first since replies are the most time-sensitive thing to check, then
+// contact sourcing/cleanup, outbound sending, sending infrastructure.
+// Settings lives in the profile menu (Topbar), not here.
 const navGroups = [
+  {
+    label: 'Inbox',
+    items: [
+      { href: '/unibox', label: 'Unibox', icon: Inbox },
+    ],
+  },
   {
     label: 'Contacts',
     items: [
@@ -35,22 +42,12 @@ const navGroups = [
     ],
   },
   {
-    label: 'Inbox',
-    items: [
-      { href: '/unibox', label: 'Unibox', icon: Inbox },
-    ],
-  },
-  {
     label: 'Infrastructure',
     items: [
       { href: '/accounts', label: 'Accounts', icon: Server },
       { href: '/blocklist', label: 'Blocklist', icon: ShieldBan },
     ],
   },
-]
-
-const bottomItems = [
-  { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export function Sidebar() {
@@ -123,7 +120,7 @@ export function Sidebar() {
       )}
     >
       {/* Logo */}
-      <div className={cn('flex items-center h-16 border-b border-white/10 px-4', collapsed ? 'justify-center' : 'gap-3')}>
+      <div className={cn('sidebar-border flex items-center h-16 border-b px-4', collapsed ? 'justify-center' : 'gap-3')}>
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shadow-sm shrink-0">
           <Zap className="w-4 h-4 text-primary-foreground" />
         </div>
@@ -144,8 +141,8 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom nav */}
-      <div className="py-4 px-2 border-t border-white/10 space-y-1">
-        {notifPermission && notifPermission !== 'granted' && (
+      {notifPermission && notifPermission !== 'granted' && (
+        <div className="sidebar-border py-4 px-2 border-t">
           <button
             onClick={requestNotifPermission}
             className={cn('sidebar-item w-full', collapsed && 'justify-center px-0')}
@@ -154,23 +151,8 @@ export function Sidebar() {
             {notifPermission === 'denied' ? <BellOff size={18} className="shrink-0" /> : <Bell size={18} className="shrink-0" />}
             {!collapsed && <span>{notifPermission === 'denied' ? 'Notifications blocked' : 'Enable notifications'}</span>}
           </button>
-        )}
-        {bottomItems.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href}>
-            <div
-              className={cn(
-                'sidebar-item',
-                isActive(href) && 'active',
-                collapsed && 'justify-center px-0'
-              )}
-              title={collapsed ? label : undefined}
-            >
-              <Icon size={18} className="shrink-0" />
-              {!collapsed && <span>{label}</span>}
-            </div>
-          </Link>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <button

@@ -1,6 +1,6 @@
 'use client'
 import { useTheme } from 'next-themes'
-import { Moon, Sun, Bell, Search, ChevronDown, LogOut, User as UserIcon, Settings } from 'lucide-react'
+import { Moon, Sun, Bell, ChevronDown, LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/components/providers/auth-provider'
@@ -82,12 +82,6 @@ export function Topbar({ title }: TopbarProps) {
                 )}
               </div>
               <div className="p-1">
-                <Link href="/settings" onClick={() => setDropdownOpen(false)}>
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-accent cursor-pointer">
-                    <UserIcon size={14} />
-                    Profile
-                  </div>
-                </Link>
                 <Link href="/settings" onClick={() => setDropdownOpen(false)}>
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-accent cursor-pointer">
                     <Settings size={14} />
