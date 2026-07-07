@@ -2,6 +2,8 @@ import uuid
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from .utils import get_fernet
+
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -9,7 +11,7 @@ class User(AbstractUser):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     timezone = models.CharField(max_length=50, default='UTC')
     is_email_verified = models.BooleanField(default=False)
-    apollo_api_key = models.CharField(max_length=255, blank=True)
+    _apollo_api_key = models.TextField(db_column='apollo_api_key', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -22,6 +24,24 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+    @property
+    def apollo_api_key(self):
+        if not self._apollo_api_key:
+            return ''
+        try:
+            f = get_fernet()
+            return f.decrypt(self._apollo_api_key.encode()).decode()
+        except Exception:
+            return self._apollo_api_key
+
+    @apollo_api_key.setter
+    def apollo_api_key(self, value):
+        if value:
+            f = get_fernet()
+            self._apollo_api_key = f.encrypt(value.encode()).decode()
+        else:
+            self._apollo_api_key = ''
 
 
 class UserSession(models.Model):

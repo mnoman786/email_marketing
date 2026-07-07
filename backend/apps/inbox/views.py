@@ -122,22 +122,24 @@ def get_thread(request, thread_id: int):
 
 @router.get('/threads/{thread_id}/contact-stats/', response=ContactStatsOut, auth=auth)
 def thread_contact_stats(request, thread_id: int):
+    from django.db.models import Case, Count, IntegerField, Q, When
     from apps.analytics.models import SendLog
 
     thread = get_object_or_404(
         Thread.objects.select_related('contact'), id=thread_id, user=request.auth
     )
     logs = SendLog.objects.filter(contact=thread.contact)
-    return {
-        'total_sent': logs.exclude(status__in=['pending', 'failed']).count(),
-        'opened': logs.exclude(opened_at__isnull=True).count(),
-        'clicked': logs.exclude(clicked_at__isnull=True).count(),
-        'replied': logs.exclude(replied_at__isnull=True).count(),
-        'bounced': logs.filter(status='bounced').count(),
-        'campaigns': list(
-            logs.exclude(campaign__isnull=True).values_list('campaign__name', flat=True).distinct()
-        ),
-    }
+    counts = logs.aggregate(
+        total_sent=Count(Case(When(~Q(status__in=['pending', 'failed']), then=1), output_field=IntegerField())),
+        opened=Count(Case(When(~Q(opened_at__isnull=True), then=1), output_field=IntegerField())),
+        clicked=Count(Case(When(~Q(clicked_at__isnull=True), then=1), output_field=IntegerField())),
+        replied=Count(Case(When(~Q(replied_at__isnull=True), then=1), output_field=IntegerField())),
+        bounced=Count(Case(When(status='bounced', then=1), output_field=IntegerField())),
+    )
+    counts['campaigns'] = list(
+        logs.exclude(campaign__isnull=True).values_list('campaign__name', flat=True).distinct()
+    )
+    return counts
 
 
 @router.get('/threads/{thread_id}/followup-draft/', auth=auth)

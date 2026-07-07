@@ -123,6 +123,10 @@ def change_password(request, data: ChangePasswordIn):
         raise HttpError(400, 'Old password is incorrect.')
     user.set_password(data.new_password)
     user.save()
+    current_jti = getattr(request, 'session_jti', None)
+    UserSession.objects.filter(
+        user=user, revoked_at__isnull=True
+    ).exclude(jti=current_jti).update(revoked_at=timezone.now())
     return {'detail': 'Password changed successfully.'}
 
 

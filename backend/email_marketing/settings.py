@@ -1,7 +1,13 @@
+import sys
 from pathlib import Path
 from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# True under `manage.py test` — used below to run Celery tasks eagerly
+# (in-process, synchronously) so dispatcher tasks that fan out chunk tasks via
+# .delay() don't need a live broker/worker in the test environment.
+TESTING = 'test' in sys.argv
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-change-in-production-xyz123')
 DEBUG = config('DEBUG', default=True, cast=bool)
@@ -143,6 +149,11 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
 # limit themselves, as send_campaign_batch_task does.
 CELERY_TASK_TIME_LIMIT = 1800
 CELERY_TASK_SOFT_TIME_LIMIT = 1700
+# Fan-out dispatchers (bulk import/verify/campaign send) call .delay() on chunk
+# tasks and never block waiting on them, so eager mode is only needed to make
+# those chunk tasks actually run under the test runner (no live broker/worker
+# there); production always uses the real async path.
+CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=TESTING, cast=bool)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SCHEDULE = {
     'enroll-due-contacts': {
@@ -178,6 +189,22 @@ BLOCK_DISPOSABLE_ON_IMPORT = config('BLOCK_DISPOSABLE_ON_IMPORT', default=True, 
 # Opt-in SMTP RCPT mailbox probe (see apps/contacts/verification.py). Off by default
 # to protect the sending IP's reputation.
 EMAIL_VERIFY_SMTP_PROBE = config('EMAIL_VERIFY_SMTP_PROBE', default=False, cast=bool)
+
+# Chunk sizes for the dispatcher/chunk-task split in bulk import, re-verification,
+# and campaign sending (see apps/contacts/tasks.py, apps/sequences/tasks.py).
+# Each chunk runs as its own Celery task so a large job fans out across the
+# worker pool's concurrency instead of one task looping over everything
+# sequentially. Sized with a safety margin under CELERY_TASK_TIME_LIMIT even at
+# a pessimistic per-row/per-send cost (e.g. 100 rows x 8s SMTP-probe timeout
+# worst case = ~13 min, well under the 30 min hard limit).
+BULK_IMPORT_CHUNK_SIZE = config('BULK_IMPORT_CHUNK_SIZE', default=100, cast=int)
+VERIFY_CHUNK_SIZE = config('VERIFY_CHUNK_SIZE', default=100, cast=int)
+CAMPAIGN_SEND_BATCH_SIZE = config('CAMPAIGN_SEND_BATCH_SIZE', default=50, cast=int)
+# Caps how many due enrollments one process_due_campaign_steps tick will pick
+# up (ordered oldest-due-first). Leftovers are swept up on the next 60s tick —
+# self-correcting, and bounds both per-tick memory and how many batch tasks
+# one tick can flood the queue with.
+CAMPAIGN_MAX_DUE_PER_TICK = config('CAMPAIGN_MAX_DUE_PER_TICK', default=5000, cast=int)
 
 # Encryption key for SMTP passwords
 ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='')

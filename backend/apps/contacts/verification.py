@@ -20,9 +20,11 @@ MX lookups are cached per-domain (Redis, 24h) and, within a bulk run, in a
 caller-supplied dict — so importing 10k contacts across 50 domains costs ~50
 DNS lookups, not 10k.
 """
+import ipaddress
 import re
 import logging
 import smtplib
+import socket
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -271,6 +273,39 @@ SMTP_CATCH_ALL = 'catch_all'          # domain accepts every address — can't c
 SMTP_UNKNOWN = 'unknown'              # greylisted / blocked / no connection
 
 
+def _is_public_host(host):
+    """True if `host` resolves only to public, routable IPs.
+
+    MX hostnames come from DNS records controlled by whoever owns the lead's
+    email domain — i.e. attacker-influenced input from the app's perspective.
+    Without this check, a lead submitted with an email at a domain whose MX
+    points at 127.0.0.1 / 169.254.169.254 / an internal RFC1918 address would
+    make the backend open a raw SMTP connection to that host on the caller's
+    behalf (SSRF). Reject anything that isn't a plain public address.
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False
+    return True
+
+
 def _smtp_probe(email, domain, hosts=None):
     """OPTIONAL mailbox-existence check via SMTP RCPT TO (no DATA sent).
 
@@ -295,6 +330,9 @@ def _smtp_probe(email, domain, hosts=None):
     control = f'{uuid.uuid4().hex}@{domain}'
 
     for host in hosts:
+        if not _is_public_host(host):
+            logger.warning('SMTP probe skipped for %s: MX host %s is not a public address', email, host)
+            continue
         try:
             with smtplib.SMTP(host, 25, timeout=8) as smtp:
                 smtp.ehlo_or_helo_if_needed()

@@ -2,7 +2,7 @@
 workspace. They partition any model that has `verification_status` +
 `verification_detail` (Contact and StagedLead) into exactly one bucket, so the
 per-bucket counts always sum to the total."""
-from django.db.models import Q
+from django.db.models import Case, Count, IntegerField, Q, When
 
 # Order is intentional: how the tabs are displayed left-to-right.
 VERIFICATION_BUCKETS = ('valid', 'risky', 'invalid', 'disposable', 'unknown', 'unverified')
@@ -27,7 +27,14 @@ def bucket_filter(bucket):
 
 
 def bucket_counts(qs):
-    """{bucket: count, ...} plus 'total' for a queryset."""
-    counts = {b: qs.filter(bucket_filter(b)).count() for b in VERIFICATION_BUCKETS}
-    counts['total'] = qs.count()
-    return counts
+    """{bucket: count, ...} plus 'total' for a queryset.
+
+    A single aggregate query (conditional COUNTs) instead of one .count() per
+    bucket — avoids re-scanning the same base queryset 7x on every page load.
+    """
+    aggregates = {
+        b: Count(Case(When(bucket_filter(b), then=1), output_field=IntegerField()))
+        for b in VERIFICATION_BUCKETS
+    }
+    aggregates['total'] = Count('id')
+    return qs.aggregate(**aggregates)

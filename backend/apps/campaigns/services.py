@@ -217,6 +217,32 @@ def reserve_send_slot(smtp_account):
     return True
 
 
+def _send_via_cached_connection(conn_cache, smtp_account, msg, to_email):
+    """Send over a connection cached in `conn_cache` (keyed by smtp_account.id),
+    opening one lazily on first use and reopening once if it's gone dead.
+    Reuses connections across many sends through the same account within one
+    batch instead of paying SMTP handshake+TLS+auth (~1-3s) per email — see
+    open_smtp_connection/send_via_open_connection above."""
+    server = conn_cache.get(smtp_account.id)
+    if server is None:
+        server = open_smtp_connection(smtp_account)
+        conn_cache[smtp_account.id] = server
+
+    try:
+        return send_via_open_connection(server, msg, smtp_account.from_email, to_email)
+    except (smtplib.SMTPServerDisconnected, OSError):
+        conn_cache.pop(smtp_account.id, None)
+        try:
+            server = open_smtp_connection(smtp_account)
+            conn_cache[smtp_account.id] = server
+            return send_via_open_connection(server, msg, smtp_account.from_email, to_email)
+        except (smtplib.SMTPServerDisconnected, OSError) as e:
+            conn_cache.pop(smtp_account.id, None)
+            return False, f'Cannot connect to SMTP server: {e}'
+        except Exception as e:
+            return False, f'Unexpected error: {e}'
+
+
 def make_message_id(sendlog_id, sender_email):
     """
     Deterministic Message-ID embedding the SendLog id, so a reply's
@@ -299,7 +325,7 @@ def render_template_for_contact(html_content, contact, campaign_variables=None, 
 
 
 def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog_id=None,
-                        tracking_base_url=None):
+                        tracking_base_url=None, conn_cache=None):
     """
     Send a single campaign email to one contact.
     Uses weighted SMTP selection with fallback on failure.
@@ -307,6 +333,10 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
 
     `tracking_base_url` is resolved once by the caller (per batch/run) and passed
     in to avoid a per-email DB lookup of the user's tracking domain.
+
+    `conn_cache`, if given, is a dict the caller keeps alive across many calls to
+    this function (e.g. one per batch of enrollments) — sends reuse one open SMTP
+    connection per account instead of reconnecting for every single email.
     """
     available = list(smtp_accounts)
     attempted = []
@@ -365,7 +395,10 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
             message_id=message_id,
         )
 
-        success, error = send_via_smtp(smtp_account, msg, contact.email)
+        if conn_cache is not None:
+            success, error = _send_via_cached_connection(conn_cache, smtp_account, msg, contact.email)
+        else:
+            success, error = send_via_smtp(smtp_account, msg, contact.email)
 
         if success:
             logger.info(f'[Campaign {campaign.id}] Sent to {contact.email} via {smtp_account.name}')

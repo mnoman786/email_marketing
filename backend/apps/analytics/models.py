@@ -76,8 +76,11 @@ class SendLog(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['campaign', 'status']),
-            models.Index(fields=['contact']),
-            models.Index(fields=['smtp_account']),
+            # Covers the sent_at/created_at range filters used by dashboard_stats,
+            # list_send_logs, and the campaign-stats sends timeline. `contact` and
+            # `smtp_account` standalone indexes were dropped — both are FKs, and
+            # Django already creates an implicit index for every ForeignKey.
+            models.Index(fields=['campaign', 'sent_at']),
             models.Index(fields=['created_at']),
         ]
 

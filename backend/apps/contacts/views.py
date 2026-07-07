@@ -203,28 +203,20 @@ def bulk_import(request, data: BulkImportIn):
 
 @router.get('/import-status/{task_id}/', response=ImportStatusOut, auth=auth)
 def import_status(request, task_id: str):
-    from celery.result import AsyncResult
-    result = AsyncResult(task_id)
-    state = result.state
-
-    if state == 'PENDING':
+    """`task_id` is the dispatcher task's id, used as the job id for the
+    Redis-backed progress counters that the fanned-out chunk tasks update (see
+    apps/contacts/tasks.py, apps/contacts/progress.py)."""
+    from . import progress
+    p = progress.get_progress(task_id)
+    if p is None:
         return {'state': 'pending', 'current': 0, 'total': 0, 'percent': 0,
-                'created': 0, 'updated': 0, 'failed': 0, 'errors': []}
-    if state == 'PROGRESS':
-        info = result.info or {}
-        return {'state': 'progress', 'current': info.get('current', 0), 'total': info.get('total', 0),
-                'percent': info.get('percent', 0), 'created': info.get('created', 0),
-                'updated': info.get('updated', 0), 'failed': info.get('failed', 0),
-                'blocked': info.get('blocked', 0), 'errors': []}
-    if state == 'SUCCESS':
-        info = result.result or {}
-        return {'state': 'success', 'current': info.get('current', 0), 'total': info.get('total', 0),
-                'percent': 100, 'created': info.get('created', 0), 'updated': info.get('updated', 0),
-                'failed': info.get('failed', 0), 'blocked': info.get('blocked', 0),
-                'errors': info.get('errors', [])}
-    return {'state': 'failure', 'current': 0, 'total': 0, 'percent': 0,
-            'created': 0, 'updated': 0, 'failed': 0, 'blocked': 0,
-            'errors': [{'row': 0, 'error': str(result.info)}]}
+                'created': 0, 'updated': 0, 'failed': 0, 'blocked': 0, 'errors': []}
+    return {
+        'state': 'success' if p['done'] else 'progress',
+        'current': p['current'], 'total': p['total'], 'percent': p['percent'],
+        'created': p['created'], 'updated': p['updated'],
+        'failed': p['failed'], 'blocked': p['blocked'], 'errors': p['errors'],
+    }
 
 
 @router.post('/bulk-delete/', auth=auth)
@@ -265,22 +257,19 @@ def verify_bulk(request, data: VerifyBulkIn):
 
 @router.get('/verify-status/{task_id}/', response=VerifyStatusOut, auth=auth)
 def verify_status(request, task_id: str):
-    from celery.result import AsyncResult
-    result = AsyncResult(task_id)
-    state = result.state
-    info = (result.info if state in ('PROGRESS', 'SUCCESS') else None) or {}
-
-    if state == 'PENDING':
+    """`task_id` is the dispatcher task's id, used as the job id for the
+    Redis-backed progress counters (see apps/contacts/tasks.py:verify_contacts_task,
+    apps/contacts/progress.py)."""
+    from . import progress
+    p = progress.get_progress(task_id)
+    if p is None:
         return {'state': 'pending', 'current': 0, 'total': 0, 'percent': 0,
                 'valid': 0, 'invalid': 0, 'unknown': 0}
-    if state in ('PROGRESS', 'SUCCESS'):
-        return {'state': 'success' if state == 'SUCCESS' else 'progress',
-                'current': info.get('current', 0), 'total': info.get('total', 0),
-                'percent': 100 if state == 'SUCCESS' else info.get('percent', 0),
-                'valid': info.get('valid', 0), 'invalid': info.get('invalid', 0),
-                'unknown': info.get('unknown', 0)}
-    return {'state': 'failure', 'current': 0, 'total': 0, 'percent': 0,
-            'valid': 0, 'invalid': 0, 'unknown': 0}
+    return {
+        'state': 'success' if p['done'] else 'progress',
+        'current': p['current'], 'total': p['total'], 'percent': p['percent'],
+        'valid': p['valid'], 'invalid': p['invalid'], 'unknown': p['unknown'],
+    }
 
 
 # --- Suppression list (account-wide do-not-send) ---

@@ -4,7 +4,7 @@ from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.shortcuts import get_object_or_404
-from django.db.models import Q, Count, Min, Max
+from django.db.models import Case, Count, IntegerField, Min, Max, Q, When
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from typing import Optional, List
@@ -259,13 +259,16 @@ def campaign_stats(request, campaign_id: int):
     steps = list(campaign.steps.order_by('order'))
 
     def bucket_counts(logs):
-        return {
-            'sent': logs.filter(status__in=('sent', 'opened', 'clicked', 'replied')).count(),
-            'failed': logs.filter(status='failed').count(),
-            'opened': logs.filter(status__in=('opened', 'clicked', 'replied')).count(),
-            'clicked': logs.filter(status__in=('clicked', 'replied')).count(),
-            'replied': logs.filter(status='replied').count(),
-        }
+        # One aggregate query (conditional counts) instead of 5 separate
+        # .count() calls — called once per step and once per variant, so this
+        # matters: a 5-step x 3-variant campaign went from ~100 queries to ~20.
+        return logs.aggregate(
+            sent=Count(Case(When(status__in=('sent', 'opened', 'clicked', 'replied'), then=1), output_field=IntegerField())),
+            failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
+            opened=Count(Case(When(status__in=('opened', 'clicked', 'replied'), then=1), output_field=IntegerField())),
+            clicked=Count(Case(When(status__in=('clicked', 'replied'), then=1), output_field=IntegerField())),
+            replied=Count(Case(When(status='replied', then=1), output_field=IntegerField())),
+        )
 
     step_stats = []
     for idx, step in enumerate(steps):

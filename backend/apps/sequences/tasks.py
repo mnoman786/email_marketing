@@ -1,9 +1,16 @@
 """Celery tasks for campaign (single + multi-step drip) enrollment and sending."""
 import logging
 from celery import shared_task
+from django.conf import settings
+from django.db.models import Case, Count, IntegerField, When
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _chunks(seq, size):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
 
 
 def _smtp_accounts_for(campaign):
@@ -48,10 +55,12 @@ def enroll_due_contacts():
         new_ids = [cid for cid in contact_ids if cid not in already_enrolled]
 
         first_send_at = now + timezone.timedelta(days=first_step.delay_days, hours=first_step.delay_hours)
-        for contact_id in new_ids:
-            CampaignEnrollment.objects.create(
+        CampaignEnrollment.objects.bulk_create([
+            CampaignEnrollment(
                 campaign=campaign, contact_id=contact_id, status='active', next_send_at=first_send_at
             )
+            for contact_id in new_ids
+        ])
         enrolled_total += len(new_ids)
 
     if enrolled_total:
@@ -61,7 +70,30 @@ def enroll_due_contacts():
 
 @shared_task
 def process_due_campaign_steps():
-    """Periodic task: send the next due step for each active enrollment."""
+    """Periodic dispatcher (every 60s): fan the due enrollments out across
+    small batch tasks instead of sending everyone in one sequential loop, so
+    a large number of due sends fans out across the worker pool's concurrency
+    and no single run risks the 30-minute task time limit."""
+    from .models import CampaignEnrollment
+
+    max_due = getattr(settings, 'CAMPAIGN_MAX_DUE_PER_TICK', 5000)
+    due_ids = list(
+        CampaignEnrollment.objects.filter(
+            status='active', next_send_at__lte=timezone.now()
+        ).order_by('next_send_at').values_list('id', flat=True)[:max_due]
+    )
+    batch_size = getattr(settings, 'CAMPAIGN_SEND_BATCH_SIZE', 50)
+    for chunk in _chunks(due_ids, batch_size):
+        _send_enrollment_batch_task.delay(chunk)
+
+    return {'dispatched': len(due_ids), 'batch_size': batch_size}
+
+
+@shared_task
+def _send_enrollment_batch_task(enrollment_ids):
+    """Sends the next due step for one batch of enrollments. Reuses one open
+    SMTP connection per account across the whole batch (conn_cache) instead of
+    reconnecting for every single email — see campaigns.services.send_campaign_email."""
     from .models import CampaignEnrollment
     from apps.analytics.models import SendLog
     from apps.campaigns.services import send_campaign_email, pick_variant_by_weight
@@ -69,16 +101,26 @@ def process_due_campaign_steps():
 
     now = timezone.now()
     sent, stopped, completed = 0, 0, 0
+    conn_cache = {}
 
     # campaign__user joined so the per-user tracking-domain lookup below doesn't
     # lazy-load the User (and it's Redis-cached on top of that).
     due = CampaignEnrollment.objects.filter(
-        status='active', next_send_at__lte=now
+        id__in=enrollment_ids
     ).select_related('campaign', 'campaign__user', 'contact', 'current_step')
+
+    # Cache each campaign's ordered steps for the duration of this batch — many
+    # enrollments in the same batch typically belong to the same campaign, so
+    # without this every enrollment would re-fetch the same step rows.
+    steps_by_campaign = {}
 
     for enrollment in due:
         campaign = enrollment.campaign
-        steps = list(campaign.steps.order_by('order').prefetch_related('transitions'))
+        if campaign.id not in steps_by_campaign:
+            steps_by_campaign[campaign.id] = list(
+                campaign.steps.order_by('order').prefetch_related('transitions')
+            )
+        steps = steps_by_campaign[campaign.id]
         if not steps:
             continue
 
@@ -190,7 +232,7 @@ def process_due_campaign_steps():
 
         tracking_base = resolve_tracking_base_url(campaign.user)
         result = send_campaign_email(send_target, enrollment.contact, smtp_accounts, sendlog_id=sendlog.id,
-                                     tracking_base_url=tracking_base)
+                                     tracking_base_url=tracking_base, conn_cache=conn_cache)
 
         sendlog.smtp_account = result.smtp_account
         sendlog.status = 'sent' if result.success else 'failed'
@@ -233,6 +275,12 @@ def process_due_campaign_steps():
 
         enrollment.save()
         sent += 1
+
+    for server in conn_cache.values():
+        try:
+            server.quit()
+        except Exception:
+            pass
 
     return {'sent': sent, 'stopped': stopped, 'completed': completed}
 
@@ -308,12 +356,18 @@ def auto_optimize_campaign_steps():
         ready = True
         for variant in variants:
             logs = SendLog.objects.filter(sequence_step=step, step_variant=variant)
-            total = logs.filter(status__in=('sent', 'opened', 'clicked', 'replied')).count()
+            counts = logs.aggregate(
+                total=Count(Case(
+                    When(status__in=('sent', 'opened', 'clicked', 'replied'), then=1),
+                    output_field=IntegerField(),
+                )),
+                hits=Count(Case(When(status__in=hit_statuses, then=1), output_field=IntegerField())),
+            )
+            total = counts['total']
             if total < step.auto_optimize_min_sends:
                 ready = False
                 break
-            hits = logs.filter(status__in=hit_statuses).count()
-            rates.append((variant, hits / total if total else 0))
+            rates.append((variant, counts['hits'] / total if total else 0))
 
         if not ready:
             continue
@@ -330,5 +384,3 @@ def auto_optimize_campaign_steps():
         evaluated += 1
 
     return {'steps_resolved': evaluated}
-
-    return {'success': result.success, 'error': result.error}

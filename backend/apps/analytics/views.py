@@ -3,7 +3,8 @@ from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, When
+from django.db.models.functions import TruncDate
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -16,6 +17,10 @@ from .tracking import verify_tracking_domain, tracking_base_cache_key
 from apps.accounts.auth import auth
 
 _DOMAIN_RE = re.compile(r'^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,}$')
+# Caps one retry-failed request so a campaign with a huge failed-log volume
+# can't queue an unbounded number of retry tasks in one request; re-running
+# the action processes the next slice.
+MAX_RETRY_FAILED = 5000
 
 # 1×1 transparent GIF — served as the open-tracking pixel
 _PIXEL_GIF = base64.b64decode(
@@ -52,21 +57,40 @@ def dashboard_stats(request):
     total_smtp = SMTPAccount.objects.filter(user=user, is_active=True).count()
 
     logs = SendLog.objects.filter(campaign__user=user)
-    total_sent = logs.filter(status='sent').count()
-    total_failed = logs.filter(status='failed').count()
-    total_opened = logs.filter(status='opened').count()
-    recent_sent = logs.filter(status='sent', sent_at__gte=last_30).count()
-    recent_failed = logs.filter(status='failed', created_at__gte=last_30).count()
+    # One aggregate query instead of 5 separate .count() calls against the
+    # same base queryset.
+    counts = logs.aggregate(
+        total_sent=Count(Case(When(status='sent', then=1), output_field=IntegerField())),
+        total_failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
+        total_opened=Count(Case(When(status='opened', then=1), output_field=IntegerField())),
+        recent_sent=Count(Case(When(status='sent', sent_at__gte=last_30, then=1), output_field=IntegerField())),
+        recent_failed=Count(Case(When(status='failed', created_at__gte=last_30, then=1), output_field=IntegerField())),
+    )
+    total_sent = counts['total_sent']
+    total_failed = counts['total_failed']
+    total_opened = counts['total_opened']
+    recent_sent = counts['recent_sent']
+    recent_failed = counts['recent_failed']
 
+    # 7-day trend: 2 grouped queries instead of 14 individual per-day counts.
+    week_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+    sent_by_day = dict(
+        logs.filter(status='sent', sent_at__gte=week_start)
+        .annotate(day=TruncDate('sent_at')).values('day')
+        .annotate(count=Count('id')).values_list('day', 'count')
+    )
+    failed_by_day = dict(
+        logs.filter(status='failed', created_at__gte=week_start)
+        .annotate(day=TruncDate('created_at')).values('day')
+        .annotate(count=Count('id')).values_list('day', 'count')
+    )
     trend = []
     for i in range(6, -1, -1):
         day = now - timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
         trend.append({
             'date': day.strftime('%m/%d'),
-            'sent': logs.filter(status='sent', sent_at__range=(day_start, day_end)).count(),
-            'failed': logs.filter(status='failed', created_at__range=(day_start, day_end)).count(),
+            'sent': sent_by_day.get(day.date(), 0),
+            'failed': failed_by_day.get(day.date(), 0),
         })
 
     campaign_statuses = list(Campaign.objects.filter(user=user).values('status').annotate(count=Count('id')))
@@ -152,13 +176,11 @@ def retry_failed(request, data: RetryFailedIn):
         )
 
     from apps.sequences.tasks import retry_failed_send_task
-    count = 0
-    for log in logs:
-        if log.contact:
-            retry_failed_send_task.delay(log.id)
-            count += 1
+    log_ids = list(logs.filter(contact__isnull=False).values_list('id', flat=True)[:MAX_RETRY_FAILED])
+    for log_id in log_ids:
+        retry_failed_send_task.delay(log_id)
 
-    return {'queued': count}
+    return {'queued': len(log_ids)}
 
 
 def _invalidate_tracking_base(user_id):
@@ -220,7 +242,7 @@ def delete_tracking_domain(request, domain_id: int):
 def track_open(request, log_id: int):
     """Return a 1×1 tracking pixel and mark the send log as opened."""
     try:
-        log = SendLog.objects.select_related('campaign').get(id=log_id)
+        log = SendLog.objects.get(id=log_id)
         # Only advance status forward: sent → opened
         if log.status == 'sent':
             log.status = 'opened'
@@ -242,7 +264,7 @@ def track_click(request, log_id: int, url: str = ''):
         return HttpResponse('Invalid url', status=400)
 
     try:
-        log = SendLog.objects.select_related('campaign').get(id=log_id)
+        log = SendLog.objects.get(id=log_id)
         # Advance status: sent/opened → clicked (don't downgrade)
         if log.status in ('sent', 'opened'):
             log.status = 'clicked'

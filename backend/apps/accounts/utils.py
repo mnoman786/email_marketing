@@ -1,3 +1,20 @@
+import base64
+import hashlib
+
+from cryptography.fernet import Fernet
+from django.conf import settings
+
+
+def get_fernet() -> Fernet:
+    key = settings.ENCRYPTION_KEY
+    if not key:
+        # Derive a key from SECRET_KEY for development
+        key = base64.urlsafe_b64encode(
+            hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+        ).decode()
+    return Fernet(key.encode() if isinstance(key, str) else key)
+
+
 def parse_user_agent(ua: str) -> str:
     if not ua:
         return 'Unknown device'

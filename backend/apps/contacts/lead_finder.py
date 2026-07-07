@@ -12,7 +12,7 @@ from typing import Optional, List
 from ninja import Schema
 from apps.accounts.auth import auth
 
-router = Router(tags=['Lead Finder'])
+router = Router(tags=['Lead Finder'], auth=auth)
 
 APOLLO_BASE = 'https://api.apollo.io/v1'
 
