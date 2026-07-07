@@ -14,7 +14,7 @@ import {
 import { Users, Megaphone, Mail, Server, TrendingUp, Laptop } from 'lucide-react'
 import Link from 'next/link'
 
-const COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
+const COLORS = ['#0d6e63', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -96,14 +96,14 @@ export default function DashboardPage() {
       {/* Email metrics row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Open Rate', value: formatPercent(data.emails.open_rate), sub: `${formatNumber(data.emails.total_opened)} opens`, color: 'text-blue-600' },
+          { label: 'Open Rate', value: formatPercent(data.emails.open_rate), sub: `${formatNumber(data.emails.total_opened)} opens`, color: 'text-primary' },
           { label: 'Delivery Rate', value: formatPercent(data.emails.delivery_rate), sub: `${formatNumber(data.emails.total_sent)} delivered`, color: 'text-green-600' },
           { label: 'Failed (30d)', value: formatNumber(data.emails.recent_failed_30d), sub: 'last 30 days', color: 'text-red-600' },
         ].map(m => (
           <Card key={m.label} className="card-hover">
             <CardContent className="p-5">
               <p className="text-sm text-muted-foreground">{m.label}</p>
-              <p className={`text-3xl font-bold mt-1 ${m.color}`}>{m.value}</p>
+              <p className={`text-3xl font-bold mt-1 font-mono tabular-nums ${m.color}`}>{m.value}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{m.sub}</p>
             </CardContent>
           </Card>
@@ -115,7 +115,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-muted-foreground">Connected Devices</p>
                 <Laptop size={15} className="text-muted-foreground" />
               </div>
-              <p className="text-3xl font-bold mt-1 text-purple-600">{sessions ? sessions.length : '—'}</p>
+              <p className="text-3xl font-bold mt-1 font-mono tabular-nums text-purple-600">{sessions ? sessions.length : '—'}</p>
               <p className="text-xs text-muted-foreground mt-0.5">active sessions</p>
             </CardContent>
           </Card>
@@ -137,8 +137,8 @@ export default function DashboardPage() {
               <AreaChart data={data.trend}>
                 <defs>
                   <linearGradient id="sentGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#0d6e63" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#0d6e63" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="failGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
@@ -156,7 +156,7 @@ export default function DashboardPage() {
                     fontSize: '12px',
                   }}
                 />
-                <Area type="monotone" dataKey="sent" stroke="#3b82f6" fill="url(#sentGrad)" strokeWidth={2} name="Sent" />
+                <Area type="monotone" dataKey="sent" stroke="#0d6e63" fill="url(#sentGrad)" strokeWidth={2} name="Sent" />
                 <Area type="monotone" dataKey="failed" stroke="#ef4444" fill="url(#failGrad)" strokeWidth={2} name="Failed" />
               </AreaChart>
             </ResponsiveContainer>
@@ -217,7 +217,7 @@ export default function DashboardPage() {
                     fontSize: '12px',
                   }}
                 />
-                <Bar dataKey="sent" fill="#3b82f6" name="Sent" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sent" fill="#0d6e63" name="Sent" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="failed" fill="#ef4444" name="Failed" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

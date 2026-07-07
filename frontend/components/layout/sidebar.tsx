@@ -10,17 +10,43 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-const navItems = [
+const topItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
-  { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
-  { href: '/unibox', label: 'Unibox', icon: Inbox },
-  { href: '/leads', label: 'Leads', icon: Users },
-  { href: '/lists', label: 'Lists', icon: ListFilter },
-  { href: '/validation', label: 'Email Validation', icon: ShieldCheck },
-  { href: '/lead-finder', label: 'Lead Finder', icon: Search },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/accounts', label: 'Accounts', icon: Server },
-  { href: '/blocklist', label: 'Blocklist', icon: ShieldBan },
+]
+
+// Grouped so the rail reads as sections, not a flat wall of links — mirrors
+// how the app is actually organized (contact sourcing/cleanup, outbound
+// sending, the shared inbox, sending infrastructure).
+const navGroups = [
+  {
+    label: 'Contacts',
+    items: [
+      { href: '/leads', label: 'Leads', icon: Users },
+      { href: '/lists', label: 'Lists', icon: ListFilter },
+      { href: '/lead-finder', label: 'Lead Finder', icon: Search },
+      { href: '/validation', label: 'Email Validation', icon: ShieldCheck },
+    ],
+  },
+  {
+    label: 'Outbound',
+    items: [
+      { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
+      { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+    ],
+  },
+  {
+    label: 'Inbox',
+    items: [
+      { href: '/unibox', label: 'Unibox', icon: Inbox },
+    ],
+  },
+  {
+    label: 'Infrastructure',
+    items: [
+      { href: '/accounts', label: 'Accounts', icon: Server },
+      { href: '/blocklist', label: 'Blocklist', icon: ShieldBan },
+    ],
+  },
 ]
 
 const bottomItems = [
@@ -65,52 +91,60 @@ export function Sidebar() {
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
+  const renderItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: typeof LayoutDashboard }) => (
+    <Link key={href} href={href}>
+      <div
+        className={cn(
+          'sidebar-item',
+          isActive(href) && 'active',
+          collapsed && 'justify-center px-0'
+        )}
+        title={collapsed ? label : undefined}
+      >
+        <Icon className="w-4.5 h-4.5 shrink-0" size={18} />
+        {!collapsed && <span className="flex-1">{label}</span>}
+        {href === '/unibox' && unreadCount > 0 && (
+          <span className={cn(
+            'flex items-center justify-center text-[10px] font-semibold rounded-full bg-primary text-primary-foreground',
+            collapsed ? 'absolute top-1 right-1 w-2 h-2' : 'min-w-4.5 h-4.5 px-1'
+          )}>
+            {!collapsed && (unreadCount > 99 ? '99+' : unreadCount)}
+          </span>
+        )}
+      </div>
+    </Link>
+  )
+
   return (
     <aside
       className={cn(
-        'relative flex flex-col h-screen border-r bg-card transition-all duration-300 shrink-0',
+        'sidebar-rail relative flex flex-col h-screen transition-all duration-300 shrink-0',
         collapsed ? 'w-16' : 'w-60'
       )}
     >
       {/* Logo */}
-      <div className={cn('flex items-center h-16 border-b px-4', collapsed ? 'justify-center' : 'gap-3')}>
+      <div className={cn('flex items-center h-16 border-b border-white/10 px-4', collapsed ? 'justify-center' : 'gap-3')}>
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shadow-sm shrink-0">
           <Zap className="w-4 h-4 text-primary-foreground" />
         </div>
         {!collapsed && (
-          <span className="font-bold text-lg tracking-tight">MailFlow</span>
+          <span className="text-lg tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>MailFlow</span>
         )}
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href}>
-            <div
-              className={cn(
-                'sidebar-item',
-                isActive(href) && 'active',
-                collapsed && 'justify-center px-0'
-              )}
-              title={collapsed ? label : undefined}
-            >
-              <Icon className="w-4.5 h-4.5 shrink-0" size={18} />
-              {!collapsed && <span className="flex-1">{label}</span>}
-              {href === '/unibox' && unreadCount > 0 && (
-                <span className={cn(
-                  'flex items-center justify-center text-[10px] font-semibold rounded-full bg-primary text-primary-foreground',
-                  collapsed ? 'absolute top-1 right-1 w-2 h-2' : 'min-w-4.5 h-4.5 px-1'
-                )}>
-                  {!collapsed && (unreadCount > 99 ? '99+' : unreadCount)}
-                </span>
-              )}
-            </div>
-          </Link>
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+        {topItems.map(renderItem)}
+        {navGroups.map(group => (
+          <div key={group.label}>
+            {!collapsed && <div className="sidebar-group-label">{group.label}</div>}
+            {group.items.map(renderItem)}
+          </div>
         ))}
       </nav>
 
       {/* Bottom nav */}
-      <div className="py-4 px-2 border-t space-y-1">
+      <div className="py-4 px-2 border-t border-white/10 space-y-1">
         {notifPermission && notifPermission !== 'granted' && (
           <button
             onClick={requestNotifPermission}
@@ -141,7 +175,7 @@ export function Sidebar() {
       {/* Collapse toggle */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 flex items-center justify-center w-6 h-6 rounded-full border bg-card shadow-sm hover:bg-accent transition-colors z-10"
+        className="absolute -right-3 top-20 flex items-center justify-center w-6 h-6 rounded-full border bg-card text-foreground shadow-sm hover:bg-accent transition-colors z-10"
       >
         {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
       </button>

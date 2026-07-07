@@ -39,10 +39,10 @@ function MetricCell({ value, total, tone }: { value: number; total: number; tone
   return (
     <td className="px-4 py-3">
       <div className="flex flex-col">
-        <span className={cn('font-semibold tabular-nums', total > 0 ? tone : 'text-muted-foreground')}>
+        <span className={cn('font-mono font-semibold tabular-nums', total > 0 ? tone : 'text-muted-foreground')}>
           {rate}%
         </span>
-        <span className="text-xs text-muted-foreground tabular-nums">{value.toLocaleString()}</span>
+        <span className="text-xs text-muted-foreground font-mono tabular-nums">{value.toLocaleString()}</span>
       </div>
     </td>
   )

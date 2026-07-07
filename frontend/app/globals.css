@@ -3,11 +3,12 @@
 @theme {
   --color-border: hsl(214.3 31.8% 88%);
   --color-input: hsl(214.3 31.8% 88%);
-  --color-ring: hsl(221.2 83.2% 53.3%);
+  --color-ring: hsl(173 78% 24%);
   --color-background: hsl(220 14% 96%);
   --color-foreground: hsl(222.2 84% 4.9%);
 
-  --color-primary: hsl(221.2 83.2% 53.3%);
+  /* Signal teal — deliverability green-blue, not the default SaaS blue */
+  --color-primary: hsl(173 78% 24%);
   --color-primary-foreground: hsl(210 40% 98%);
 
   --color-secondary: hsl(210 40% 94%);
@@ -38,11 +39,11 @@
 .dark {
   --color-border: hsl(217.2 32.6% 17.5%);
   --color-input: hsl(217.2 32.6% 17.5%);
-  --color-ring: hsl(224.3 76.3% 48%);
+  --color-ring: hsl(171 55% 48%);
   --color-background: hsl(222.2 84% 4.9%);
   --color-foreground: hsl(210 40% 98%);
 
-  --color-primary: hsl(217.2 91.2% 59.8%);
+  --color-primary: hsl(171 55% 48%);
   --color-primary-foreground: hsl(222.2 47.4% 11.2%);
 
   --color-secondary: hsl(217.2 32.6% 17.5%);
@@ -68,10 +69,10 @@
 :root {
   --border: 214.3 31.8% 88%;
   --input: 214.3 31.8% 88%;
-  --ring: 221.2 83.2% 53.3%;
+  --ring: 173 78% 24%;
   --background: 220 14% 96%;
   --foreground: 222.2 84% 4.9%;
-  --primary: 221.2 83.2% 53.3%;
+  --primary: 173 78% 24%;
   --primary-foreground: 210 40% 98%;
   --secondary: 210 40% 94%;
   --secondary-foreground: 222.2 47.4% 11.2%;
@@ -91,15 +92,26 @@
   --toast-border: #dde1e9;
   --skeleton-from: #e8edf5;
   --skeleton-to: #d8dfe9;
+
+  /* Display face for headings — correspondence-toned serif, distinct from the
+     Inter body face. System stack, no extra font network request. */
+  --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+
+  /* Fixed "dispatch console" rail — same in both app themes on purpose, a
+     deliberate single visual world for just this one surface. */
+  --sidebar-bg: #12181b;
+  --sidebar-fg: #eef2f0;
+  --sidebar-muted: rgba(238, 242, 240, 0.62);
+  --sidebar-active-bg: rgba(15, 118, 105, 0.28);
 }
 
 .dark {
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
+  --ring: 171 55% 48%;
   --background: 222.2 84% 4.9%;
   --foreground: 210 40% 98%;
-  --primary: 217.2 91.2% 59.8%;
+  --primary: 171 55% 48%;
   --primary-foreground: 222.2 47.4% 11.2%;
   --secondary: 217.2 32.6% 17.5%;
   --secondary-foreground: 210 40% 98%;
@@ -133,6 +145,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Headings carry the correspondence-toned serif; body text stays Inter. */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-wrap: balance;
+}
+
 /* Tailwind v4 dropped the default pointer cursor on buttons — restore it for
    all interactive elements so anything clickable shows a pointer. */
 button:not(:disabled),
@@ -156,7 +175,19 @@ button:disabled,
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
 
-/* Sidebar items */
+/* Sidebar rail — fixed dark "dispatch console" look in both app themes. */
+.sidebar-rail {
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+}
+.sidebar-group-label {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--sidebar-muted);
+  padding: 0.75rem 0.625rem 0.25rem;
+}
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -167,17 +198,16 @@ button:disabled,
   font-weight: 500;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
-  color: hsl(var(--foreground));
+  color: var(--sidebar-muted);
   text-decoration: none;
 }
 .sidebar-item:hover {
-  background-color: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background-color: rgba(238, 242, 240, 0.08);
+  color: var(--sidebar-fg);
 }
 .sidebar-item.active {
-  background-color: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  background-color: var(--sidebar-active-bg);
+  color: var(--sidebar-fg);
 }
 
 /* Card hover */

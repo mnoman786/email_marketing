@@ -24,7 +24,7 @@ export function StatCard({ title, value, subtitle, icon: Icon, gradient, trend, 
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-white/80">{title}</p>
-          <p className="text-3xl font-bold mt-1">{value}</p>
+          <p className="text-3xl font-bold mt-1 font-mono tabular-nums">{value}</p>
           {subtitle && <p className="text-xs text-white/70 mt-0.5">{subtitle}</p>}
         </div>
         <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-white/20">
