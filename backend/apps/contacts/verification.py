@@ -253,7 +253,15 @@ def _domain_mx_hosts(domain):
 
     try:
         answers = _RESOLVER.resolve(domain, 'MX')
-        hosts = sorted(str(r.exchange).rstrip('.').lower() for r in answers)
+        # RFC 7505 "null MX" (exchange = ".") means the domain explicitly accepts
+        # no mail. rstrip('.') would otherwise collapse it to '', a truthy-looking
+        # host that lets probing fall through instead of short-circuiting to no_mx.
+        hosts = sorted(
+            {
+                h for r in answers
+                if (h := str(r.exchange).rstrip('.').lower())
+            }
+        )
     except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers):
         hosts = []
     except Exception as e:  # timeout, network, etc. — inconclusive
