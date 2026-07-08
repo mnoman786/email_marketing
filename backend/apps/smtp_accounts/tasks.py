@@ -337,6 +337,8 @@ def poll_account_replies(account_id):
                     log.replied_at = now
                     log.save(update_fields=['status', 'replied_at'])
                     matched_total += 1
+                    from apps.workflows.services import evaluate_send_log_event
+                    evaluate_send_log_event(log, 'replied')
 
                 html, text, attachments = _extract_body(parsed)
                 from apps.inbox.services import log_inbound_message

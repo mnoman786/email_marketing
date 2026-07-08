@@ -156,6 +156,8 @@ def process_bounce(parsed, account):
         log.status = 'bounced'
         log.error_message = (f'{action} {status}'.strip() or 'Bounced')[:500]
         log.save(update_fields=['status', 'error_message'])
+        from apps.workflows.services import evaluate_send_log_event
+        evaluate_send_log_event(log, 'bounced')
 
     if is_hard and log.contact_id and log.contact:
         suppress_email(log.contact.user, log.contact.email, reason='bounced', note=(status or action))

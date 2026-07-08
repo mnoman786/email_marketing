@@ -13,6 +13,7 @@ from apps.smtp_accounts.views import router as smtp_router
 from apps.analytics.views import router as analytics_router
 from apps.sequences.views import router as campaigns_router
 from apps.inbox.views import router as inbox_router
+from apps.workflows.views import router as workflows_router
 
 api = NinjaAPI(title='Email Marketing API', version='1.0.0')
 
@@ -25,6 +26,7 @@ api.add_router('/smtp/', smtp_router)
 api.add_router('/campaigns/', campaigns_router)
 api.add_router('/analytics/', analytics_router)
 api.add_router('/inbox/', inbox_router)
+api.add_router('/workflows/', workflows_router)
 
 urlpatterns = [
     path('admin/', admin.site.urls),

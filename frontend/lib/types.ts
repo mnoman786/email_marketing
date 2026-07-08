@@ -348,3 +348,57 @@ export interface PaginatedResponse<T> {
   items: T[]
   next?: string | null
 }
+
+export type WorkflowTriggerType =
+  | 'opened' | 'clicked' | 'replied' | 'bounced' | 'added_to_list' | 'no_reply_after'
+
+export type WorkflowActionType =
+  | 'add_to_list' | 'remove_from_list' | 'start_sequence' | 'stop_sequence'
+  | 'update_contact_status' | 'webhook'
+
+export type WorkflowNodeType = 'trigger' | 'condition' | 'action' | 'end'
+
+export interface WorkflowNode {
+  id: number
+  node_type: WorkflowNodeType
+  config: Record<string, any>
+  position_x: number
+  position_y: number
+}
+
+export interface WorkflowEdge {
+  id: number
+  source_node: number
+  target_node: number
+  label: string
+}
+
+export interface WorkflowListItem {
+  id: number
+  name: string
+  is_active: boolean
+  node_count: number
+  run_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Workflow {
+  id: number
+  name: string
+  is_active: boolean
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+  run_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowRun {
+  id: number
+  contact_id: number
+  contact_email: string
+  dedup_key: string
+  trigger_context: Record<string, any>
+  ran_at: string
+}

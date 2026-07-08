@@ -248,6 +248,8 @@ def track_open(request, log_id: int):
             log.status = 'opened'
             log.opened_at = timezone.now()
             log.save(update_fields=['status', 'opened_at'])
+            from apps.workflows.services import evaluate_send_log_event
+            evaluate_send_log_event(log, 'opened')
     except SendLog.DoesNotExist:
         pass
     return HttpResponse(_PIXEL_GIF, content_type='image/gif')
@@ -270,6 +272,8 @@ def track_click(request, log_id: int, url: str = ''):
             log.status = 'clicked'
             log.clicked_at = timezone.now()
             log.save(update_fields=['status', 'clicked_at'])
+            from apps.workflows.services import evaluate_send_log_event
+            evaluate_send_log_event(log, 'clicked')
     except SendLog.DoesNotExist:
         pass
 

@@ -220,6 +220,21 @@ export const analyticsApi = {
   retryFailed: (data: any) => api.post('/api/analytics/logs/retry-failed/', data),
 }
 
+// Workflows (Instantly-style trigger -> condition -> action automation graphs)
+export const workflowsApi = {
+  getAll: () => api.get('/api/workflows/'),
+  get: (id: number) => api.get(`/api/workflows/${id}/`),
+  create: (data: { name: string }) => api.post('/api/workflows/', data),
+  update: (id: number, data: any) => api.patch(`/api/workflows/${id}/`, data),
+  delete: (id: number) => api.delete(`/api/workflows/${id}/`),
+  toggle: (id: number) => api.post(`/api/workflows/${id}/toggle/`),
+  saveGraph: (id: number, data: {
+    nodes: { client_id: string; node_type: string; config: Record<string, any>; position_x: number; position_y: number }[]
+    edges: { source_client_id: string; target_client_id: string; label?: string }[]
+  }) => api.put(`/api/workflows/${id}/graph/`, data),
+  runs: (id: number, params?: any) => api.get(`/api/workflows/${id}/runs/`, { params }),
+}
+
 // Custom tracking domains
 export const trackingDomainsApi = {
   getAll: () => api.get('/api/analytics/tracking-domains/'),

@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'apps.analytics',
     'apps.sequences',
     'apps.inbox',
+    'apps.workflows',
 ]
 
 MIDDLEWARE = [
@@ -179,6 +180,10 @@ CELERY_BEAT_SCHEDULE = {
     'refresh-disposable-domains': {
         'task': 'apps.contacts.tasks.refresh_disposable_domains_task',
         'schedule': 604800.0,  # weekly — keep the temp-mail blocklist current
+    },
+    'evaluate-no-reply-workflows': {
+        'task': 'apps.workflows.tasks.evaluate_no_reply_workflows',
+        'schedule': 1800.0,  # every 30 min — matches auto-optimize's cadence
     },
 }
 

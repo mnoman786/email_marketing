@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { inboxApi } from '@/lib/api'
 import {
   LayoutDashboard, Users, Server, Megaphone, BarChart3,
-  ChevronLeft, ChevronRight, Zap, ListFilter, Inbox, Bell, BellOff, ShieldBan, Search, ShieldCheck
+  ChevronLeft, ChevronRight, Zap, ListFilter, Inbox, Bell, BellOff, ShieldBan, Search, ShieldCheck, Workflow
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -38,6 +38,7 @@ const navGroups = [
     label: 'Outbound',
     items: [
       { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
+      { href: '/workflows', label: 'Workflows', icon: Workflow },
       { href: '/analytics', label: 'Analytics', icon: BarChart3 },
     ],
   },
