@@ -6,6 +6,7 @@ import { SMTPAccount } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
@@ -71,111 +72,115 @@ export default function SMTPPage() {
           action={{ label: 'Add SMTP Account', onClick: () => setShowForm(true) }}
         />
       ) : (
-        <div className="rounded-xl border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Account</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Host / Port</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">From Email</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Security</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Last Test</th>
-                <th className="px-4 py-3 w-24" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {accounts.map((account: SMTPAccount) => (
-                <tr key={account.id} className="table-row-hover">
-                  <td className="px-4 py-3">
-                    <p className="font-medium">{account.name}</p>
-                    <p className="text-xs text-muted-foreground">{account.username}</p>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {account.host}:{account.port}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p>{account.from_email}</p>
-                      <p className="text-xs text-muted-foreground">{account.from_name}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={account.security === 'ssl' ? 'success' : account.security === 'tls' ? 'info' : 'secondary'}>
-                      {account.security.toUpperCase()}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={account.is_active ? 'success' : 'secondary'}>
-                      {account.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    {account.last_tested_at ? (
-                      <div className="flex items-center gap-1.5">
-                        {account.last_test_success ? (
-                          <CheckCircle size={14} className="text-green-600" />
-                        ) : (
-                          <XCircle size={14} className="text-red-500" />
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {formatDateTime(account.last_tested_at)}
-                        </span>
+        <TableContainer>
+          <TableScroll>
+            <Table>
+              <TableHead>
+                <TableHeaderRow>
+                  <TH>Account</TH>
+                  <TH>Host / Port</TH>
+                  <TH>From Email</TH>
+                  <TH>Security</TH>
+                  <TH>Status</TH>
+                  <TH>Last Test</TH>
+                  <TH className="w-24" />
+                </TableHeaderRow>
+              </TableHead>
+              <TableBody>
+                {accounts.map((account: SMTPAccount) => (
+                  <TR key={account.id}>
+                    <TD>
+                      <p className="font-medium">{account.name}</p>
+                      <p className="text-xs text-muted-foreground">{account.username}</p>
+                    </TD>
+                    <TD className="font-mono text-xs whitespace-nowrap">
+                      {account.host}:{account.port}
+                    </TD>
+                    <TD>
+                      <div>
+                        <p>{account.from_email}</p>
+                        <p className="text-xs text-muted-foreground">{account.from_name}</p>
                       </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <AlertCircle size={13} className="text-amber-500" /> Not tested
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setTestAccount(account)}
-                        title="Test connection"
-                      >
-                        <FlaskConical size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setWarmupAccount(account)}
-                        title="Warmup"
-                      >
-                        <Flame size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setDeliverabilityAccount(account)}
-                        title="Check SPF/DKIM/DMARC"
-                      >
-                        <ShieldCheck size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => { setEditAccount(account); setShowForm(true) }}
-                      >
-                        <Edit size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteId(account.id)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    </TD>
+                    <TD>
+                      <Badge variant={account.security === 'ssl' ? 'success' : account.security === 'tls' ? 'info' : 'secondary'}>
+                        {account.security.toUpperCase()}
+                      </Badge>
+                    </TD>
+                    <TD>
+                      <Badge variant={account.is_active ? 'success' : 'secondary'}>
+                        {account.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TD>
+                    <TD>
+                      {account.last_tested_at ? (
+                        <div className="flex items-center gap-1.5">
+                          {account.last_test_success ? (
+                            <CheckCircle size={14} className="text-green-600" />
+                          ) : (
+                            <XCircle size={14} className="text-red-500" />
+                          )}
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {formatDateTime(account.last_tested_at)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+                          <AlertCircle size={13} className="text-amber-500" /> Not tested
+                        </span>
+                      )}
+                    </TD>
+                    <TD>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setTestAccount(account)}
+                          title="Test connection"
+                        >
+                          <FlaskConical size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setWarmupAccount(account)}
+                          title="Warmup"
+                        >
+                          <Flame size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setDeliverabilityAccount(account)}
+                          title="Check SPF/DKIM/DMARC"
+                        >
+                          <ShieldCheck size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Edit account"
+                          onClick={() => { setEditAccount(account); setShowForm(true) }}
+                        >
+                          <Edit size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Delete account"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteId(account.id)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
+              </TableBody>
+            </Table>
+          </TableScroll>
+        </TableContainer>
       )}
 
       <SMTPFormDialog

@@ -9,6 +9,7 @@ import { Contact } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { Plus } from 'lucide-react'
@@ -151,11 +152,9 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
               <div className="mt-2 grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
                 {listsData.map((list: any) => (
                   <label key={list.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selectedLists.includes(list.id)}
                       onChange={() => toggleList(list.id)}
-                      className="rounded"
                     />
                     {list.name}
                   </label>

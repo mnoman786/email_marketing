@@ -6,11 +6,15 @@ import { PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { SearchInput } from '@/components/ui/search-input'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
+import { ErrorState } from '@/components/shared/error-state'
+import { TablePagination } from '@/components/shared/table-pagination'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDateTime } from '@/lib/utils'
-import { ShieldBan, Plus, Trash2, Search } from 'lucide-react'
+import { ShieldBan, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Suppression {
@@ -35,7 +39,7 @@ export default function SuppressionsPage() {
   const [emails, setEmails] = useState('')
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['suppressions', page, search],
     queryFn: () => contactsApi.suppressions({ page, search: search || undefined })
       .then(r => r.data as PaginatedResponse<Suppression>),
@@ -85,18 +89,17 @@ export default function SuppressionsPage() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1) }}
-          placeholder="Search suppressed emails..."
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        wrapperClassName="max-w-sm"
+        value={search}
+        onChange={e => { setSearch(e.target.value); setPage(1) }}
+        placeholder="Search suppressed emails..."
+      />
 
       {isLoading ? (
         <TableSkeleton rows={6} cols={4} />
+      ) : isError ? (
+        <TableContainer><ErrorState description="Could not load the suppression list. Check your connection and try again." onRetry={() => refetch()} /></TableContainer>
       ) : !items.length ? (
         <EmptyState
           icon={ShieldBan}
@@ -104,45 +107,38 @@ export default function SuppressionsPage() {
           description="Unsubscribes, bounces, and complaints are added here automatically. You can also add emails manually above."
         />
       ) : (
-        <div className="rounded-xl border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Reason</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Added</th>
-                <th className="px-4 py-3 w-16" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {items.map(s => (
-                <tr key={s.id} className="table-row-hover">
-                  <td className="px-4 py-3 font-medium">{s.email}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={REASON_VARIANT[s.reason] || 'secondary'}>{s.reason}</Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">{formatDateTime(s.created_at)}</td>
-                  <td className="px-4 py-3">
-                    <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive"
-                      onClick={() => setDeleteId(s.id)} title="Remove">
-                      <Trash2 size={14} />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {data && data.count > items.length && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">{data.count} total</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={items.length < 50} onClick={() => setPage(p => p + 1)}>Next</Button>
-          </div>
-        </div>
+        <TableContainer>
+          <TableScroll>
+            <Table>
+              <TableHead>
+                <TableHeaderRow>
+                  <TH>Email</TH>
+                  <TH>Reason</TH>
+                  <TH>Added</TH>
+                  <TH className="w-16" />
+                </TableHeaderRow>
+              </TableHead>
+              <TableBody>
+                {items.map(s => (
+                  <TR key={s.id}>
+                    <TD className="font-medium">{s.email}</TD>
+                    <TD>
+                      <Badge variant={REASON_VARIANT[s.reason] || 'secondary'}>{s.reason}</Badge>
+                    </TD>
+                    <TD className="text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(s.created_at)}</TD>
+                    <TD>
+                      <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteId(s.id)} title="Remove">
+                        <Trash2 size={14} />
+                      </Button>
+                    </TD>
+                  </TR>
+                ))}
+              </TableBody>
+            </Table>
+          </TableScroll>
+          <TablePagination page={page} pageSize={50} total={data?.count || 0} onPageChange={setPage} />
+        </TableContainer>
       )}
 
       <ConfirmDialog

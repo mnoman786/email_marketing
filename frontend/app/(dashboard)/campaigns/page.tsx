@@ -4,12 +4,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { campaignsApi } from '@/lib/api'
 import { CampaignListItem, PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
+import { NativeSelect } from '@/components/ui/native-select'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
+import { ErrorState } from '@/components/shared/error-state'
+import { TablePagination } from '@/components/shared/table-pagination'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { cn } from '@/lib/utils'
-import { Plus, Search, Trash2, Megaphone, Play, Pause, Mail, Layers } from 'lucide-react'
+import { Plus, Trash2, Megaphone, Play, Pause, Mail, Layers } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -37,14 +41,14 @@ const pct = (num: number, denom: number) => (denom > 0 ? Math.round((num / denom
 function MetricCell({ value, total, tone }: { value: number; total: number; tone: string }) {
   const rate = pct(value, total)
   return (
-    <td className="px-4 py-3">
+    <TD>
       <div className="flex flex-col">
         <span className={cn('font-mono font-semibold tabular-nums', total > 0 ? tone : 'text-muted-foreground')}>
           {rate}%
         </span>
         <span className="text-xs text-muted-foreground font-mono tabular-nums">{value.toLocaleString()}</span>
       </div>
-    </td>
+    </TD>
   )
 }
 
@@ -56,7 +60,7 @@ export default function CampaignsPage() {
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['campaigns', { search, status, page }],
     queryFn: () => campaignsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<CampaignListItem>),
     refetchInterval: 10000,
@@ -130,31 +134,29 @@ export default function CampaignsPage() {
       )}
 
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-          <Input
-            placeholder="Search campaigns..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            className="pl-9"
-          />
-        </div>
-        <select
+        <SearchInput
+          wrapperClassName="flex-1 min-w-48"
+          placeholder="Search campaigns..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
+        />
+        <NativeSelect
           value={status}
           onChange={e => { setStatus(e.target.value); setPage(1) }}
-          className="h-9 px-3 rounded-lg border border-input bg-background text-sm"
         >
           <option value="">All Status</option>
           <option value="draft">Draft</option>
           <option value="active">Active</option>
           <option value="paused">Paused</option>
           <option value="completed">Completed</option>
-        </select>
+        </NativeSelect>
       </div>
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <TableContainer>
         {isLoading ? (
           <div className="p-6"><TableSkeleton rows={5} cols={7} /></div>
+        ) : isError ? (
+          <ErrorState description="Could not load your campaigns. Check your connection and try again." onRetry={() => refetch()} />
         ) : campaigns.length === 0 ? (
           <EmptyState
             icon={Megaphone}
@@ -164,41 +166,41 @@ export default function CampaignsPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Campaign</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Enrolled</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sent</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Opened</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Clicked</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Replied</th>
-                    <th className="px-4 py-3 w-24" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH>Campaign</TH>
+                    <TH>Status</TH>
+                    <TH>Enrolled</TH>
+                    <TH>Sent</TH>
+                    <TH>Opened</TH>
+                    <TH>Clicked</TH>
+                    <TH>Replied</TH>
+                    <TH className="w-24" />
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {campaigns.map((campaign) => (
-                    <tr
+                    <TR
                       key={campaign.id}
-                      className="table-row-hover cursor-pointer"
+                      className="cursor-pointer"
                       onClick={() => router.push(`/campaigns/${campaign.id}`)}
                     >
-                      <td className="px-4 py-3">
+                      <TD>
                         <p className="font-medium hover:text-primary transition-colors">{campaign.name}</p>
                         <p className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
                           <span className="inline-flex items-center gap-1"><Layers size={11} /> {campaign.step_count} step{campaign.step_count === 1 ? '' : 's'}</span>
                           <span className="inline-flex items-center gap-1"><Mail size={11} /> {campaign.contact_list_count} list{campaign.contact_list_count === 1 ? '' : 's'}</span>
                         </p>
-                      </td>
-                      <td className="px-4 py-3"><StatusPill status={campaign.status} /></td>
-                      <td className="px-4 py-3 font-medium tabular-nums">{campaign.enrollment_count.toLocaleString()}</td>
-                      <td className="px-4 py-3 font-medium tabular-nums">{campaign.sent.toLocaleString()}</td>
+                      </TD>
+                      <TD><StatusPill status={campaign.status} /></TD>
+                      <TD className="font-medium tabular-nums">{campaign.enrollment_count.toLocaleString()}</TD>
+                      <TD className="font-medium tabular-nums">{campaign.sent.toLocaleString()}</TD>
                       <MetricCell value={campaign.opened} total={campaign.sent} tone="text-purple-600" />
                       <MetricCell value={campaign.clicked} total={campaign.sent} tone="text-blue-600" />
                       <MetricCell value={campaign.replied} total={campaign.sent} tone="text-green-600" />
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <TD onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
                           {(campaign.status === 'draft' || campaign.status === 'paused') && (
                             <Button
@@ -233,22 +235,16 @@ export default function CampaignsPage() {
                             </Button>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      </TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <p className="text-sm text-muted-foreground">{total} total campaigns</p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={!data?.next}>Next</Button>
-              </div>
-            </div>
+                </TableBody>
+              </Table>
+            </TableScroll>
+            <TablePagination page={page} pageSize={20} total={total} onPageChange={setPage} />
           </>
         )}
-      </div>
+      </TableContainer>
 
       <ConfirmDialog
         open={!!deleteId}

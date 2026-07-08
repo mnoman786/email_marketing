@@ -6,6 +6,7 @@ import { campaignsApi } from '@/lib/api'
 import { Campaign } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { PageSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -430,27 +431,27 @@ export default function CampaignDetailPage() {
                 </p>
               )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Step</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Subject</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Timing</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Sent</th>
-                    {trackOpens && <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Opened</th>}
-                    {trackClicks && <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Clicked</th>}
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Replied</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Failed</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH>Step</TH>
+                    <TH>Subject</TH>
+                    <TH>Timing</TH>
+                    <TH>Sent</TH>
+                    {trackOpens && <TH>Opened</TH>}
+                    {trackClicks && <TH>Clicked</TH>}
+                    <TH>Replied</TH>
+                    <TH>Failed</TH>
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {steps.map((step: any) => (
                     <Fragment key={step.step_id}>
-                      <tr>
-                        <td className="px-4 py-2.5 font-medium whitespace-nowrap">Step {step.order}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground truncate max-w-xs">{step.subject}</td>
-                        <td className="px-4 py-2.5 whitespace-nowrap text-xs">
+                      <TR>
+                        <TD className="py-2.5 font-medium whitespace-nowrap">Step {step.order}</TD>
+                        <TD className="py-2.5 text-muted-foreground truncate max-w-xs">{step.subject}</TD>
+                        <TD className="py-2.5 whitespace-nowrap text-xs">
                           <span className="text-muted-foreground">
                             {step.order === 1
                               ? (delayLabel(step.delay_days, step.delay_hours) === 'Immediately' ? 'On enrollment' : `${delayLabel(step.delay_days, step.delay_hours)} after enrollment`)
@@ -462,31 +463,31 @@ export default function CampaignDetailPage() {
                           {step.order > 1 && step.sent === 0 && step.waiting === 0 && (
                             <span className="ml-1 italic text-muted-foreground">· no leads reached yet</span>
                           )}
-                        </td>
-                        <td className="px-4 py-2.5 tabular-nums font-medium">{step.sent}</td>
-                        {trackOpens && <td className="px-4 py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></td>}
-                        {trackClicks && <td className="px-4 py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></td>}
-                        <td className="px-4 py-2.5 tabular-nums text-green-600">{step.replied} <span className="text-xs text-muted-foreground">({pct(step.replied, step.sent)}%)</span></td>
-                        <td className="px-4 py-2.5 tabular-nums text-red-500">{step.failed}</td>
-                      </tr>
+                        </TD>
+                        <TD className="py-2.5 tabular-nums font-medium">{step.sent}</TD>
+                        {trackOpens && <TD className="py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></TD>}
+                        {trackClicks && <TD className="py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></TD>}
+                        <TD className="py-2.5 tabular-nums text-green-600">{step.replied} <span className="text-xs text-muted-foreground">({pct(step.replied, step.sent)}%)</span></TD>
+                        <TD className="py-2.5 tabular-nums text-red-500">{step.failed}</TD>
+                      </TR>
                       {(step.variants || []).length > 1 && step.variants.map((variant: any) => {
                         const activeCount = step.variants.filter((v: any) => v.is_active).length
                         const isWinner = step.auto_optimize && activeCount === 1 && variant.is_active
                         return (
-                          <tr key={variant.variant_id} className={cn('bg-muted/20', !variant.is_active && 'opacity-50')}>
-                            <td className="px-4 py-2 pl-8 text-xs text-muted-foreground whitespace-nowrap">
+                          <TR key={variant.variant_id} className={cn('bg-muted/20', !variant.is_active && 'opacity-50')}>
+                            <TD className="py-2 pl-8 text-xs text-muted-foreground whitespace-nowrap">
                               ↳ Variant {variant.label}
                               {isWinner && <span className="ml-1 text-amber-600 font-medium">🏆 winner</span>}
                               {!variant.is_active && <span className="ml-1 italic">(disabled)</span>}
-                            </td>
-                            <td className="px-4 py-2 text-xs text-muted-foreground truncate max-w-xs">{variant.subject}</td>
-                            <td className="px-4 py-2" />
-                            <td className="px-4 py-2 text-xs tabular-nums">{variant.sent}</td>
-                            {trackOpens && <td className="px-4 py-2 text-xs tabular-nums text-purple-600">{variant.opened} ({pct(variant.opened, variant.sent)}%)</td>}
-                            {trackClicks && <td className="px-4 py-2 text-xs tabular-nums text-blue-600">{variant.clicked} ({pct(variant.clicked, variant.sent)}%)</td>}
-                            <td className="px-4 py-2 text-xs tabular-nums text-green-600">{variant.replied} ({pct(variant.replied, variant.sent)}%)</td>
-                            <td className="px-4 py-2 text-xs tabular-nums text-red-500">{variant.failed}</td>
-                          </tr>
+                            </TD>
+                            <TD className="py-2 text-xs text-muted-foreground truncate max-w-xs">{variant.subject}</TD>
+                            <TD className="py-2" />
+                            <TD className="py-2 text-xs tabular-nums">{variant.sent}</TD>
+                            {trackOpens && <TD className="py-2 text-xs tabular-nums text-purple-600">{variant.opened} ({pct(variant.opened, variant.sent)}%)</TD>}
+                            {trackClicks && <TD className="py-2 text-xs tabular-nums text-blue-600">{variant.clicked} ({pct(variant.clicked, variant.sent)}%)</TD>}
+                            <TD className="py-2 text-xs tabular-nums text-green-600">{variant.replied} ({pct(variant.replied, variant.sent)}%)</TD>
+                            <TD className="py-2 text-xs tabular-nums text-red-500">{variant.failed}</TD>
+                          </TR>
                         )
                       })}
                     </Fragment>
@@ -494,53 +495,53 @@ export default function CampaignDetailPage() {
                   {steps.length === 0 && (
                     <tr><td colSpan={6 + (trackOpens ? 1 : 0) + (trackClicks ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground text-sm">No steps yet</td></tr>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
+            </TableScroll>
           </div>
         </div>
       )}
 
       {tab === 'leads' && (
-        <div className="rounded-xl border bg-card overflow-hidden">
+        <TableContainer>
           {enrollments?.items?.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Lead</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Current Step</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Next Send</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Enrolled At</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH>Lead</TH>
+                    <TH>Current Step</TH>
+                    <TH>Status</TH>
+                    <TH>Next Send</TH>
+                    <TH>Enrolled At</TH>
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {enrollments.items.map((e: any) => (
-                    <tr key={e.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-2.5">
+                    <TR key={e.id}>
+                      <TD className="py-2.5">
                         <p className="font-medium text-xs">{e.contact_name || <span className="text-muted-foreground italic">Deleted lead</span>}</p>
                         <p className="text-muted-foreground text-xs">{e.contact_email}</p>
-                      </td>
-                      <td className="px-4 py-2.5 text-xs">{e.current_step_order ?? '—'}</td>
-                      <td className="px-4 py-2.5"><StatusBadge status={e.status} /></td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      </TD>
+                      <TD className="py-2.5 text-xs">{e.current_step_order ?? '—'}</TD>
+                      <TD className="py-2.5"><StatusBadge status={e.status} /></TD>
+                      <TD className="py-2.5 text-xs text-muted-foreground">
                         {e.status === 'active' && e.next_send_at
                           ? <span title={formatDateTime(e.next_send_at)}>{fromNow(e.next_send_at)}</span>
                           : '—'}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{formatDateTime(e.enrolled_at)}</td>
-                    </tr>
+                      </TD>
+                      <TD className="py-2.5 text-xs text-muted-foreground">{formatDateTime(e.enrolled_at)}</TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
+            </TableScroll>
           ) : (
             <div className="p-10 text-center text-muted-foreground text-sm">
               No leads enrolled yet.
             </div>
           )}
-        </div>
+        </TableContainer>
       )}
 
       <ConfirmDialog

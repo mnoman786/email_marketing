@@ -15,12 +15,34 @@ interface Props {
   account: SMTPAccount | null
 }
 
-function CheckRow({ label, check }: { label: string; check: DeliverabilityCheck & { policy?: string | null; selector?: string | null } }) {
+function CheckRow({
+  label,
+  check,
+  notFoundIsWarning = false,
+}: {
+  label: string
+  check: DeliverabilityCheck & { policy?: string | null; selector?: string | null }
+  notFoundIsWarning?: boolean
+}) {
+  const hasIssues = (check.issues || []).length > 0
+  // Status logic: a record that's found but flagged is a warning, not a pass —
+  // don't show green next to an amber issue. DKIM "not found" only means it
+  // wasn't under a known selector, so it warns rather than fails.
+  const status: 'ok' | 'warn' | 'bad' = check.found
+    ? hasIssues
+      ? 'warn'
+      : 'ok'
+    : notFoundIsWarning
+      ? 'warn'
+      : 'bad'
+
   return (
     <div className="rounded-lg border p-3 space-y-1.5">
       <div className="flex items-center gap-2">
-        {check.found ? (
+        {status === 'ok' ? (
           <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+        ) : status === 'warn' ? (
+          <AlertTriangle size={16} className="text-amber-500 shrink-0" />
         ) : (
           <XCircle size={16} className="text-red-500 shrink-0" />
         )}
@@ -91,11 +113,21 @@ export function DeliverabilityDialog({ open, onClose, account }: Props) {
             </Button>
           </div>
 
+          {mutation.isError && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <XCircle size={16} className="shrink-0 mt-0.5" />
+              <p>
+                {(mutation.error as any)?.response?.data?.detail ||
+                  'Could not run the check. Verify the account has a from-email address and try again.'}
+              </p>
+            </div>
+          )}
+
           {result && (
             <div className="space-y-2">
               <CheckRow label="SPF" check={result.spf} />
               <CheckRow label="DMARC" check={result.dmarc} />
-              <CheckRow label="DKIM" check={result.dkim} />
+              <CheckRow label="DKIM" check={result.dkim} notFoundIsWarning />
             </div>
           )}
         </div>

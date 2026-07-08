@@ -4,13 +4,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { analyticsApi, campaignsApi } from '@/lib/api'
 import { SendLog, PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { SearchInput } from '@/components/ui/search-input'
+import { NativeSelect } from '@/components/ui/native-select'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { TablePagination } from '@/components/shared/table-pagination'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatDateTime, formatNumber } from '@/lib/utils'
-import { Search, BarChart3, RefreshCw, AlertCircle } from 'lucide-react'
+import { ErrorState } from '@/components/shared/error-state'
+import { Card, CardContent } from '@/components/ui/card'
+import { formatDateTime } from '@/lib/utils'
+import { BarChart3, RefreshCw, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'next/navigation'
 
@@ -25,7 +30,7 @@ function AnalyticsContent() {
   const [page, setPage] = useState(1)
   const [selectedFailed, setSelectedFailed] = useState<number[]>([])
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['logs', { search, status, campaign, page }],
     queryFn: () => analyticsApi.logs({
       search,
@@ -56,7 +61,10 @@ function AnalyticsContent() {
 
   const logs = data?.items || []
   const total = data?.count || 0
-  const totalPages = Math.ceil(total / 20)
+
+  const failedOnPage = logs.filter(l => l.status === 'failed').map(l => l.id)
+  const allFailedSelected = failedOnPage.length > 0 && selectedFailed.length === failedOnPage.length
+  const someFailedSelected = selectedFailed.length > 0 && !allFailedSelected
 
   const failedCount = logs.filter(l => l.status === 'failed').length
   const sentCount = logs.filter(l => l.status === 'sent').length
@@ -104,29 +112,25 @@ function AnalyticsContent() {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-          <Input
-            placeholder="Search by email or campaign..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            className="pl-9"
-          />
-        </div>
-        <select
+        <SearchInput
+          wrapperClassName="flex-1 min-w-48"
+          placeholder="Search by email or campaign..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
+        />
+        <NativeSelect
           value={campaign}
           onChange={e => { setCampaign(e.target.value); setPage(1) }}
-          className="h-9 px-3 rounded-lg border border-input bg-background text-sm max-w-48"
+          className="max-w-48"
         >
           <option value="">All Campaigns</option>
           {campaigns?.map((c: any) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </select>
-        <select
+        </NativeSelect>
+        <NativeSelect
           value={status}
           onChange={e => { setStatus(e.target.value); setPage(1) }}
-          className="h-9 px-3 rounded-lg border border-input bg-background text-sm"
         >
           <option value="">All Status</option>
           <option value="sent">Sent</option>
@@ -134,13 +138,15 @@ function AnalyticsContent() {
           <option value="pending">Pending</option>
           <option value="bounced">Bounced</option>
           <option value="opened">Opened</option>
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <TableContainer>
         {isLoading ? (
           <div className="p-6"><TableSkeleton rows={8} cols={5} /></div>
+        ) : isError ? (
+          <ErrorState description="Could not load send logs. Check your connection and try again." onRetry={() => refetch()} />
         ) : logs.length === 0 ? (
           <EmptyState
             icon={BarChart3}
@@ -149,76 +155,68 @@ function AnalyticsContent() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="w-10 px-4 py-3 text-left">
-                      <input type="checkbox" className="rounded" onChange={e => {
-                        setSelectedFailed(e.target.checked
-                          ? logs.filter(l => l.status === 'failed').map(l => l.id)
-                          : []
-                        )
-                      }} />
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Contact</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Campaign</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">SMTP</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sent At</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Error</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH className="w-10">
+                      <Checkbox
+                        checked={allFailedSelected}
+                        indeterminate={someFailedSelected}
+                        disabled={failedOnPage.length === 0}
+                        onChange={e => setSelectedFailed(e.target.checked ? failedOnPage : [])}
+                        aria-label="Select all failed logs on this page"
+                      />
+                    </TH>
+                    <TH>Contact</TH>
+                    <TH>Campaign</TH>
+                    <TH>SMTP</TH>
+                    <TH>Status</TH>
+                    <TH>Sent At</TH>
+                    <TH>Error</TH>
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {logs.map(log => (
-                    <tr key={log.id} className="hover:bg-muted/30">
-                      <td className="px-4 py-3">
+                    <TR key={log.id} selected={selectedFailed.includes(log.id)}>
+                      <TD>
                         {log.status === 'failed' && (
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={selectedFailed.includes(log.id)}
                             onChange={() => toggleSelect(log.id)}
-                            className="rounded"
+                            aria-label={`Select failed log for ${log.contact_email}`}
                           />
                         )}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD>
                         <p className="font-medium text-xs">{log.contact_name}</p>
                         <p className="text-muted-foreground text-xs">{log.contact_email}</p>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-40 truncate">{log.campaign_name}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{log.smtp_name || '—'}</td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD className="text-xs text-muted-foreground max-w-40 truncate">{log.campaign_name}</TD>
+                      <TD className="text-xs text-muted-foreground">{log.smtp_name || '—'}</TD>
+                      <TD>
                         <StatusBadge status={log.status} />
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      </TD>
+                      <TD className="text-xs text-muted-foreground whitespace-nowrap">
                         {formatDateTime(log.sent_at || log.created_at)}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD>
                         {log.error_message && (
                           <div className="flex items-center gap-1 text-red-500 text-xs" title={log.error_message}>
                             <AlertCircle size={12} />
                             <span className="max-w-32 truncate">{log.error_message}</span>
                           </div>
                         )}
-                      </td>
-                    </tr>
+                      </TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <p className="text-sm text-muted-foreground">
-                {total} total logs
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>Next</Button>
-              </div>
-            </div>
+                </TableBody>
+              </Table>
+            </TableScroll>
+            <TablePagination page={page} pageSize={20} total={total} onPageChange={setPage} />
           </>
         )}
-      </div>
+      </TableContainer>
     </div>
   )
 }

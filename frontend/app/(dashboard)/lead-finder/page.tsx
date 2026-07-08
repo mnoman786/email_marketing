@@ -6,8 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Download, Mail, Lock, ChevronLeft, ChevronRight, Plus, Loader2, ExternalLink } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Checkbox } from '@/components/ui/checkbox'
+import { NativeSelect } from '@/components/ui/native-select'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
+import { TablePagination } from '@/components/shared/table-pagination'
+import { BulkActionBar } from '@/components/shared/bulk-action-bar'
+import { Search, Download, Mail, Lock, Plus, Loader2, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface LeadPerson {
@@ -122,8 +126,9 @@ export default function LeadFinderPage() {
     }
   }
 
-  const totalPages = results ? Math.ceil(results.total / results.per_page) : 0
   const people = results?.people || []
+  const allSelected = people.length > 0 && selected.size === people.length
+  const someSelected = selected.size > 0 && !allSelected
 
   return (
     <div className="p-6 space-y-6">
@@ -189,37 +194,31 @@ export default function LeadFinderPage() {
             <span className="text-sm text-muted-foreground">
               {isFetching ? 'Searching…' : results ? `${results.total.toLocaleString()} results` : ''}
             </span>
-            <div className="flex-1" />
-            {selected.size > 0 && (
-              <Button size="sm" onClick={() => setShowImportModal(true)} className="gap-1.5">
-                <Download size={14} /> Import {selected.size} selected
-              </Button>
-            )}
           </div>
 
           {/* Table */}
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="px-4 py-3 text-left w-10">
-                      <input
-                        type="checkbox"
-                        checked={people.length > 0 && selected.size === people.length}
+          <TableContainer>
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH className="w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
                         onChange={toggleAll}
-                        className="rounded"
+                        aria-label="Select all people on this page"
                       />
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Title</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Company</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Location</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
+                    </TH>
+                    <TH>Name</TH>
+                    <TH>Title</TH>
+                    <TH>Company</TH>
+                    <TH>Location</TH>
+                    <TH>Email</TH>
+                    <TH className="w-10" />
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {isFetching ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
@@ -237,27 +236,25 @@ export default function LeadFinderPage() {
                     people.map(person => {
                       const email = revealedEmails[person.id] || person.email
                       const hasEmail = !!email
-                      const isLocked = !hasEmail
 
                       return (
-                        <tr key={person.id} className={cn('border-b last:border-0 hover:bg-muted/30', selected.has(person.id) && 'bg-primary/5')}>
-                          <td className="px-4 py-3">
-                            <input
-                              type="checkbox"
+                        <TR key={person.id} selected={selected.has(person.id)}>
+                          <TD>
+                            <Checkbox
                               checked={selected.has(person.id)}
                               onChange={() => toggleSelect(person.id)}
-                              className="rounded"
+                              aria-label={`Select ${person.name}`}
                             />
-                          </td>
-                          <td className="px-4 py-3">
+                          </TD>
+                          <TD>
                             <div className="font-medium">{person.name}</div>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{person.title || '—'}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{person.company || '—'}</td>
-                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                          </TD>
+                          <TD className="text-muted-foreground">{person.title || '—'}</TD>
+                          <TD className="text-muted-foreground">{person.company || '—'}</TD>
+                          <TD className="text-muted-foreground text-xs">
                             {[person.city, person.state, person.country].filter(Boolean).join(', ') || '—'}
-                          </td>
-                          <td className="px-4 py-3">
+                          </TD>
+                          <TD>
                             {hasEmail ? (
                               <span className="flex items-center gap-1 text-xs">
                                 <Mail size={12} className="text-green-600 flex-none" />
@@ -277,40 +274,35 @@ export default function LeadFinderPage() {
                                 Reveal email
                               </button>
                             )}
-                          </td>
-                          <td className="px-4 py-3">
+                          </TD>
+                          <TD>
                             {person.linkedin_url && (
                               <a href={person.linkedin_url} target="_blank" rel="noopener noreferrer"
                                 className="text-muted-foreground hover:text-primary">
                                 <ExternalLink size={13} />
                               </a>
                             )}
-                          </td>
-                        </tr>
+                          </TD>
+                        </TR>
                       )
                     })
                   )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3">
-              <Button variant="outline" size="sm" disabled={page <= 1 || isFetching}
-                onClick={() => setPage(p => p - 1)}>
-                <ChevronLeft size={15} />
-              </Button>
-              <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
-              <Button variant="outline" size="sm" disabled={page >= totalPages || isFetching}
-                onClick={() => setPage(p => p + 1)}>
-                <ChevronRight size={15} />
-              </Button>
-            </div>
-          )}
+                </TableBody>
+              </Table>
+            </TableScroll>
+            {!!results && people.length > 0 && (
+              <TablePagination page={page} pageSize={results.per_page} total={results.total} onPageChange={setPage} />
+            )}
+          </TableContainer>
         </div>
       )}
+
+      {/* Floating bulk import */}
+      <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())} noun="lead">
+        <Button size="sm" onClick={() => setShowImportModal(true)} className="gap-1.5">
+          <Download size={14} /> Import
+        </Button>
+      </BulkActionBar>
 
       {/* Import modal */}
       {showImportModal && (
@@ -322,16 +314,16 @@ export default function LeadFinderPage() {
             <CardContent className="space-y-4">
               <div>
                 <Label className="text-sm">Add to contact list (optional)</Label>
-                <select
+                <NativeSelect
                   value={importListId ?? ''}
                   onChange={e => setImportListId(e.target.value ? Number(e.target.value) : null)}
-                  className="mt-1 w-full border rounded px-3 py-2 text-sm bg-background"
+                  wrapperClassName="mt-1 w-full"
                 >
                   <option value="">No list — contacts only</option>
                   {(lists || []).map((l: any) => (
                     <option key={l.id} value={l.id}>{l.name} ({l.contact_count})</option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <p className="text-xs text-muted-foreground">
                 Leads without a visible email address will be skipped. Reveal emails first to import them.

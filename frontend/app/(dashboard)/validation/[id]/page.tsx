@@ -5,15 +5,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { validationApi, listsApi } from '@/lib/api'
 import { ImportBatch, StagedLead, PaginatedResponse, VerificationBucket } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { SearchInput } from '@/components/ui/search-input'
+import { NativeSelect } from '@/components/ui/native-select'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
+import { ErrorState } from '@/components/shared/error-state'
+import { TablePagination } from '@/components/shared/table-pagination'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { cn } from '@/lib/utils'
 import {
   VerificationDot, SpamRiskBadge, SUB_STATUS_LABEL,
 } from '@/components/contacts/verification-badges'
 import {
-  ArrowLeft, Search, Loader2, ShieldCheck, Send, CheckCircle2, Users,
+  ArrowLeft, Loader2, ShieldCheck, Send, CheckCircle2, Users,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -56,7 +61,7 @@ export default function ValidationBatchPage() {
 
   const verifying = batch?.status === 'verifying'
 
-  const { data: leadsData, isLoading } = useQuery({
+  const { data: leadsData, isLoading, isError, refetch } = useQuery({
     queryKey: ['validation-leads', batchId, tab, search, page],
     queryFn: () => validationApi.leads(batchId, {
       verification: tab === 'all' ? undefined : tab,
@@ -86,7 +91,6 @@ export default function ValidationBatchPage() {
 
   const leads = leadsData?.items || []
   const total = leadsData?.count || 0
-  const totalPages = Math.ceil(total / 25)
   const counts = batch?.counts || {}
   const validCount = counts.valid || 0
 
@@ -95,6 +99,8 @@ export default function ValidationBatchPage() {
     setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   const toggleAll = () =>
     setSelected(selected.length === selectableOnPage.length ? [] : selectableOnPage)
+  const allSelected = selectableOnPage.length > 0 && selected.length === selectableOnPage.length
+  const someSelected = selected.length > 0 && !allSelected
 
   const visibleTabs = TABS.filter(t => t.always || (counts[t.key as keyof typeof counts] || 0) > 0)
 
@@ -119,14 +125,13 @@ export default function ValidationBatchPage() {
         <div className="flex items-center gap-2 text-sm">
           <Users size={15} className="text-muted-foreground" />
           <span>Add to list:</span>
-          <select
+          <NativeSelect
             value={listId}
             onChange={e => setListId(e.target.value ? Number(e.target.value) : '')}
-            className="h-9 px-3 rounded-lg border border-input bg-background text-sm"
           >
             <option value="">None (just add as leads)</option>
             {listsData?.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+          </NativeSelect>
         </div>
 
         <div className="flex-1" />
@@ -173,16 +178,19 @@ export default function ValidationBatchPage() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-        <Input placeholder="Search this batch..." value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-9" />
-      </div>
+      <SearchInput
+        wrapperClassName="max-w-sm"
+        placeholder="Search this batch..."
+        value={search}
+        onChange={e => { setSearch(e.target.value); setPage(1) }}
+      />
 
       {/* Table */}
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <TableContainer>
         {isLoading ? (
           <div className="p-6"><TableSkeleton rows={6} cols={5} /></div>
+        ) : isError ? (
+          <ErrorState description="Could not load this batch. Check your connection and try again." onRetry={() => refetch()} />
         ) : leads.length === 0 ? (
           <EmptyState
             icon={verifying ? Loader2 : ShieldCheck}
@@ -191,70 +199,66 @@ export default function ValidationBatchPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 w-10">
-                      <input type="checkbox"
-                        checked={selectableOnPage.length > 0 && selected.length === selectableOnPage.length}
-                        onChange={toggleAll} className="rounded" />
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">Email</th>
-                    <th className="px-4 py-3 text-left font-medium">Name</th>
-                    <th className="px-4 py-3 text-left font-medium">Result</th>
-                    <th className="px-4 py-3 text-left font-medium">Risk</th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH className="w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={toggleAll}
+                        aria-label="Select all selectable leads on this page"
+                      />
+                    </TH>
+                    <TH>Email</TH>
+                    <TH>Name</TH>
+                    <TH>Result</TH>
+                    <TH>Risk</TH>
+                    <TH>Status</TH>
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {leads.map(lead => {
                     const sub = lead.verification_detail?.sub_status
                     return (
-                      <tr key={lead.id} className={cn('hover:bg-muted/30', lead.promoted && 'opacity-60')}>
-                        <td className="px-4 py-3">
-                          <input type="checkbox" disabled={lead.promoted}
+                      <TR key={lead.id} selected={selected.includes(lead.id)} className={cn(lead.promoted && 'opacity-60')}>
+                        <TD>
+                          <Checkbox disabled={lead.promoted}
                             checked={selected.includes(lead.id)}
-                            onChange={() => toggle(lead.id)} className="rounded" />
-                        </td>
-                        <td className="px-4 py-3">
+                            onChange={() => toggle(lead.id)}
+                            aria-label={`Select ${lead.email}`} />
+                        </TD>
+                        <TD>
                           <div className="flex items-center gap-2">
                             <VerificationDot contact={lead} />
                             <span className="font-medium">{lead.email}</span>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        </TD>
+                        <TD className="text-muted-foreground">
                           {`${lead.first_name} ${lead.last_name}`.trim() || '—'}
                           {lead.company && <span className="block text-xs">{lead.company}</span>}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">
+                        </TD>
+                        <TD className="text-muted-foreground text-xs">
                           {sub ? (SUB_STATUS_LABEL[sub] || sub) : '—'}
-                        </td>
-                        <td className="px-4 py-3"><SpamRiskBadge contact={lead} /></td>
-                        <td className="px-4 py-3">
+                        </TD>
+                        <TD><SpamRiskBadge contact={lead} /></TD>
+                        <TD>
                           {lead.promoted
                             ? <span className="text-green-600 text-xs flex items-center gap-1"><CheckCircle2 size={12} /> Pushed</span>
                             : <span className="text-muted-foreground text-xs">Staged</span>}
-                        </td>
-                      </tr>
+                        </TD>
+                      </TR>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
+            </TableScroll>
 
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing {((page - 1) * 25) + 1}–{Math.min(page * 25, total)} of {total}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>Next</Button>
-              </div>
-            </div>
+            <TablePagination page={page} pageSize={25} total={total} onPageChange={setPage} />
           </>
         )}
-      </div>
+      </TableContainer>
     </div>
   )
 }

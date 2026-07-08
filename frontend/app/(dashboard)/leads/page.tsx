@@ -4,14 +4,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { contactsApi } from '@/lib/api'
 import { Contact, PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { SearchInput } from '@/components/ui/search-input'
+import { NativeSelect } from '@/components/ui/native-select'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
+import { ErrorState } from '@/components/shared/error-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
+import { TablePagination } from '@/components/shared/table-pagination'
+import { BulkActionBar } from '@/components/shared/bulk-action-bar'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
-  Plus, Search, Trash2, MoreHorizontal, Users, ShieldCheck
+  Plus, Trash2, MoreHorizontal, Users, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
@@ -28,7 +34,7 @@ export default function ContactsPage() {
   const [editContact, setEditContact] = useState<Contact | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['contacts', { search, status, page }],
     queryFn: () => contactsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<Contact>),
   })
@@ -71,13 +77,15 @@ export default function ContactsPage() {
 
   const contacts = data?.items || []
   const total = data?.count || 0
-  const totalPages = Math.ceil(total / 20)
 
   const toggleSelect = (id: number) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   const toggleAll = () =>
     setSelected(selected.length === contacts.length ? [] : contacts.map(c => c.id))
+
+  const allSelected = contacts.length > 0 && selected.length === contacts.length
+  const someSelected = selected.length > 0 && !allSelected
 
   return (
     <div className="p-6 space-y-6">
@@ -96,45 +104,32 @@ export default function ContactsPage() {
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
-          <Input
-            placeholder="Search by email, name..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            className="pl-9"
-          />
-        </div>
-        <select
+        <SearchInput
+          wrapperClassName="flex-1 min-w-48"
+          placeholder="Search by email, name..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
+        />
+        <NativeSelect
           value={status}
           onChange={e => { setStatus(e.target.value); setPage(1) }}
-          className="h-9 px-3 rounded-lg border border-input bg-background text-sm"
         >
           <option value="">All Status</option>
           <option value="active">Active</option>
           <option value="unsubscribed">Unsubscribed</option>
           <option value="bounced">Bounced</option>
           <option value="complained">Complained</option>
-        </select>
-
-        {selected.length > 0 && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => bulkDeleteMut.mutate(selected)}
-            loading={bulkDeleteMut.isPending}
-          >
-            <Trash2 size={14} /> Delete {selected.length}
-          </Button>
-        )}
+        </NativeSelect>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <TableContainer>
         {isLoading ? (
           <div className="p-6">
             <TableSkeleton rows={6} cols={5} />
           </div>
+        ) : isError ? (
+          <ErrorState description="Could not load your leads. Check your connection and try again." onRetry={() => refetch()} />
         ) : contacts.length === 0 ? (
           <EmptyState
             icon={Users}
@@ -144,40 +139,39 @@ export default function ContactsPage() {
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="w-10 px-4 py-3 text-left">
-                      <input
-                        type="checkbox"
-                        checked={selected.length === contacts.length}
+            <TableScroll>
+              <Table>
+                <TableHead>
+                  <TableHeaderRow>
+                    <TH className="w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        indeterminate={someSelected}
                         onChange={toggleAll}
-                        className="rounded"
+                        aria-label="Select all leads on this page"
                       />
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name / Email</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Company</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Lists / Tags</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Spam risk</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Added</th>
-                    <th className="px-4 py-3 w-16" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+                    </TH>
+                    <TH>Name / Email</TH>
+                    <TH>Company</TH>
+                    <TH>Lists / Tags</TH>
+                    <TH>Status</TH>
+                    <TH>Spam risk</TH>
+                    <TH>Added</TH>
+                    <TH className="w-16" />
+                  </TableHeaderRow>
+                </TableHead>
+                <TableBody>
                   {contacts.map(contact => (
-                    <tr key={contact.id} className="table-row-hover">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
+                    <TR key={contact.id} selected={selected.includes(contact.id)}>
+                      <TD>
+                        <Checkbox
                           checked={selected.includes(contact.id)}
                           onChange={() => toggleSelect(contact.id)}
-                          className="rounded"
                           onClick={e => e.stopPropagation()}
+                          aria-label={`Select ${contact.email}`}
                         />
-                      </td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD>
                         <div>
                           <p className="font-medium flex items-center gap-1.5">
                             {contact.full_name}
@@ -201,9 +195,9 @@ export default function ContactsPage() {
                             </p>
                           )}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{contact.company || '—'}</td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD className="text-muted-foreground">{contact.company || '—'}</TD>
+                      <TD>
                         <div className="flex gap-1 flex-wrap max-w-48">
                           {contact.list_names.slice(0, 2).map(l => (
                             <span key={`l-${l.id}`} className="badge bg-muted text-muted-foreground text-xs">{l.name}</span>
@@ -220,15 +214,15 @@ export default function ContactsPage() {
                             <span className="badge bg-muted text-muted-foreground text-xs">+{contact.tags_detail.length - 2}</span>
                           )}
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD>
                         <StatusBadge status={contact.status} />
-                      </td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD>
                         <SpamRiskBadge contact={contact} />
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">{formatDateTime(contact.created_at)}</td>
-                      <td className="px-4 py-3">
+                      </TD>
+                      <TD className="text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(contact.created_at)}</TD>
+                      <TD>
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"
@@ -242,6 +236,7 @@ export default function ContactsPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            title="Edit lead"
                             onClick={() => { setEditContact(contact); setShowForm(true) }}
                           >
                             <MoreHorizontal size={14} />
@@ -249,32 +244,36 @@ export default function ContactsPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            title="Delete lead"
                             className="text-destructive hover:text-destructive"
                             onClick={() => setDeleteId(contact.id)}
                           >
                             <Trash2 size={14} />
                           </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
+            </TableScroll>
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing {((page - 1) * 20) + 1}–{Math.min(page * 20, total)} of {total}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>Previous</Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>Next</Button>
-              </div>
-            </div>
+            <TablePagination page={page} pageSize={20} total={total} onPageChange={setPage} />
           </>
         )}
-      </div>
+      </TableContainer>
+
+      {/* Floating bulk actions */}
+      <BulkActionBar count={selected.length} onClear={() => setSelected([])} noun="lead">
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => bulkDeleteMut.mutate(selected)}
+          loading={bulkDeleteMut.isPending}
+        >
+          <Trash2 size={14} /> Delete
+        </Button>
+      </BulkActionBar>
 
       {/* Dialogs */}
       <ContactFormDialog
