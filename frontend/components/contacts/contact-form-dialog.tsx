@@ -1,16 +1,19 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { contactsApi, listsApi } from '@/lib/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { contactsApi, listsApi, tagsApi } from '@/lib/api'
 import { Contact } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { TAG_COLOR_CLASSES } from './tag-form-dialog'
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
@@ -19,6 +22,7 @@ const schema = z.object({
   phone: z.string().optional(),
   company: z.string().optional(),
   list_ids: z.array(z.number()).optional(),
+  tag_ids: z.array(z.number()).optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -31,9 +35,17 @@ interface Props {
 }
 
 export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
+  const qc = useQueryClient()
+  const [newTagName, setNewTagName] = useState('')
+  const [creatingTag, setCreatingTag] = useState(false)
+
   const { data: listsData } = useQuery({
     queryKey: ['lists-all'],
     queryFn: () => listsApi.getAll({ page_size: 100 }).then(r => r.data.items || []),
+  })
+  const { data: tagsData } = useQuery({
+    queryKey: ['tags-all'],
+    queryFn: () => tagsApi.getAll().then(r => r.data || []),
   })
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<FormData>({
@@ -41,6 +53,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
   })
 
   const selectedLists = watch('list_ids') || []
+  const selectedTags = watch('tag_ids') || []
 
   useEffect(() => {
     if (contact) {
@@ -51,11 +64,13 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
         phone: contact.phone,
         company: contact.company,
         list_ids: contact.list_ids,
+        tag_ids: contact.tag_ids,
       })
     } else {
-      reset({ email: '', first_name: '', last_name: '', phone: '', company: '', list_ids: [] })
+      reset({ email: '', first_name: '', last_name: '', phone: '', company: '', list_ids: [], tag_ids: [] })
     }
-  }, [contact, reset])
+    setNewTagName('')
+  }, [contact, open, reset])
 
   const mutation = useMutation({
     mutationFn: (data: FormData) => contact
@@ -74,6 +89,27 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
   const toggleList = (id: number) => {
     const current = selectedLists
     setValue('list_ids', current.includes(id) ? current.filter(x => x !== id) : [...current, id])
+  }
+
+  const toggleTag = (id: number) => {
+    const current = selectedTags
+    setValue('tag_ids', current.includes(id) ? current.filter(x => x !== id) : [...current, id])
+  }
+
+  const handleCreateTag = async () => {
+    const name = newTagName.trim()
+    if (!name) return
+    setCreatingTag(true)
+    try {
+      const res = await tagsApi.create({ name })
+      qc.invalidateQueries({ queryKey: ['tags-all'] })
+      setValue('tag_ids', [...selectedTags, res.data.id])
+      setNewTagName('')
+    } catch {
+      toast.error('Failed to create tag')
+    } finally {
+      setCreatingTag(false)
+    }
   }
 
   return (
@@ -127,6 +163,46 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
               </div>
             </div>
           )}
+
+          <div>
+            <Label>Tags</Label>
+            {tagsData && tagsData.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {tagsData.map((tag: any) => {
+                  const active = selectedTags.includes(tag.id)
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTag(tag.id)}
+                      className={cn(
+                        'badge text-xs px-2.5 py-1 border transition-colors',
+                        active ? TAG_COLOR_CLASSES[tag.color] || TAG_COLOR_CLASSES.gray : 'bg-background text-muted-foreground',
+                        active ? 'border-transparent' : 'border-input'
+                      )}
+                    >
+                      {tag.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="mt-2 flex gap-1.5">
+              <Input
+                placeholder="Create a new tag..."
+                value={newTagName}
+                onChange={e => setNewTagName(e.target.value)}
+                className="h-8 text-xs"
+              />
+              <Button
+                type="button" size="sm" variant="outline" className="shrink-0"
+                disabled={!newTagName.trim() || creatingTag}
+                onClick={handleCreateTag}
+              >
+                <Plus size={13} /> Add
+              </Button>
+            </div>
+          </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

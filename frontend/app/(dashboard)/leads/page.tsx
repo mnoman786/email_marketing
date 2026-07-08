@@ -9,13 +9,14 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
-import { formatDateTime } from '@/lib/utils'
+import { formatDateTime, cn } from '@/lib/utils'
 import {
   Plus, Search, Trash2, MoreHorizontal, Users, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
 import { VerificationDot, SpamRiskBadge } from '@/components/contacts/verification-badges'
+import { TAG_COLOR_CLASSES } from '@/components/contacts/tag-form-dialog'
 
 export default function ContactsPage() {
   const qc = useQueryClient()
@@ -157,7 +158,7 @@ export default function ContactsPage() {
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name / Email</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Company</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Lists</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Lists / Tags</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Spam risk</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Added</th>
@@ -203,12 +204,20 @@ export default function ContactsPage() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{contact.company || '—'}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1 flex-wrap">
+                        <div className="flex gap-1 flex-wrap max-w-48">
                           {contact.list_names.slice(0, 2).map(l => (
-                            <span key={l.id} className="badge bg-muted text-muted-foreground text-xs">{l.name}</span>
+                            <span key={`l-${l.id}`} className="badge bg-muted text-muted-foreground text-xs">{l.name}</span>
                           ))}
                           {contact.list_names.length > 2 && (
                             <span className="badge bg-muted text-muted-foreground text-xs">+{contact.list_names.length - 2}</span>
+                          )}
+                          {contact.tags_detail.slice(0, 2).map(t => (
+                            <span key={`t-${t.id}`} className={cn('badge text-xs', TAG_COLOR_CLASSES[t.color] || TAG_COLOR_CLASSES.gray)}>
+                              {t.name}
+                            </span>
+                          ))}
+                          {contact.tags_detail.length > 2 && (
+                            <span className="badge bg-muted text-muted-foreground text-xs">+{contact.tags_detail.length - 2}</span>
                           )}
                         </div>
                       </td>
