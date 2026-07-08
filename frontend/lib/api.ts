@@ -67,6 +67,16 @@ export const listsApi = {
   getContacts: (id: number, params?: any) => api.get(`/api/contacts/lists/${id}/contacts/`, { params }),
 }
 
+// Tags
+export const tagsApi = {
+  getAll: () => api.get('/api/contacts/tags/'),
+  create: (data: { name: string; color?: string }) => api.post('/api/contacts/tags/', data),
+  update: (id: number, data: { name?: string; color?: string }) => api.patch(`/api/contacts/tags/${id}/`, data),
+  delete: (id: number) => api.delete(`/api/contacts/tags/${id}/`),
+  addContacts: (id: number, contact_ids: number[]) => api.post(`/api/contacts/tags/${id}/add-contacts/`, { contact_ids }),
+  removeContacts: (id: number, contact_ids: number[]) => api.post(`/api/contacts/tags/${id}/remove-contacts/`, { contact_ids }),
+}
+
 // Contacts
 export const contactsApi = {
   getAll: (params?: any) => api.get('/api/contacts/', { params }),
@@ -123,6 +133,8 @@ export const smtpApi = {
   stats: () => api.get('/api/smtp/stats/'),
   getWarmup: (id: number) => api.get(`/api/smtp/${id}/warmup/`),
   updateWarmup: (id: number, data: any) => api.patch(`/api/smtp/${id}/warmup/`, data),
+  deliverability: (id: number, dkimSelector?: string) =>
+    api.get(`/api/smtp/${id}/deliverability/`, { params: dkimSelector ? { dkim_selector: dkimSelector } : undefined }),
 }
 
 // Campaigns

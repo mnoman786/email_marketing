@@ -73,6 +73,8 @@ def _evaluate_condition(config, contact):
     field = config.get('field')
     if field == 'list':
         return contact.lists.filter(id=config.get('list_id')).exists()
+    if field == 'tag':
+        return contact.tags.filter(id=config.get('tag_id')).exists()
     if field == 'status':
         return contact.status == config.get('status')
     return False
@@ -110,6 +112,20 @@ def evaluate_added_to_list(contact_ids, list_id, user_id):
             fire(node.workflow, node, contact, dedup_key=f'added_to_list:{list_id}', context={'list_id': list_id})
 
 
+def evaluate_tag_added(contact_ids, tag_id, user_id):
+    """contact_ids: pks of contacts just tagged with `tag_id`. Same cheap-no-op
+    shape as evaluate_added_to_list — see there for why."""
+    from apps.contacts.models import Contact
+
+    nodes = [n for n in trigger_nodes_for('tag_added', user_id=user_id) if n.config.get('tag_id') == tag_id]
+    if not nodes:
+        return
+
+    for contact in Contact.objects.filter(id__in=contact_ids):
+        for node in nodes:
+            fire(node.workflow, node, contact, dedup_key=f'tag_added:{tag_id}', context={'tag_id': tag_id})
+
+
 def _get_list(config, user):
     from apps.contacts.models import ContactList
     list_id = config.get('list_id')
@@ -128,6 +144,26 @@ def _remove_from_list(config, contact):
     contact_list = _get_list(config, contact.user)
     if contact_list:
         contact.lists.remove(contact_list)
+
+
+def _get_tag(config, user):
+    from apps.contacts.models import Tag
+    tag_id = config.get('tag_id')
+    if not tag_id:
+        return None
+    return Tag.objects.filter(id=tag_id, user=user).first()
+
+
+def _add_tag(config, contact):
+    tag = _get_tag(config, contact.user)
+    if tag:
+        contact.tags.add(tag)
+
+
+def _remove_tag(config, contact):
+    tag = _get_tag(config, contact.user)
+    if tag:
+        contact.tags.remove(tag)
 
 
 def _start_sequence(config, contact):
@@ -205,6 +241,8 @@ def post_webhook(url, payload):
 _ACTION_HANDLERS = {
     'add_to_list': _add_to_list,
     'remove_from_list': _remove_from_list,
+    'add_tag': _add_tag,
+    'remove_tag': _remove_tag,
     'start_sequence': _start_sequence,
     'stop_sequence': _stop_sequence,
     'update_contact_status': _update_contact_status,

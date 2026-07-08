@@ -1,8 +1,8 @@
 'use client'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { workflowsApi, listsApi, campaignsApi } from '@/lib/api'
-import { Workflow, ContactList, CampaignListItem, PaginatedResponse } from '@/lib/types'
+import { workflowsApi, listsApi, campaignsApi, tagsApi } from '@/lib/api'
+import { Workflow, ContactList, CampaignListItem, Tag, PaginatedResponse } from '@/lib/types'
 import { WorkflowCanvas } from '@/components/workflows/workflow-canvas'
 
 export default function WorkflowBuilderPage() {
@@ -21,6 +21,10 @@ export default function WorkflowBuilderPage() {
     queryKey: ['campaigns-all'],
     queryFn: () => campaignsApi.getAll({ page: 1 }).then(r => r.data as PaginatedResponse<CampaignListItem>),
   })
+  const { data: tags } = useQuery({
+    queryKey: ['tags-all'],
+    queryFn: () => tagsApi.getAll().then(r => r.data as Tag[]),
+  })
 
   if (loadingWorkflow || !workflow) {
     return <div className="p-6 text-sm text-muted-foreground">Loading workflow...</div>
@@ -30,6 +34,6 @@ export default function WorkflowBuilderPage() {
   const campaignItems = campaigns?.items || []
 
   return (
-    <WorkflowCanvas key={workflow.id} workflow={workflow} lists={listItems} campaigns={campaignItems} />
+    <WorkflowCanvas key={workflow.id} workflow={workflow} lists={listItems} campaigns={campaignItems} tags={tags || []} />
   )
 }

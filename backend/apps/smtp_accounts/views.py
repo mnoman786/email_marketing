@@ -147,6 +147,19 @@ def delete_smtp_account(request, smtp_id: int):
     return {'detail': 'Deleted.'}
 
 
+@router.get('/{smtp_id}/deliverability/', auth=auth)
+def check_deliverability(request, smtp_id: int, dkim_selector: Optional[str] = None):
+    """SPF/DKIM/DMARC DNS check for this account's sending domain — read-only,
+    no probe of any recipient mail server. See apps.smtp_accounts.deliverability."""
+    account = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
+    domain = (account.from_email or '').split('@')[-1].strip().lower()
+    if not domain:
+        raise HttpError(400, 'This account has no from-email domain to check.')
+
+    from .deliverability import check_domain
+    return check_domain(domain, dkim_selector=dkim_selector)
+
+
 @router.post('/{smtp_id}/test/', auth=auth)
 def test_smtp_account(request, smtp_id: int, data: SMTPTestIn):
     smtp_account = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)

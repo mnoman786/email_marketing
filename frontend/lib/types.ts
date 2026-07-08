@@ -82,6 +82,27 @@ export interface StagedLead {
   promoted: boolean
 }
 
+export interface DeliverabilityCheck {
+  found: boolean
+  record?: string | null
+  issues?: string[]
+}
+
+export interface DeliverabilityResult {
+  domain: string
+  spf: DeliverabilityCheck
+  dmarc: DeliverabilityCheck & { policy: string | null }
+  dkim: DeliverabilityCheck & { selector: string | null; checked_selectors: string[] }
+}
+
+export interface Tag {
+  id: number
+  name: string
+  color: string
+  contact_count: number
+  created_at: string
+}
+
 export interface Contact {
   id: number
   email: string
@@ -97,6 +118,8 @@ export interface Contact {
   full_name: string
   list_ids: number[]
   list_names: { id: number; name: string }[]
+  tag_ids: number[]
+  tags_detail: { id: number; name: string; color: string }[]
   subscribed_at: string
   unsubscribed_at: string | null
   created_at: string

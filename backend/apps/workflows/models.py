@@ -29,11 +29,11 @@ class WorkflowNode(models.Model):
 
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name='nodes')
     node_type = models.CharField(max_length=20, choices=NODE_TYPES)
-    # trigger:   {'trigger_type': 'opened'|'clicked'|'replied'|'bounced'|'added_to_list'|'no_reply_after',
-    #             'campaign_id': Optional[int], 'list_id': Optional[int], 'days': Optional[int]}
-    # condition: {'field': 'list'|'status', 'list_id': Optional[int], 'status': Optional[str]}
-    # action:    {'action_type': 'add_to_list'|'remove_from_list'|'start_sequence'|'stop_sequence'
-    #                            |'update_contact_status'|'webhook', ...type-specific keys}
+    # trigger:   {'trigger_type': 'opened'|'clicked'|'replied'|'bounced'|'added_to_list'|'tag_added'|'no_reply_after',
+    #             'campaign_id': Optional[int], 'list_id': Optional[int], 'tag_id': Optional[int], 'days': Optional[int]}
+    # condition: {'field': 'list'|'tag'|'status', 'list_id': Optional[int], 'tag_id': Optional[int], 'status': Optional[str]}
+    # action:    {'action_type': 'add_to_list'|'remove_from_list'|'add_tag'|'remove_tag'|'start_sequence'
+    #                            |'stop_sequence'|'update_contact_status'|'webhook', ...type-specific keys}
     # end:       {}
     config = models.JSONField(default=dict, blank=True)
     position_x = models.FloatField(default=0)

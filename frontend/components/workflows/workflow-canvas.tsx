@@ -8,8 +8,8 @@ import {
 } from '@xyflow/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { workflowsApi } from '@/lib/api'
-import { Workflow, ContactList, CampaignListItem } from '@/lib/types'
+import { workflowsApi, tagsApi } from '@/lib/api'
+import { Workflow, ContactList, CampaignListItem, Tag as TagType } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -26,12 +26,14 @@ const edgeTypes: EdgeTypes = EDGE_TYPES as any
 let tempIdCounter = 0
 const nextTempId = () => `new-${Date.now()}-${tempIdCounter++}`
 
-function toRFNodes(workflow: Workflow, listsById: Record<number, string>, campaignsById: Record<number, string>): Node[] {
+function toRFNodes(
+  workflow: Workflow, listsById: Record<number, string>, campaignsById: Record<number, string>, tagsById: Record<number, string>
+): Node[] {
   return workflow.nodes.map(n => ({
     id: String(n.id),
     type: n.node_type,
     position: { x: n.position_x, y: n.position_y },
-    data: { config: n.config, listsById, campaignsById },
+    data: { config: n.config, listsById, campaignsById, tagsById },
   }))
 }
 
@@ -52,14 +54,16 @@ interface Props {
   workflow: Workflow
   lists: ContactList[]
   campaigns: CampaignListItem[]
+  tags: TagType[]
 }
 
-function CanvasInner({ workflow, lists, campaigns }: Props) {
+function CanvasInner({ workflow, lists, campaigns, tags }: Props) {
   const router = useRouter()
   const qc = useQueryClient()
 
   const listsById = useMemo(() => Object.fromEntries(lists.map(l => [l.id, l.name])), [lists])
   const campaignsById = useMemo(() => Object.fromEntries(campaigns.map(c => [c.id, c.name])), [campaigns])
+  const tagsById = useMemo(() => Object.fromEntries(tags.map(t => [t.id, t.name])), [tags])
 
   // Stable trampoline: edges call insertNodeOnEdgeRef.current(...) at click time,
   // so an edge created on mount still reaches the *current* insertNodeOnEdge
@@ -79,7 +83,7 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
   }), [])
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(
-    toRFNodes(workflow, listsById, campaignsById).map(withDeleteHandler)
+    toRFNodes(workflow, listsById, campaignsById, tagsById).map(withDeleteHandler)
   )
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(workflow).map(withInsertHandler))
   const [name, setName] = useState(workflow.name)
@@ -107,7 +111,7 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
     const config = kind === 'action' ? { action_type: actionType } : {}
     setNodes(nds => [...nds, withDeleteHandler({
       id, type: kind, position: { x: 300 + (offset % 400), y: 80 + offset },
-      data: { config, listsById, campaignsById },
+      data: { config, listsById, campaignsById, tagsById },
     })])
   }
 
@@ -144,7 +148,7 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
     const midY = sourceNode && targetNode ? (sourceNode.position.y + targetNode.position.y) / 2 : 200
 
     setNodes(nds => [...nds, withDeleteHandler({
-      id: newNodeId, type: kind, position: { x: midX, y: midY }, data: { config, listsById, campaignsById },
+      id: newNodeId, type: kind, position: { x: midX, y: midY }, data: { config, listsById, campaignsById, tagsById },
     })])
 
     const firstHalf = withInsertHandler({
@@ -161,7 +165,7 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
       target: edge.target, targetHandle: edge.targetHandle, type: 'deletable',
     } as Edge)
     setEdges([...rest, firstHalf, secondHalf])
-  }, [edges, nodes, setEdges, setNodes, withInsertHandler, withDeleteHandler, listsById, campaignsById])
+  }, [edges, nodes, setEdges, setNodes, withInsertHandler, withDeleteHandler, listsById, campaignsById, tagsById])
 
   insertNodeOnEdgeRef.current = insertNodeOnEdge
 
@@ -186,6 +190,12 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to save workflow'),
   })
+
+  const handleCreateTag = useCallback(async (name: string) => {
+    const res = await tagsApi.create({ name })
+    qc.invalidateQueries({ queryKey: ['tags-all'] })
+    return res.data as TagType
+  }, [qc])
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -257,6 +267,8 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
         initialConfig={(editingNode?.data as any)?.config || {}}
         lists={lists}
         campaigns={campaigns}
+        tags={tags}
+        onCreateTag={handleCreateTag}
         onSave={(config) => {
           setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, config } } : n))
         }}

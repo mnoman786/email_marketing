@@ -11,12 +11,13 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDateTime } from '@/lib/utils'
 import {
-  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame
+  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame, ShieldCheck
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { SMTPFormDialog } from '@/components/smtp/smtp-form-dialog'
 import { SMTPTestDialog } from '@/components/smtp/smtp-test-dialog'
 import { WarmupDialog } from '@/components/smtp/warmup-dialog'
+import { DeliverabilityDialog } from '@/components/smtp/deliverability-dialog'
 
 export default function SMTPPage() {
   const qc = useQueryClient()
@@ -25,6 +26,7 @@ export default function SMTPPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [testAccount, setTestAccount] = useState<SMTPAccount | null>(null)
   const [warmupAccount, setWarmupAccount] = useState<SMTPAccount | null>(null)
+  const [deliverabilityAccount, setDeliverabilityAccount] = useState<SMTPAccount | null>(null)
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['smtp-accounts'],
@@ -147,6 +149,14 @@ export default function SMTPPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        onClick={() => setDeliverabilityAccount(account)}
+                        title="Check SPF/DKIM/DMARC"
+                      >
+                        <ShieldCheck size={14} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         onClick={() => { setEditAccount(account); setShowForm(true) }}
                       >
                         <Edit size={14} />
@@ -191,6 +201,11 @@ export default function SMTPPage() {
         open={!!warmupAccount}
         onClose={() => setWarmupAccount(null)}
         account={warmupAccount}
+      />
+      <DeliverabilityDialog
+        open={!!deliverabilityAccount}
+        onClose={() => setDeliverabilityAccount(null)}
+        account={deliverabilityAccount}
       />
       <ConfirmDialog
         open={!!deleteId}

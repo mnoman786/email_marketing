@@ -1,6 +1,6 @@
 'use client'
 import { Handle, Position } from '@xyflow/react'
-import { Zap, GitBranch, Mail, Tag, Webhook, Play, Square, XCircle, ListPlus, ListMinus, X, LucideIcon } from 'lucide-react'
+import { Zap, GitBranch, Mail, Tag, Tags, UserCog, Webhook, Play, Square, XCircle, ListPlus, ListMinus, X, LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export const TRIGGER_LABELS: Record<string, string> = {
@@ -9,15 +9,18 @@ export const TRIGGER_LABELS: Record<string, string> = {
   replied: 'Email Replied',
   bounced: 'Email Bounced',
   added_to_list: 'Added to List',
+  tag_added: 'Tag Added',
   no_reply_after: 'No Reply After',
 }
 
 export const ACTION_META: Record<string, { label: string; icon: LucideIcon }> = {
   add_to_list: { label: 'Add to List', icon: ListPlus },
   remove_from_list: { label: 'Remove from List', icon: ListMinus },
+  add_tag: { label: 'Add Tag', icon: Tag },
+  remove_tag: { label: 'Remove Tag', icon: Tags },
   start_sequence: { label: 'Start Sequence', icon: Play },
   stop_sequence: { label: 'Stop Sequence', icon: Square },
-  update_contact_status: { label: 'Update Status', icon: Tag },
+  update_contact_status: { label: 'Update Status', icon: UserCog },
   webhook: { label: 'Call Webhook', icon: Webhook },
 }
 
@@ -25,6 +28,7 @@ interface NodeData {
   config: Record<string, any>
   listsById: Record<number, string>
   campaignsById: Record<number, string>
+  tagsById: Record<number, string>
   onDelete?: () => void
 }
 
@@ -69,6 +73,7 @@ function triggerSubtitle(cfg: Record<string, any>, data: NodeData) {
   if (!cfg.trigger_type) return 'Select trigger...'
   const label = TRIGGER_LABELS[cfg.trigger_type]
   if (cfg.trigger_type === 'added_to_list') return `${label}: ${data.listsById[cfg.list_id] || 'Select list...'}`
+  if (cfg.trigger_type === 'tag_added') return `${label}: ${data.tagsById[cfg.tag_id] || 'Select tag...'}`
   if (cfg.trigger_type === 'no_reply_after') return `${label} ${cfg.days ? `${cfg.days}d` : ''}`.trim()
   if (cfg.campaign_id) return `${label} (${data.campaignsById[cfg.campaign_id] || 'campaign'})`
   return label
@@ -86,6 +91,7 @@ export function TriggerNode({ data, selected }: { data: NodeData; selected?: boo
 
 function conditionSubtitle(cfg: Record<string, any>, data: NodeData) {
   if (cfg.field === 'list') return `In list: ${data.listsById[cfg.list_id] || 'select...'}`
+  if (cfg.field === 'tag') return `Has tag: ${data.tagsById[cfg.tag_id] || 'select...'}`
   if (cfg.field === 'status') return `Status = ${cfg.status || 'select...'}`
   return 'Select condition...'
 }
@@ -112,6 +118,9 @@ function actionSubtitle(cfg: Record<string, any>, data: NodeData) {
   if (cfg.action_type === 'update_contact_status') return cfg.status ? `Set status: ${cfg.status}` : 'Select status...'
   if (cfg.action_type === 'add_to_list' || cfg.action_type === 'remove_from_list') {
     return cfg.list_id ? data.listsById[cfg.list_id] || `List #${cfg.list_id}` : 'Select list...'
+  }
+  if (cfg.action_type === 'add_tag' || cfg.action_type === 'remove_tag') {
+    return cfg.tag_id ? data.tagsById[cfg.tag_id] || `Tag #${cfg.tag_id}` : 'Select tag...'
   }
   if (cfg.action_type === 'start_sequence' || cfg.action_type === 'stop_sequence') {
     if (!cfg.campaign_id) return cfg.action_type === 'stop_sequence' ? 'Any active sequence' : 'Select campaign...'

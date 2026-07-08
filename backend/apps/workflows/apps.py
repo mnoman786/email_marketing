@@ -13,6 +13,7 @@ class WorkflowsConfig(AppConfig):
         from apps.contacts.models import Contact
 
         m2m_changed.connect(_on_contact_lists_changed, sender=Contact.lists.through)
+        m2m_changed.connect(_on_contact_tags_changed, sender=Contact.tags.through)
 
 
 def _on_contact_lists_changed(sender, instance, action, reverse, pk_set, **kwargs):
@@ -33,3 +34,21 @@ def _on_contact_lists_changed(sender, instance, action, reverse, pk_set, **kwarg
                 evaluate_added_to_list([instance.id], list_id, instance.user_id)
     except Exception:
         logger.exception('Workflow added_to_list evaluation failed')
+
+
+def _on_contact_tags_changed(sender, instance, action, reverse, pk_set, **kwargs):
+    """Fires the 'tag_added' trigger. Same forward/reverse handling as
+    _on_contact_lists_changed (contact.tags.add(tag) vs tag.contacts.add(*contacts))."""
+    if action != 'post_add' or not pk_set:
+        return
+
+    from .services import evaluate_tag_added
+
+    try:
+        if reverse:
+            evaluate_tag_added(pk_set, instance.id, instance.user_id)
+        else:
+            for tag_id in pk_set:
+                evaluate_tag_added([instance.id], tag_id, instance.user_id)
+    except Exception:
+        logger.exception('Workflow tag_added evaluation failed')

@@ -6,7 +6,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ContactList, CampaignListItem } from '@/lib/types'
+import { ContactList, CampaignListItem, Tag } from '@/lib/types'
 import { TRIGGER_LABELS, ACTION_META } from './nodes/automation-nodes'
 
 const STATUS_CHOICES = ['active', 'unsubscribed', 'bounced', 'complained']
@@ -18,20 +18,60 @@ interface Props {
   initialConfig: Record<string, any>
   lists: ContactList[]
   campaigns: CampaignListItem[]
+  tags: Tag[]
   onSave: (config: Record<string, any>) => void
   onDelete?: () => void
+  onCreateTag?: (name: string) => Promise<Tag>
 }
 
-export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, campaigns, onSave, onDelete }: Props) {
+export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, campaigns, tags, onSave, onDelete, onCreateTag }: Props) {
   const [config, setConfig] = useState<Record<string, any>>({})
+  const [newTagName, setNewTagName] = useState('')
+  const [creatingTag, setCreatingTag] = useState(false)
 
   useEffect(() => {
-    if (open) setConfig(initialConfig || {})
+    if (open) { setConfig(initialConfig || {}); setNewTagName('') }
   }, [open, initialConfig])
 
   const set = (patch: Record<string, any>) => setConfig(prev => ({ ...prev, ...patch }))
 
   const selectCls = 'h-9 w-full px-3 rounded-lg border border-input bg-background text-sm'
+
+  // Shared by the trigger/condition/action tag pickers below — lets you create
+  // a brand-new tag inline instead of bouncing out to a separate tags page.
+  const renderTagField = (label: string, value: number | undefined, onChange: (id: number | undefined) => void) => (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <select className={selectCls} value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : undefined)}>
+        <option value="">Select a tag...</option>
+        {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      {onCreateTag && (
+        <div className="flex gap-1.5">
+          <Input
+            placeholder="Or create a new tag..." value={newTagName}
+            onChange={e => setNewTagName(e.target.value)} className="h-8 text-xs"
+          />
+          <Button
+            type="button" size="sm" variant="outline" className="shrink-0"
+            disabled={!newTagName.trim() || creatingTag}
+            onClick={async () => {
+              setCreatingTag(true)
+              try {
+                const tag = await onCreateTag(newTagName.trim())
+                onChange(tag.id)
+                setNewTagName('')
+              } finally {
+                setCreatingTag(false)
+              }
+            }}
+          >
+            Add
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -54,7 +94,7 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
               <div className="space-y-1.5">
                 <Label>When this happens</Label>
                 <select className={selectCls} value={config.trigger_type || ''}
-                  onChange={e => set({ trigger_type: e.target.value, list_id: undefined, campaign_id: undefined, days: undefined })}>
+                  onChange={e => set({ trigger_type: e.target.value, list_id: undefined, tag_id: undefined, campaign_id: undefined, days: undefined })}>
                   <option value="">Select trigger...</option>
                   {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
@@ -82,6 +122,9 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
                 </div>
               )}
 
+              {config.trigger_type === 'tag_added' &&
+                renderTagField('Tag', config.tag_id, id => set({ tag_id: id }))}
+
               {config.trigger_type === 'no_reply_after' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -107,9 +150,10 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
               <div className="space-y-1.5">
                 <Label>Check</Label>
                 <select className={selectCls} value={config.field || ''}
-                  onChange={e => set({ field: e.target.value, list_id: undefined, status: undefined })}>
+                  onChange={e => set({ field: e.target.value, list_id: undefined, tag_id: undefined, status: undefined })}>
                   <option value="">Select condition...</option>
                   <option value="list">Contact is in list</option>
+                  <option value="tag">Contact has tag</option>
                   <option value="status">Contact status equals</option>
                 </select>
               </div>
@@ -123,6 +167,8 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
                   </select>
                 </div>
               )}
+              {config.field === 'tag' &&
+                renderTagField('Tag', config.tag_id, id => set({ tag_id: id }))}
               {config.field === 'status' && (
                 <div className="space-y-1.5">
                   <Label>Status</Label>
@@ -141,7 +187,7 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
               <div className="space-y-1.5">
                 <Label>Do this</Label>
                 <select className={selectCls} value={config.action_type || ''}
-                  onChange={e => set({ action_type: e.target.value, list_id: undefined, campaign_id: undefined, status: undefined, url: undefined })}>
+                  onChange={e => set({ action_type: e.target.value, list_id: undefined, tag_id: undefined, campaign_id: undefined, status: undefined, url: undefined })}>
                   <option value="">Select action...</option>
                   {Object.entries(ACTION_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
                 </select>
@@ -157,6 +203,9 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
                   </select>
                 </div>
               )}
+
+              {(config.action_type === 'add_tag' || config.action_type === 'remove_tag') &&
+                renderTagField('Tag', config.tag_id, id => set({ tag_id: id }))}
 
               {(config.action_type === 'start_sequence' || config.action_type === 'stop_sequence') && (
                 <div className="space-y-1.5">
