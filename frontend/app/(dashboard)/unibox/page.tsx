@@ -6,6 +6,7 @@ import { inboxApi, smtpApi } from '@/lib/api'
 import { ThreadListItem, ThreadDetail, PaginatedResponse, SMTPAccount } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Skeleton } from '@/components/shared/loading-skeleton'
@@ -740,7 +741,7 @@ export default function InboxPage() {
                   )}
                   {smtpAccount?.signature_html && (
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input type="checkbox" checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} />
+                      <Checkbox checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} />
                       Signature
                     </label>
                   )}

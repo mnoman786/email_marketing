@@ -1,6 +1,7 @@
 'use client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Label } from '@/components/ui/label'
 import { Clock } from 'lucide-react'
 
@@ -103,13 +104,13 @@ export function SendingScheduleCard({ value, onChange }: Props) {
 
             <div>
               <Label className="text-xs">Timezone</Label>
-              <select
+              <NativeSelect
                 value={value.schedule_timezone}
                 onChange={e => onChange({ schedule_timezone: e.target.value })}
-                className="w-full h-9 px-3 mt-1 rounded-lg border border-input bg-background text-sm"
+                wrapperClassName="w-full mt-1"
               >
                 {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
-              </select>
+              </NativeSelect>
             </div>
           </div>
         )}

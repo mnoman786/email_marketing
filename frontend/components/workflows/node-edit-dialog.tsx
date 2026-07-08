@@ -5,6 +5,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Label } from '@/components/ui/label'
 import { ContactList, CampaignListItem, Tag } from '@/lib/types'
 import { TRIGGER_LABELS, ACTION_META } from './nodes/automation-nodes'
@@ -35,17 +36,15 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
 
   const set = (patch: Record<string, any>) => setConfig(prev => ({ ...prev, ...patch }))
 
-  const selectCls = 'h-9 w-full px-3 rounded-lg border border-input bg-background text-sm'
-
   // Shared by the trigger/condition/action tag pickers below — lets you create
   // a brand-new tag inline instead of bouncing out to a separate tags page.
   const renderTagField = (label: string, value: number | undefined, onChange: (id: number | undefined) => void) => (
     <div className="space-y-1.5">
       <Label>{label}</Label>
-      <select className={selectCls} value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : undefined)}>
+      <NativeSelect wrapperClassName="w-full" value={value ?? ''} onChange={e => onChange(e.target.value ? Number(e.target.value) : undefined)}>
         <option value="">Select a tag...</option>
         {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
+      </NativeSelect>
       {onCreateTag && (
         <div className="flex gap-1.5">
           <Input
@@ -93,32 +92,32 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
             <>
               <div className="space-y-1.5">
                 <Label>When this happens</Label>
-                <select className={selectCls} value={config.trigger_type || ''}
+                <NativeSelect wrapperClassName="w-full" value={config.trigger_type || ''}
                   onChange={e => set({ trigger_type: e.target.value, list_id: undefined, tag_id: undefined, campaign_id: undefined, days: undefined })}>
                   <option value="">Select trigger...</option>
                   {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                </NativeSelect>
               </div>
 
               {['opened', 'clicked', 'replied', 'bounced'].includes(config.trigger_type) && (
                 <div className="space-y-1.5">
                   <Label>Campaign (optional)</Label>
-                  <select className={selectCls} value={config.campaign_id ?? ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.campaign_id ?? ''}
                     onChange={e => set({ campaign_id: e.target.value ? Number(e.target.value) : undefined })}>
                     <option value="">Any campaign</option>
                     {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
 
               {config.trigger_type === 'added_to_list' && (
                 <div className="space-y-1.5">
                   <Label>List</Label>
-                  <select className={selectCls} value={config.list_id ?? ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.list_id ?? ''}
                     onChange={e => set({ list_id: e.target.value ? Number(e.target.value) : undefined })}>
                     <option value="">Select a list...</option>
                     {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
 
@@ -134,11 +133,11 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
                   </div>
                   <div className="space-y-1.5">
                     <Label>Campaign (optional)</Label>
-                    <select className={selectCls} value={config.campaign_id ?? ''}
+                    <NativeSelect wrapperClassName="w-full" value={config.campaign_id ?? ''}
                       onChange={e => set({ campaign_id: e.target.value ? Number(e.target.value) : undefined })}>
                       <option value="">Any campaign</option>
                       {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    </NativeSelect>
                   </div>
                 </div>
               )}
@@ -149,22 +148,22 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
             <>
               <div className="space-y-1.5">
                 <Label>Check</Label>
-                <select className={selectCls} value={config.field || ''}
+                <NativeSelect wrapperClassName="w-full" value={config.field || ''}
                   onChange={e => set({ field: e.target.value, list_id: undefined, tag_id: undefined, status: undefined })}>
                   <option value="">Select condition...</option>
                   <option value="list">Contact is in list</option>
                   <option value="tag">Contact has tag</option>
                   <option value="status">Contact status equals</option>
-                </select>
+                </NativeSelect>
               </div>
               {config.field === 'list' && (
                 <div className="space-y-1.5">
                   <Label>List</Label>
-                  <select className={selectCls} value={config.list_id ?? ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.list_id ?? ''}
                     onChange={e => set({ list_id: e.target.value ? Number(e.target.value) : undefined })}>
                     <option value="">Select a list...</option>
                     {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
               {config.field === 'tag' &&
@@ -172,11 +171,11 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
               {config.field === 'status' && (
                 <div className="space-y-1.5">
                   <Label>Status</Label>
-                  <select className={selectCls} value={config.status || ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.status || ''}
                     onChange={e => set({ status: e.target.value || undefined })}>
                     <option value="">Select status...</option>
                     {STATUS_CHOICES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
             </>
@@ -186,21 +185,21 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
             <>
               <div className="space-y-1.5">
                 <Label>Do this</Label>
-                <select className={selectCls} value={config.action_type || ''}
+                <NativeSelect wrapperClassName="w-full" value={config.action_type || ''}
                   onChange={e => set({ action_type: e.target.value, list_id: undefined, tag_id: undefined, campaign_id: undefined, status: undefined, url: undefined })}>
                   <option value="">Select action...</option>
                   {Object.entries(ACTION_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
-                </select>
+                </NativeSelect>
               </div>
 
               {(config.action_type === 'add_to_list' || config.action_type === 'remove_from_list') && (
                 <div className="space-y-1.5">
                   <Label>List</Label>
-                  <select className={selectCls} value={config.list_id ?? ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.list_id ?? ''}
                     onChange={e => set({ list_id: e.target.value ? Number(e.target.value) : undefined })}>
                     <option value="">Select a list...</option>
                     {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
 
@@ -210,22 +209,22 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
               {(config.action_type === 'start_sequence' || config.action_type === 'stop_sequence') && (
                 <div className="space-y-1.5">
                   <Label>Campaign</Label>
-                  <select className={selectCls} value={config.campaign_id ?? ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.campaign_id ?? ''}
                     onChange={e => set({ campaign_id: e.target.value ? Number(e.target.value) : undefined })}>
                     <option value="">{config.action_type === 'stop_sequence' ? 'Any active sequence' : 'Select a campaign...'}</option>
                     {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
 
               {config.action_type === 'update_contact_status' && (
                 <div className="space-y-1.5">
                   <Label>New status</Label>
-                  <select className={selectCls} value={config.status || ''}
+                  <NativeSelect wrapperClassName="w-full" value={config.status || ''}
                     onChange={e => set({ status: e.target.value || undefined })}>
                     <option value="">Select status...</option>
                     {STATUS_CHOICES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  </NativeSelect>
                 </div>
               )}
 

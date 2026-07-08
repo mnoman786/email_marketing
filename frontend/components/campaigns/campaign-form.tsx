@@ -9,6 +9,7 @@ import { Campaign, CampaignStep } from '@/lib/types'
 import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -802,13 +803,13 @@ export function CampaignForm({ campaign, initialName }: Props) {
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <Label className="text-xs">Winning Metric</Label>
-                              <select value={step.auto_optimize_metric}
+                              <NativeSelect value={step.auto_optimize_metric}
                                 onChange={e => updateStep(index, { auto_optimize_metric: e.target.value as LocalStep['auto_optimize_metric'] })}
-                                className="mt-1 w-full h-9 rounded-md border bg-background px-2 text-sm">
+                                wrapperClassName="mt-1 w-full">
                                 <option value="open_rate">Open Rate</option>
                                 <option value="click_rate">Click Rate</option>
                                 <option value="reply_rate">Reply Rate</option>
-                              </select>
+                              </NativeSelect>
                             </div>
                             <div>
                               <Label className="text-xs">Min Sends per Variant</Label>

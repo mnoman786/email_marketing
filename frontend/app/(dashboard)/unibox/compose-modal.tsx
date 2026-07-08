@@ -6,6 +6,7 @@ import { SMTPAccount } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { RichTextEditor, RichTextEditorHandle } from './rich-text-editor'
 import { Paperclip, X, Send, UserPlus } from 'lucide-react'
@@ -185,7 +186,7 @@ export function ComposeModal({ open, onOpenChange, smtpAccounts, onSent }: Props
               />
               {selectedAccount?.signature_html && (
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <input type="checkbox" checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} />
+                  <Checkbox checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} />
                   Include signature
                 </label>
               )}
