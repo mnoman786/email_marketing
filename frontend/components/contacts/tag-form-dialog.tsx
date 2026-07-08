@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -11,19 +11,69 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { Check, Pipette } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-export const TAG_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'blue', 'purple', 'pink'] as const
+// Matches the app's existing badge-* variants in globals.css (see StatusBadge)
+// instead of inventing separate ad-hoc colors — same tested contrast/dark-mode
+// handling everywhere else in the app already relies on. Custom hex colors
+// (from the color picker below) are handled separately via getTagBadgeProps.
+export const TAG_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'blue', 'purple'] as const
 
 export const TAG_COLOR_CLASSES: Record<string, string> = {
-  gray: 'bg-muted text-muted-foreground',
-  red: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-  amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-  green: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-  blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-  purple: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  pink: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
+  gray: 'badge-gray',
+  red: 'badge-red',
+  orange: 'badge-orange',
+  amber: 'badge-amber',
+  green: 'badge-green',
+  blue: 'badge-blue',
+  purple: 'badge-purple',
+}
+
+// Solid swatch fill for the color-picker dots below — these aren't badges (no
+// text to contrast against), so a plain solid Tailwind color works fine here.
+const TAG_SWATCH_CLASSES: Record<string, string> = {
+  gray: 'bg-slate-400',
+  red: 'bg-red-500',
+  orange: 'bg-orange-500',
+  amber: 'bg-amber-500',
+  green: 'bg-green-500',
+  blue: 'bg-blue-500',
+  purple: 'bg-purple-500',
+}
+
+const HEX_RE = /^#[0-9a-f]{6}$/i
+
+export function isCustomColor(color: string): boolean {
+  return HEX_RE.test(color)
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/** className + inline style for rendering a tag badge, given tag.color — use
+ * this everywhere a tag renders (Tags page, contact picker, Leads list)
+ * instead of looking up TAG_COLOR_CLASSES directly, so custom hex colors from
+ * the picker below render correctly too. */
+export function getTagBadgeProps(color: string): { className: string; style?: React.CSSProperties } {
+  if (TAG_COLOR_CLASSES[color]) {
+    return { className: cn('badge', TAG_COLOR_CLASSES[color]) }
+  }
+  if (isCustomColor(color)) {
+    return {
+      className: 'badge',
+      style: {
+        backgroundColor: hexToRgba(color, 0.15),
+        color,
+        border: `1px solid ${hexToRgba(color, 0.4)}`,
+      },
+    }
+  }
+  return { className: cn('badge', TAG_COLOR_CLASSES.gray) }
 }
 
 const schema = z.object({
@@ -45,6 +95,8 @@ export function TagFormDialog({ open, onClose, tag, onSaved }: Props) {
     resolver: zodResolver(schema),
   })
   const color = watch('color') || 'gray'
+  const isCustom = isCustomColor(color)
+  const colorInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (tag) reset({ name: tag.name, color: tag.color })
@@ -74,20 +126,63 @@ export function TagFormDialog({ open, onClose, tag, onSaved }: Props) {
           </div>
           <div>
             <Label>Color</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2.5">
               {TAG_COLORS.map(c => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setValue('color', c)}
                   className={cn(
-                    'w-8 h-8 rounded-full border-2 transition-transform',
-                    TAG_COLOR_CLASSES[c].split(' ')[0],
-                    color === c ? 'border-foreground scale-110' : 'border-transparent'
+                    'relative w-9 h-9 rounded-full flex items-center justify-center transition-all',
+                    TAG_SWATCH_CLASSES[c],
+                    color === c
+                      ? 'ring-2 ring-offset-2 ring-foreground scale-110 shadow-md'
+                      : 'opacity-60 hover:opacity-100'
                   )}
                   title={c}
-                />
+                >
+                  {color === c && <Check size={16} className="text-white drop-shadow" strokeWidth={3} />}
+                </button>
               ))}
+
+              {/* Custom color — click opens the native color picker; the swatch
+                  itself shows the current custom color once one's picked. */}
+              <button
+                type="button"
+                onClick={() => colorInputRef.current?.click()}
+                title="Custom color"
+                style={isCustom ? { backgroundColor: color } : undefined}
+                className={cn(
+                  'relative w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0',
+                  !isCustom && 'bg-[conic-gradient(from_0deg,red,orange,yellow,green,blue,purple,red)]',
+                  isCustom
+                    ? 'ring-2 ring-offset-2 ring-foreground scale-110 shadow-md'
+                    : 'opacity-70 hover:opacity-100'
+                )}
+              >
+                {isCustom ? (
+                  <Check size={16} className="text-white drop-shadow" strokeWidth={3} />
+                ) : (
+                  <Pipette size={14} className="text-white drop-shadow" />
+                )}
+              </button>
+              <input
+                ref={colorInputRef}
+                type="color"
+                value={isCustom ? color : '#6366f1'}
+                onChange={e => setValue('color', e.target.value)}
+                className="sr-only"
+                tabIndex={-1}
+              />
+
+              {isCustom && (
+                <Input
+                  value={color}
+                  onChange={e => setValue('color', e.target.value)}
+                  placeholder="#6366f1"
+                  className="h-9 w-28 text-xs font-mono"
+                />
+              )}
             </div>
           </div>
           <DialogFooter>

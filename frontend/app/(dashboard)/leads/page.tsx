@@ -16,7 +16,7 @@ import {
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
 import { VerificationDot, SpamRiskBadge } from '@/components/contacts/verification-badges'
-import { TAG_COLOR_CLASSES } from '@/components/contacts/tag-form-dialog'
+import { getTagBadgeProps } from '@/components/contacts/tag-form-dialog'
 
 export default function ContactsPage() {
   const qc = useQueryClient()
@@ -212,7 +212,7 @@ export default function ContactsPage() {
                             <span className="badge bg-muted text-muted-foreground text-xs">+{contact.list_names.length - 2}</span>
                           )}
                           {contact.tags_detail.slice(0, 2).map(t => (
-                            <span key={`t-${t.id}`} className={cn('badge text-xs', TAG_COLOR_CLASSES[t.color] || TAG_COLOR_CLASSES.gray)}>
+                            <span key={`t-${t.id}`} className={cn('text-xs', getTagBadgeProps(t.color).className)} style={getTagBadgeProps(t.color).style}>
                               {t.name}
                             </span>
                           ))}

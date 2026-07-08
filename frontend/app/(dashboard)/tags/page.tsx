@@ -11,7 +11,7 @@ import { formatDateTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { Plus, Trash2, Edit2, Tags as TagsIcon, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { TagFormDialog, TAG_COLOR_CLASSES } from '@/components/contacts/tag-form-dialog'
+import { TagFormDialog, getTagBadgeProps } from '@/components/contacts/tag-form-dialog'
 
 export default function TagsPage() {
   const qc = useQueryClient()
@@ -59,7 +59,7 @@ export default function TagsPage() {
           {tags.map(tag => (
             <div key={tag.id} className="rounded-xl border bg-card p-5 card-hover">
               <div className="flex items-start justify-between">
-                <span className={cn('badge text-sm font-medium px-3 py-1', TAG_COLOR_CLASSES[tag.color] || TAG_COLOR_CLASSES.gray)}>
+                <span className={cn('text-sm font-medium px-3 py-1', getTagBadgeProps(tag.color).className)} style={getTagBadgeProps(tag.color).style}>
                   {tag.name}
                 </span>
                 <div className="flex gap-1">

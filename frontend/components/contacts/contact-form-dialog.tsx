@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { TAG_COLOR_CLASSES } from './tag-form-dialog'
+import { getTagBadgeProps } from './tag-form-dialog'
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
@@ -170,16 +170,17 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {tagsData.map((tag: any) => {
                   const active = selectedTags.includes(tag.id)
+                  const badge = getTagBadgeProps(tag.color)
                   return (
                     <button
                       key={tag.id}
                       type="button"
                       onClick={() => toggleTag(tag.id)}
                       className={cn(
-                        'badge text-xs px-2.5 py-1 border transition-colors',
-                        active ? TAG_COLOR_CLASSES[tag.color] || TAG_COLOR_CLASSES.gray : 'bg-background text-muted-foreground',
-                        active ? 'border-transparent' : 'border-input'
+                        'text-xs transition-colors',
+                        active ? badge.className : 'badge border border-input bg-background text-muted-foreground'
                       )}
+                      style={active ? badge.style : undefined}
                     >
                       {tag.name}
                     </button>
