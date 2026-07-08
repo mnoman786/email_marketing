@@ -25,6 +25,23 @@ class ContactList(models.Model):
         return self.contacts.count()
 
 
+class Tag(models.Model):
+    """Free-form label for cross-cutting segmentation (e.g. "Interested",
+    "Decision Maker") — unlike ContactList, a contact can carry many tags at
+    once and tags aren't tied to campaign enrollment."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tags')
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=20, default='gray')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ['user', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class Contact(models.Model):
     STATUS_CHOICES = [
         ('active', 'Active'),
@@ -41,6 +58,7 @@ class Contact(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='contacts')
     lists = models.ManyToManyField(ContactList, related_name='contacts', blank=True)
+    tags = models.ManyToManyField(Tag, related_name='contacts', blank=True)
     email = models.EmailField()
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)

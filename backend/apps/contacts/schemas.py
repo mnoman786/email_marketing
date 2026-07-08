@@ -37,6 +37,34 @@ class ContactListRef(Schema):
     name: str
 
 
+class TagOut(Schema):
+    id: int
+    name: str
+    color: str
+    contact_count: int
+    created_at: datetime
+
+    @staticmethod
+    def resolve_contact_count(obj):
+        return obj.contacts.count()
+
+
+class TagIn(Schema):
+    name: str
+    color: str = 'gray'
+
+
+class TagUpdateIn(Schema):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class TagRef(Schema):
+    id: int
+    name: str
+    color: str
+
+
 class ContactOut(Schema):
     id: int
     email: str
@@ -52,6 +80,8 @@ class ContactOut(Schema):
     full_name: str
     list_ids: List[int]
     list_names: List[ContactListRef]
+    tag_ids: List[int] = []
+    tags_detail: List[TagRef] = []
     subscribed_at: datetime
     unsubscribed_at: Optional[datetime] = None
     created_at: datetime
@@ -71,6 +101,14 @@ class ContactOut(Schema):
     def resolve_list_names(obj):
         return [{'id': l.id, 'name': l.name} for l in obj.lists.all()]
 
+    @staticmethod
+    def resolve_tag_ids(obj):
+        return [t.id for t in obj.tags.all()]
+
+    @staticmethod
+    def resolve_tags_detail(obj):
+        return list(obj.tags.all())
+
 
 class ContactIn(Schema):
     email: EmailStr
@@ -81,6 +119,7 @@ class ContactIn(Schema):
     status: str = 'active'
     custom_fields: Dict[str, Any] = {}
     list_ids: List[int] = []
+    tag_ids: List[int] = []
 
 
 class ContactUpdateIn(Schema):
@@ -92,6 +131,7 @@ class ContactUpdateIn(Schema):
     status: Optional[str] = None
     custom_fields: Optional[Dict[str, Any]] = None
     list_ids: Optional[List[int]] = None
+    tag_ids: Optional[List[int]] = None
 
 
 class BulkImportIn(Schema):

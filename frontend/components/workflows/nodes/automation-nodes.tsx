@@ -1,6 +1,6 @@
 'use client'
 import { Handle, Position } from '@xyflow/react'
-import { Zap, GitBranch, Mail, Tag, Webhook, Play, Square, XCircle, ListPlus, ListMinus, LucideIcon } from 'lucide-react'
+import { Zap, GitBranch, Mail, Tag, Webhook, Play, Square, XCircle, ListPlus, ListMinus, X, LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export const TRIGGER_LABELS: Record<string, string> = {
@@ -25,18 +25,32 @@ interface NodeData {
   config: Record<string, any>
   listsById: Record<number, string>
   campaignsById: Record<number, string>
+  onDelete?: () => void
 }
 
 const handleCls = 'bg-muted-foreground! w-2.5! h-2.5!'
 
 function NodeShell({
-  icon: Icon, iconClass, title, subtitle, selected, children,
-}: { icon: LucideIcon; iconClass: string; title: string; subtitle?: string; selected?: boolean; children?: React.ReactNode }) {
+  icon: Icon, iconClass, title, subtitle, selected, onDelete, children,
+}: {
+  icon: LucideIcon; iconClass: string; title: string; subtitle?: string; selected?: boolean
+  onDelete?: () => void; children?: React.ReactNode
+}) {
   return (
     <div className={cn(
-      'w-56 rounded-xl border-2 bg-card shadow-md px-3 py-2.5 cursor-pointer transition-colors',
+      'relative w-56 rounded-xl border-2 bg-card shadow-md px-3 py-2.5 cursor-pointer transition-colors',
       selected ? 'border-primary' : 'border-border'
     )}>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDelete() }}
+          title="Delete node"
+          className="nodrag absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 rounded-full border bg-card text-muted-foreground shadow-sm hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-colors"
+        >
+          <X size={11} />
+        </button>
+      )}
       <div className="flex items-center gap-2">
         <div className={cn('flex items-center justify-center w-7 h-7 rounded-lg shrink-0', iconClass)}>
           <Icon size={14} />
@@ -64,7 +78,7 @@ export function TriggerNode({ data, selected }: { data: NodeData; selected?: boo
   return (
     <>
       <NodeShell icon={Zap} iconClass="bg-primary/15 text-primary" title="Trigger"
-        subtitle={triggerSubtitle(data.config || {}, data)} selected={selected} />
+        subtitle={triggerSubtitle(data.config || {}, data)} selected={selected} onDelete={data.onDelete} />
       <Handle type="source" position={Position.Bottom} id="output" className={cn(handleCls, 'bg-primary!')} />
     </>
   )
@@ -81,7 +95,7 @@ export function ConditionNode({ data, selected }: { data: NodeData; selected?: b
     <>
       <Handle type="target" position={Position.Top} id="input" className={handleCls} />
       <NodeShell icon={GitBranch} iconClass="bg-amber-500/15 text-amber-600" title="If / Else"
-        subtitle={conditionSubtitle(data.config || {}, data)} selected={selected}>
+        subtitle={conditionSubtitle(data.config || {}, data)} selected={selected} onDelete={data.onDelete}>
         <div className="flex justify-between mt-2 text-[11px] font-semibold px-1">
           <span className="text-green-600">Yes</span>
           <span className="text-red-600">No</span>
@@ -113,17 +127,17 @@ export function ActionNode({ data, selected }: { data: NodeData; selected?: bool
     <>
       <Handle type="target" position={Position.Top} id="input" className={handleCls} />
       <NodeShell icon={meta.icon} iconClass="bg-blue-500/15 text-blue-600" title={meta.label}
-        subtitle={actionSubtitle(cfg, data)} selected={selected} />
+        subtitle={actionSubtitle(cfg, data)} selected={selected} onDelete={data.onDelete} />
       <Handle type="source" position={Position.Bottom} id="output" className={cn(handleCls, 'bg-blue-600!')} />
     </>
   )
 }
 
-export function EndNode({ selected }: { selected?: boolean }) {
+export function EndNode({ data, selected }: { data: NodeData; selected?: boolean }) {
   return (
     <>
       <Handle type="target" position={Position.Top} id="input" className={handleCls} />
-      <NodeShell icon={XCircle} iconClass="bg-muted text-muted-foreground" title="End Workflow" selected={selected} />
+      <NodeShell icon={XCircle} iconClass="bg-muted text-muted-foreground" title="End Workflow" selected={selected} onDelete={data.onDelete} />
     </>
   )
 }

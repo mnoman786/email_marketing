@@ -77,7 +77,7 @@ def inject_tracking(html, campaign, sendlog_id, base_url=None):
 
 def build_email_message(smtp_account, to_email, subject, html_content, text_content='',
                          from_name=None, from_email=None, reply_to=None, message_id=None, in_reply_to=None,
-                         attachments=None):
+                         attachments=None, unsubscribe_url=None):
     """Build a MIME email message. `attachments` is an optional list of
     (filename, content_bytes, content_type) tuples."""
     msg = MIMEMultipart('mixed') if attachments else MIMEMultipart('alternative')
@@ -95,6 +95,12 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
     if in_reply_to:
         msg['In-Reply-To'] = in_reply_to
         msg['References'] = in_reply_to
+    if unsubscribe_url:
+        # RFC 2369 + RFC 8058: gives Gmail/Outlook/etc. a native "Unsubscribe"
+        # button that POSTs straight to our one-click endpoint, no page visit.
+        sender_email = from_email or smtp_account.from_email
+        msg['List-Unsubscribe'] = f'<mailto:{sender_email}?subject=unsubscribe>, <{unsubscribe_url}>'
+        msg['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
 
     if attachments:
         body = MIMEMultipart('alternative')
@@ -360,6 +366,11 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     if sendlog_id and (campaign.track_opens or campaign.track_clicks):
         html = inject_tracking(html, campaign, sendlog_id, base_url=tracking_base_url)
 
+    # Unsubscribe link — required for CAN-SPAM/GDPR compliance, so this runs
+    # regardless of the campaign's open/click tracking settings.
+    from apps.contacts.unsubscribe import unsubscribe_url as build_unsubscribe_url
+    unsub_url = build_unsubscribe_url(contact, tracking_base_url or getattr(settings, 'SITE_URL', 'http://localhost:8000'))
+
     message_id = make_message_id(sendlog_id, campaign.from_email) if sendlog_id else None
 
     for attempt in range(max_retries):
@@ -383,6 +394,13 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
         html_with_sig = f'{html}<br><br>{sig}' if sig.strip() else html
         text_with_sig = f'{text}\n\n{sig}' if sig.strip() else text
 
+        unsub_footer_html = (
+            f'<p style="font-size:11px;color:#888;margin-top:16px;">'
+            f'Don\'t want these emails? <a href="{unsub_url}" style="color:#888;">Unsubscribe</a></p>'
+        )
+        html_with_sig += unsub_footer_html
+        text_with_sig += f'\n\nUnsubscribe: {unsub_url}'
+
         msg = build_email_message(
             smtp_account=smtp_account,
             to_email=contact.email,
@@ -393,6 +411,7 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
             from_email=campaign.from_email or None,
             reply_to=campaign.reply_to or None,
             message_id=message_id,
+            unsubscribe_url=unsub_url,
         )
 
         if conn_cache is not None:

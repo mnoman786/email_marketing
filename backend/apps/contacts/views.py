@@ -6,7 +6,9 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
 from typing import Optional, List
-from .models import ContactList, Contact, Suppression, suppress_email
+from django.http import HttpResponse
+from .models import ContactList, Contact, Tag, Suppression, suppress_email
+from .unsubscribe import verify_unsubscribe_token
 from .buckets import (
     bucket_filter, bucket_counts,
     VERIFICATION_BUCKETS as _VERIFICATION_BUCKETS,
@@ -14,6 +16,7 @@ from .buckets import (
 from .schemas import (
     ContactListOut, ContactListIn, ContactListUpdateIn,
     ContactOut, ContactIn, ContactUpdateIn,
+    TagOut, TagIn, TagUpdateIn,
     BulkImportIn, BulkImportOut, BulkDeleteIn, AddRemoveContactsIn,
     BulkImportStartOut, ImportStatusOut,
     SuppressionOut, SuppressionIn, SuppressionDeleteIn,
@@ -66,7 +69,7 @@ def list_contacts_in_list(request, list_id: int):
     contact_list = get_object_or_404(ContactList, id=list_id, user=request.auth)
     return Contact.objects.filter(
         user=request.auth, lists=contact_list
-    ).prefetch_related('lists').order_by('-created_at')
+    ).prefetch_related('lists', 'tags').order_by('-created_at')
 
 
 @router.post('/lists/{list_id}/add-contacts/', auth=auth)
@@ -82,6 +85,52 @@ def remove_contacts_from_list(request, list_id: int, data: AddRemoveContactsIn):
     contact_list = get_object_or_404(ContactList, id=list_id, user=request.auth)
     contacts = Contact.objects.filter(user=request.auth, id__in=data.contact_ids)
     contact_list.contacts.remove(*contacts)
+    return {'removed': contacts.count()}
+
+
+# --- Tags ---
+
+@router.get('/tags/', response=List[TagOut], auth=auth)
+def list_tags(request):
+    return list(Tag.objects.filter(user=request.auth).prefetch_related('contacts'))
+
+
+@router.post('/tags/', response=TagOut, auth=auth)
+def create_tag(request, data: TagIn):
+    tag, _ = Tag.objects.get_or_create(
+        user=request.auth, name=data.name, defaults={'color': data.color}
+    )
+    return tag
+
+
+@router.patch('/tags/{tag_id}/', response=TagOut, auth=auth)
+def update_tag(request, tag_id: int, data: TagUpdateIn):
+    tag = get_object_or_404(Tag, id=tag_id, user=request.auth)
+    for field, value in data.dict(exclude_none=True).items():
+        setattr(tag, field, value)
+    tag.save()
+    return tag
+
+
+@router.delete('/tags/{tag_id}/', auth=auth)
+def delete_tag(request, tag_id: int):
+    get_object_or_404(Tag, id=tag_id, user=request.auth).delete()
+    return {'detail': 'Deleted.'}
+
+
+@router.post('/tags/{tag_id}/add-contacts/', auth=auth)
+def add_contacts_to_tag(request, tag_id: int, data: AddRemoveContactsIn):
+    tag = get_object_or_404(Tag, id=tag_id, user=request.auth)
+    contacts = Contact.objects.filter(user=request.auth, id__in=data.contact_ids)
+    tag.contacts.add(*contacts)
+    return {'added': contacts.count()}
+
+
+@router.post('/tags/{tag_id}/remove-contacts/', auth=auth)
+def remove_contacts_from_tag(request, tag_id: int, data: AddRemoveContactsIn):
+    tag = get_object_or_404(Tag, id=tag_id, user=request.auth)
+    contacts = Contact.objects.filter(user=request.auth, id__in=data.contact_ids)
+    tag.contacts.remove(*contacts)
     return {'removed': contacts.count()}
 
 
@@ -101,9 +150,10 @@ def list_contacts(
     verification_status: Optional[str] = None,
     verification: Optional[str] = None,
     list_id: Optional[int] = None,
+    tag_id: Optional[int] = None,
     search: Optional[str] = None,
 ):
-    qs = Contact.objects.filter(user=request.auth).prefetch_related('lists')
+    qs = Contact.objects.filter(user=request.auth).prefetch_related('lists', 'tags')
     if status:
         qs = qs.filter(status=status)
     if verification_status:
@@ -114,6 +164,8 @@ def list_contacts(
         qs = qs.filter(_bucket_filter(verification))
     if list_id:
         qs = qs.filter(lists__id=list_id)
+    if tag_id:
+        qs = qs.filter(tags__id=tag_id)
     if search:
         qs = qs.filter(
             Q(email__icontains=search) | Q(first_name__icontains=search) |
@@ -151,7 +203,8 @@ def create_contact(request, data: ContactIn):
     from .verification import verify_email_detailed
 
     list_ids = data.list_ids
-    payload = data.dict(exclude={'list_ids'})
+    tag_ids = data.tag_ids
+    payload = data.dict(exclude={'list_ids', 'tag_ids'})
     payload['user'] = request.auth
 
     # Idempotent on (user, email): re-adding someone you already have (e.g. from
@@ -184,6 +237,8 @@ def create_contact(request, data: ContactIn):
 
     if list_ids:
         contact.lists.add(*ContactList.objects.filter(user=request.auth, id__in=list_ids))
+    if tag_ids:
+        contact.tags.add(*Tag.objects.filter(user=request.auth, id__in=tag_ids))
     return contact
 
 
@@ -298,6 +353,60 @@ def delete_suppressions(request, data: SuppressionDeleteIn):
     return {'deleted': deleted}
 
 
+def _unsubscribe_page(body_html):
+    return HttpResponse(
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<title>Unsubscribe</title></head>'
+        '<body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'
+        'display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f7f7f8;">'
+        '<div style="max-width:420px;padding:32px;background:#fff;border-radius:12px;'
+        'box-shadow:0 1px 3px rgba(0,0,0,0.1);text-align:center;">'
+        f'{body_html}'
+        '</div></body></html>',
+        content_type='text/html',
+    )
+
+
+def _do_unsubscribe(contact):
+    if contact.status != 'unsubscribed':
+        contact.status = 'unsubscribed'
+        contact.unsubscribed_at = timezone.now()
+        contact.save(update_fields=['status', 'unsubscribed_at'])
+    suppress_email(contact.user, contact.email, reason='unsubscribed')
+
+
+@router.get('/unsubscribe/{token}/', auth=None, include_in_schema=False)
+def unsubscribe_confirm(request, token: str):
+    """Shows a confirmation page rather than unsubscribing on GET — link
+    scanners/proxies (e.g. corporate email security, Outlook Safe Links)
+    prefetch every link in an email, which would silently unsubscribe
+    everyone if a bare GET were enough. The actual opt-out happens on POST."""
+    contact = verify_unsubscribe_token(token)
+    if not contact:
+        return _unsubscribe_page('<p>This unsubscribe link is invalid or has expired.</p>')
+    if contact.status == 'unsubscribed':
+        return _unsubscribe_page(f'<p><strong>{contact.email}</strong> is already unsubscribed.</p>')
+    return _unsubscribe_page(
+        f'<p>Unsubscribe <strong>{contact.email}</strong> from future emails?</p>'
+        f'<form method="post" action="/api/contacts/unsubscribe/{token}/">'
+        '<button type="submit" style="margin-top:12px;padding:10px 20px;border:none;border-radius:8px;'
+        'background:#111;color:#fff;font-size:14px;cursor:pointer;">Unsubscribe me</button>'
+        '</form>'
+    )
+
+
+@router.post('/unsubscribe/{token}/', auth=None, include_in_schema=False)
+def unsubscribe_submit(request, token: str):
+    """Also what List-Unsubscribe-Post one-click unsubscribe (RFC 8058) hits
+    directly from the mail client's native 'Unsubscribe' button, no page visit."""
+    contact = verify_unsubscribe_token(token)
+    if not contact:
+        return _unsubscribe_page('<p>This unsubscribe link is invalid or has expired.</p>')
+    _do_unsubscribe(contact)
+    return _unsubscribe_page(f'<p><strong>{contact.email}</strong> has been unsubscribed and won’t receive further emails.</p>')
+
+
 # Dynamic /{contact_id}/ routes after all static paths
 @router.get('/{contact_id}/', response=ContactOut, auth=auth)
 def get_contact(request, contact_id: int):
@@ -309,6 +418,7 @@ def update_contact(request, contact_id: int, data: ContactUpdateIn):
     contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
     payload = data.dict(exclude_none=True)
     list_ids = payload.pop('list_ids', None)
+    tag_ids = payload.pop('tag_ids', None)
     for field, value in payload.items():
         setattr(contact, field, value)
     contact.save()
@@ -317,6 +427,8 @@ def update_contact(request, contact_id: int, data: ContactUpdateIn):
         suppress_email(request.auth, contact.email, reason=payload['status'])
     if list_ids is not None:
         contact.lists.set(ContactList.objects.filter(user=request.auth, id__in=list_ids))
+    if tag_ids is not None:
+        contact.tags.set(Tag.objects.filter(user=request.auth, id__in=tag_ids))
     return contact
 
 

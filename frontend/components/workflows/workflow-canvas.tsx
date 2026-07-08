@@ -1,10 +1,10 @@
 'use client'
 import '@xyflow/react/dist/style.css'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, addEdge,
   useNodesState, useEdgesState, Panel,
-  type Node, type Edge, type Connection, type NodeTypes,
+  type Node, type Edge, type Connection, type NodeTypes, type EdgeTypes,
 } from '@xyflow/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
@@ -13,29 +13,18 @@ import { Workflow, ContactList, CampaignListItem } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import {
-  ArrowLeft, Save, Zap, GitBranch, ListPlus, ListMinus, Play, Square, Tag, Webhook, XCircle,
-} from 'lucide-react'
+import { ArrowLeft, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { NODE_TYPES } from './nodes/automation-nodes'
+import { EDGE_TYPES } from './nodes/deletable-edge'
+import { SHORTCUTS } from './nodes/shortcuts'
 import { NodeEditDialog } from './node-edit-dialog'
 
 const nodeTypes: NodeTypes = NODE_TYPES as any
+const edgeTypes: EdgeTypes = EDGE_TYPES as any
 
 let tempIdCounter = 0
 const nextTempId = () => `new-${Date.now()}-${tempIdCounter++}`
-
-const SHORTCUTS: { kind: 'trigger' | 'condition' | 'end' | 'action'; actionType?: string; label: string; icon: any }[] = [
-  { kind: 'trigger', label: 'Trigger', icon: Zap },
-  { kind: 'condition', label: 'Condition (If/Else)', icon: GitBranch },
-  { kind: 'action', actionType: 'add_to_list', label: 'Add to List', icon: ListPlus },
-  { kind: 'action', actionType: 'remove_from_list', label: 'Remove from List', icon: ListMinus },
-  { kind: 'action', actionType: 'start_sequence', label: 'Start Sequence', icon: Play },
-  { kind: 'action', actionType: 'stop_sequence', label: 'Stop Sequence', icon: Square },
-  { kind: 'action', actionType: 'update_contact_status', label: 'Update Status', icon: Tag },
-  { kind: 'action', actionType: 'webhook', label: 'Send Webhook', icon: Webhook },
-  { kind: 'end', label: 'End Workflow', icon: XCircle },
-]
 
 function toRFNodes(workflow: Workflow, listsById: Record<number, string>, campaignsById: Record<number, string>): Node[] {
   return workflow.nodes.map(n => ({
@@ -52,6 +41,8 @@ function toRFEdges(workflow: Workflow): Edge[] {
     source: String(e.source_node),
     target: String(e.target_node),
     sourceHandle: e.label || undefined,
+    targetHandle: 'input',
+    type: 'deletable',
     label: e.label === 'yes' ? 'Yes' : e.label === 'no' ? 'No' : undefined,
     style: e.label === 'yes' ? { stroke: '#16a34a' } : e.label === 'no' ? { stroke: '#dc2626' } : undefined,
   }))
@@ -70,8 +61,27 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
   const listsById = useMemo(() => Object.fromEntries(lists.map(l => [l.id, l.name])), [lists])
   const campaignsById = useMemo(() => Object.fromEntries(campaigns.map(c => [c.id, c.name])), [campaigns])
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(toRFNodes(workflow, listsById, campaignsById))
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(workflow))
+  // Stable trampoline: edges call insertNodeOnEdgeRef.current(...) at click time,
+  // so an edge created on mount still reaches the *current* insertNodeOnEdge
+  // closure (with up-to-date nodes/edges) instead of the one from creation time.
+  const insertNodeOnEdgeRef = useRef<(edgeId: string, kind: string, actionType?: string) => void>(() => {})
+  const withInsertHandler = useCallback((edge: Edge): Edge => ({
+    ...edge,
+    data: { ...edge.data, onInsert: (kind: string, actionType?: string) => insertNodeOnEdgeRef.current(edge.id, kind, actionType) },
+  }), [])
+
+  // Same "latest ref" trampoline for the node delete button (X in the corner
+  // of every node card) — see deleteNode below.
+  const deleteNodeRef = useRef<(nodeId: string) => void>(() => {})
+  const withDeleteHandler = useCallback((node: Node): Node => ({
+    ...node,
+    data: { ...node.data, onDelete: () => deleteNodeRef.current(node.id) },
+  }), [])
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(
+    toRFNodes(workflow, listsById, campaignsById).map(withDeleteHandler)
+  )
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(workflow).map(withInsertHandler))
   const [name, setName] = useState(workflow.name)
   const [isActive, setIsActive] = useState(workflow.is_active)
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
@@ -81,22 +91,79 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
   const onConnect = useCallback((connection: Connection) => {
     const isYes = connection.sourceHandle === 'yes'
     const isNo = connection.sourceHandle === 'no'
-    setEdges(eds => addEdge({
+    const edgeId = nextTempId()
+    setEdges(eds => addEdge(withInsertHandler({
       ...connection,
+      id: edgeId,
+      type: 'deletable',
       label: isYes ? 'Yes' : isNo ? 'No' : undefined,
       style: isYes ? { stroke: '#16a34a' } : isNo ? { stroke: '#dc2626' } : undefined,
-    }, eds))
-  }, [setEdges])
+    } as Edge), eds))
+  }, [setEdges, withInsertHandler])
 
   const addNode = (kind: string, actionType?: string) => {
     const id = nextTempId()
     const offset = nodes.length * 40
     const config = kind === 'action' ? { action_type: actionType } : {}
-    setNodes(nds => [...nds, {
+    setNodes(nds => [...nds, withDeleteHandler({
       id, type: kind, position: { x: 300 + (offset % 400), y: 80 + offset },
       data: { config, listsById, campaignsById },
-    }])
+    })])
   }
+
+  // Removes a node and any edges attached to it — used by both the node's own
+  // corner X button and the "Delete Node" button inside its edit dialog.
+  const deleteNode = useCallback((nodeId: string) => {
+    setNodes(nds => nds.filter(n => n.id !== nodeId))
+    setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId))
+    setEditingNodeId(current => (current === nodeId ? null : current))
+  }, [setNodes, setEdges])
+
+  deleteNodeRef.current = deleteNode
+
+  // Splits an existing edge in two around a freshly-created node: source -> new
+  // node -> old target. A newly inserted 'action' node passes straight through
+  // (single output handle); 'condition'/'end' nodes don't get an auto-generated
+  // continuation edge since they either need an explicit Yes/No choice or have
+  // no outgoing handle at all — the user wires those up manually.
+  //
+  // Reads `edges`/`nodes` directly (not the setState-updater form) and calls
+  // setNodes/setEdges exactly once each, at the top level — never nested inside
+  // one another. Strict Mode double-invokes updater *functions* to check they're
+  // pure, and a setNodes call nested inside a setEdges updater is a side effect
+  // that genuinely re-fires on that second invocation, which duplicated the node.
+  const insertNodeOnEdge = useCallback((edgeId: string, kind: string, actionType?: string) => {
+    const edge = edges.find(e => e.id === edgeId)
+    if (!edge) return
+
+    const newNodeId = nextTempId()
+    const config = kind === 'action' ? { action_type: actionType } : {}
+    const sourceNode = nodes.find(n => n.id === edge.source)
+    const targetNode = nodes.find(n => n.id === edge.target)
+    const midX = sourceNode && targetNode ? (sourceNode.position.x + targetNode.position.x) / 2 : 300
+    const midY = sourceNode && targetNode ? (sourceNode.position.y + targetNode.position.y) / 2 : 200
+
+    setNodes(nds => [...nds, withDeleteHandler({
+      id: newNodeId, type: kind, position: { x: midX, y: midY }, data: { config, listsById, campaignsById },
+    })])
+
+    const firstHalf = withInsertHandler({
+      ...edge, id: nextTempId(), target: newNodeId, targetHandle: 'input',
+    })
+    const rest = edges.filter(e => e.id !== edgeId)
+    if (kind !== 'action') {
+      setEdges([...rest, firstHalf])
+      return
+    }
+
+    const secondHalf = withInsertHandler({
+      id: nextTempId(), source: newNodeId, sourceHandle: 'output',
+      target: edge.target, targetHandle: edge.targetHandle, type: 'deletable',
+    } as Edge)
+    setEdges([...rest, firstHalf, secondHalf])
+  }, [edges, nodes, setEdges, setNodes, withInsertHandler, withDeleteHandler, listsById, campaignsById])
+
+  insertNodeOnEdgeRef.current = insertNodeOnEdge
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -122,6 +189,12 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* React Flow renders edge labels (our +/X buttons + insert menu) in a
+          layer that sits below the nodes layer in the DOM with no z-index of
+          its own, so a nearby node always paints over it. Documented React
+          Flow quirk — bumping this above the (implicit, unset) nodes z-index
+          fixes it globally for this canvas. */}
+      <style>{`.react-flow__edgelabel-renderer { z-index: 1000; }`}</style>
       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-card">
         <div className="flex items-center gap-3 min-w-0">
           <Button variant="ghost" size="icon-sm" onClick={() => router.push('/workflows')}>
@@ -149,15 +222,19 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
           onConnect={onConnect}
           onNodeClick={(_, node) => setEditingNodeId(node.id)}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           fitView
           proOptions={{ hideAttribution: true }}
         >
           <Background />
           <Controls />
           <MiniMap pannable zoomable className="bg-card!" />
-          <Panel position="top-right">
-            <div className="rounded-xl border bg-card shadow-sm p-3 w-56 space-y-1">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Shortcuts</p>
+          <Panel position="top-right" className="mr-2 mt-2">
+            <div className="rounded-xl border bg-card shadow-sm p-3 w-60 space-y-1">
+              <p className="text-xs font-semibold text-muted-foreground">Shortcuts</p>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Click to drop a node on the canvas, then drag from the dot on one node to another to connect them.
+              </p>
               {SHORTCUTS.map((s, i) => (
                 <button
                   key={i}
@@ -183,10 +260,7 @@ function CanvasInner({ workflow, lists, campaigns }: Props) {
         onSave={(config) => {
           setNodes(nds => nds.map(n => n.id === editingNodeId ? { ...n, data: { ...n.data, config } } : n))
         }}
-        onDelete={() => {
-          setNodes(nds => nds.filter(n => n.id !== editingNodeId))
-          setEdges(eds => eds.filter(e => e.source !== editingNodeId && e.target !== editingNodeId))
-        }}
+        onDelete={() => editingNodeId && deleteNode(editingNodeId)}
       />
     </div>
   )
