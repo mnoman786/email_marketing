@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
+import { TablePagination } from '@/components/shared/table-pagination'
 import { formatDateTime, cn } from '@/lib/utils'
 import { Plus, Trash2, Users, Pencil, ListFilter } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -34,13 +35,14 @@ export default function ListsPage() {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('newest')
+  const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editList, setEditList] = useState<ContactList | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['lists', { search }],
-    queryFn: () => listsApi.getAll({ search }).then(r => r.data as PaginatedResponse<ContactList>),
+    queryKey: ['lists', { search, page }],
+    queryFn: () => listsApi.getAll({ search, page }).then(r => r.data as PaginatedResponse<ContactList>),
   })
 
   const deleteMut = useMutation({
@@ -80,7 +82,7 @@ export default function ListsPage() {
         <SearchInput
           placeholder="Search lists..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
           wrapperClassName="max-w-sm flex-1 min-w-48"
         />
         <NativeSelect
@@ -171,6 +173,16 @@ export default function ListsPage() {
             )
           })}
         </div>
+      )}
+
+      {(data?.count || 0) > 20 && (
+        <TablePagination
+          page={page}
+          pageSize={20}
+          total={data?.count || 0}
+          onPageChange={setPage}
+          className="border rounded-xl bg-card"
+        />
       )}
 
       <ListFormDialog

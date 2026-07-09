@@ -35,7 +35,7 @@ function AnalyticsContent() {
     queryFn: () => analyticsApi.logs({
       search,
       status: status || undefined,
-      campaign: campaign || undefined,
+      campaign_id: campaign || undefined,
       page,
     }).then(r => r.data as PaginatedResponse<SendLog>),
     refetchInterval: 15000,
