@@ -17,7 +17,7 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
-  Plus, Trash2, Pencil, Users, ShieldCheck, ListFilter, X
+  Plus, Trash2, Pencil, Users, ListFilter, X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
@@ -85,14 +85,6 @@ function ContactsContent() {
         toast.success(`${deleted} leads deleted`)
       }
       setSelected([])
-    },
-  })
-
-  const verifyOneMut = useMutation({
-    mutationFn: (id: number) => contactsApi.verify(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contacts'] })
-      toast.success('Lead re-verified')
     },
   })
 
@@ -244,12 +236,10 @@ function ContactsContent() {
                       <TD className="text-muted-foreground">{contact.company || '—'}</TD>
                       <TD>
                         {contact.list_names.length > 0 ? (
-                          <div className="flex gap-1 flex-wrap max-w-40">
-                            {contact.list_names.slice(0, 2).map(l => (
-                              <span key={`l-${l.id}`} className="badge bg-muted text-muted-foreground text-xs">{l.name}</span>
-                            ))}
-                            {contact.list_names.length > 2 && (
-                              <span className="badge bg-muted text-muted-foreground text-xs">+{contact.list_names.length - 2}</span>
+                          <div className="flex gap-1 flex-nowrap items-center max-w-40">
+                            <span className="badge bg-muted text-muted-foreground text-xs truncate min-w-0">{contact.list_names[0].name}</span>
+                            {contact.list_names.length > 1 && (
+                              <span className="badge bg-muted text-muted-foreground text-xs shrink-0">+{contact.list_names.length - 1}</span>
                             )}
                           </div>
                         ) : (
@@ -258,17 +248,17 @@ function ContactsContent() {
                       </TD>
                       <TD>
                         {contact.tags_detail.length > 0 ? (
-                          <div className="flex gap-1 flex-wrap max-w-40">
-                            {contact.tags_detail.slice(0, 2).map(t => {
-                              const badge = getTagBadgeProps(t.color)
+                          <div className="flex gap-1 flex-nowrap items-center max-w-40">
+                            {(() => {
+                              const badge = getTagBadgeProps(contact.tags_detail[0].color)
                               return (
-                                <span key={`t-${t.id}`} className={cn('text-xs', badge.className)} style={badge.style}>
-                                  {t.name}
+                                <span className={cn('text-xs truncate min-w-0', badge.className)} style={badge.style}>
+                                  {contact.tags_detail[0].name}
                                 </span>
                               )
-                            })}
-                            {contact.tags_detail.length > 2 && (
-                              <span className="badge bg-muted text-muted-foreground text-xs">+{contact.tags_detail.length - 2}</span>
+                            })()}
+                            {contact.tags_detail.length > 1 && (
+                              <span className="badge bg-muted text-muted-foreground text-xs shrink-0">+{contact.tags_detail.length - 1}</span>
                             )}
                           </div>
                         ) : (
@@ -281,15 +271,6 @@ function ContactsContent() {
                       <TD className="text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(contact.created_at)}</TD>
                       <TD>
                         <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            title="Re-verify email"
-                            loading={verifyOneMut.isPending && verifyOneMut.variables === contact.id}
-                            onClick={() => verifyOneMut.mutate(contact.id)}
-                          >
-                            <ShieldCheck size={14} />
-                          </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"

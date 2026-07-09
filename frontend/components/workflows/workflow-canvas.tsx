@@ -234,6 +234,7 @@ function CanvasInner({ workflow, lists, campaigns, tags }: Props) {
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
+          fitViewOptions={{ maxZoom: 1 }}
           proOptions={{ hideAttribution: true }}
         >
           <Background />

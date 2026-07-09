@@ -11,7 +11,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts'
-import { Users, Megaphone, Mail, Server, TrendingUp, Laptop } from 'lucide-react'
+import { Users, Megaphone, Mail, Server, TrendingUp, Laptop, Workflow } from 'lucide-react'
 import Link from 'next/link'
 
 const COLORS = ['#573cdd', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
@@ -230,7 +230,7 @@ export default function DashboardPage() {
         {[
           { href: '/campaigns', label: 'Create Campaign', desc: 'Launch a new email campaign', icon: Megaphone, color: 'from-blue-500 to-blue-600' },
           { href: '/leads', label: 'Import Leads', desc: 'Add leads to your lists', icon: Users, color: 'from-green-500 to-green-600' },
-          { href: '/templates', label: 'New Template', desc: 'Design a reusable template', icon: Mail, color: 'from-purple-500 to-purple-600' },
+          { href: '/workflows', label: 'Build Workflow', desc: 'Automate lead follow-up', icon: Workflow, color: 'from-purple-500 to-purple-600' },
         ].map(a => (
           <Link key={a.href} href={a.href}>
             <Card className="card-hover cursor-pointer overflow-hidden">

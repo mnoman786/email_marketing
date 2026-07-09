@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CampaignForm } from '@/components/campaigns/campaign-form'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Megaphone, ArrowRight } from 'lucide-react'
@@ -29,7 +29,7 @@ export default function NewCampaignPage() {
           <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
             <Megaphone size={22} />
           </div>
-          <h2 className="text-lg font-semibold">Let’s create a new campaign</h2>
+          <DialogTitle className="text-lg font-semibold">Let’s create a new campaign</DialogTitle>
           <p className="text-sm text-muted-foreground mt-1">
             Give your campaign a name to get started — you can change it any time.
           </p>
