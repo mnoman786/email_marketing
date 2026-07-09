@@ -20,6 +20,14 @@ import toast from 'react-hot-toast'
 // (from the color picker below) are handled separately via getTagBadgeProps.
 export const TAG_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'blue', 'purple'] as const
 
+/** Pick a random preset color — used when a tag is created inline (e.g. from the
+ * contact form's tag input) so quick tags get a pleasant color instead of all
+ * defaulting to gray. Skips 'gray' so the result always reads as "colored". */
+export function randomTagColor(): string {
+  const colorful = TAG_COLORS.filter(c => c !== 'gray')
+  return colorful[Math.floor(Math.random() * colorful.length)]
+}
+
 export const TAG_COLOR_CLASSES: Record<string, string> = {
   gray: 'badge-gray',
   red: 'badge-red',

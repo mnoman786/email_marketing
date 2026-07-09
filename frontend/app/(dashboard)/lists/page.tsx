@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listsApi } from '@/lib/api'
 import { ContactList, PaginatedResponse } from '@/lib/types'
@@ -15,6 +16,7 @@ import { ListFormDialog } from '@/components/contacts/list-form-dialog'
 
 export default function ListsPage() {
   const qc = useQueryClient()
+  const router = useRouter()
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editList, setEditList] = useState<ContactList | null>(null)
@@ -72,7 +74,12 @@ export default function ListsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {lists.map(list => (
-            <div key={list.id} className="rounded-xl border bg-card p-5 card-hover">
+            <div
+              key={list.id}
+              className="rounded-xl border bg-card p-5 card-hover cursor-pointer"
+              onClick={() => router.push(`/leads?list_id=${list.id}`)}
+              title={`View leads in "${list.name}"`}
+            >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -85,7 +92,7 @@ export default function ListsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                   <Button
                     variant="ghost"
                     size="icon-sm"

@@ -1,14 +1,14 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { contactsApi } from '@/lib/api'
-import { Contact, PaginatedResponse } from '@/lib/types'
+import { contactsApi, listsApi } from '@/lib/api'
+import { Contact, ContactList, PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { SearchInput } from '@/components/ui/search-input'
 import { NativeSelect } from '@/components/ui/native-select'
 import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
-import { StatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
@@ -17,15 +17,21 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
-  Plus, Trash2, MoreHorizontal, Users, ShieldCheck
+  Plus, Trash2, Pencil, Users, ShieldCheck, ListFilter, X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
+import { ContactViewDialog } from '@/components/contacts/contact-view-dialog'
 import { VerificationDot, SpamRiskBadge } from '@/components/contacts/verification-badges'
 import { getTagBadgeProps } from '@/components/contacts/tag-form-dialog'
 
-export default function ContactsPage() {
+function ContactsContent() {
   const qc = useQueryClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const listIdParam = searchParams.get('list_id')
+  const listId = listIdParam ? Number(listIdParam) : undefined
+
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
@@ -33,11 +39,26 @@ export default function ContactsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editContact, setEditContact] = useState<Contact | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [viewContact, setViewContact] = useState<Contact | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['contacts', { search, status, page }],
-    queryFn: () => contactsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<Contact>),
+    queryKey: ['contacts', { search, status, page, listId }],
+    queryFn: () => contactsApi.getAll({ search, status: status || undefined, list_id: listId, page }).then(r => r.data as PaginatedResponse<Contact>),
   })
+
+  // Resolve the filtered list's name for the "Filtered by" chip below.
+  const { data: filterList } = useQuery({
+    queryKey: ['list', listId],
+    queryFn: () => listsApi.get(listId as number).then(r => r.data as ContactList),
+    enabled: !!listId,
+  })
+
+  const clearListFilter = () => router.push('/leads')
+
+  // Jumping in from a different list (or clearing the filter) should always
+  // land on page 1 — a stale page number from the previous list's pagination
+  // could otherwise point past the end of the new, smaller result set.
+  useEffect(() => { setPage(1) }, [listId])
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => contactsApi.delete(id),
@@ -102,6 +123,25 @@ export default function ContactsPage() {
         </div>
       </div>
 
+      {/* Active list filter, set by clicking a list on the Lists page */}
+      {listId && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Filtered by list:</span>
+          <span className="inline-flex items-center gap-1.5 badge bg-primary/10 text-primary border-primary/20">
+            <ListFilter size={12} />
+            {filterList?.name || '…'}
+            <button
+              type="button"
+              onClick={clearListFilter}
+              className="rounded-full p-0.5 hover:bg-primary/20 transition-colors"
+              aria-label="Clear list filter"
+            >
+              <X size={11} strokeWidth={2.5} />
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">
         <SearchInput
@@ -126,7 +166,7 @@ export default function ContactsPage() {
       <TableContainer>
         {isLoading ? (
           <div className="p-6">
-            <TableSkeleton rows={6} cols={5} />
+            <TableSkeleton rows={6} cols={6} />
           </div>
         ) : isError ? (
           <ErrorState description="Could not load your leads. Check your connection and try again." onRetry={() => refetch()} />
@@ -153,8 +193,8 @@ export default function ContactsPage() {
                     </TH>
                     <TH>Name / Email</TH>
                     <TH>Company</TH>
-                    <TH>Lists / Tags</TH>
-                    <TH>Status</TH>
+                    <TH>Lists</TH>
+                    <TH>Tags</TH>
                     <TH>Spam risk</TH>
                     <TH>Added</TH>
                     <TH className="w-16" />
@@ -162,7 +202,12 @@ export default function ContactsPage() {
                 </TableHead>
                 <TableBody>
                   {contacts.map(contact => (
-                    <TR key={contact.id} selected={selected.includes(contact.id)}>
+                    <TR
+                      key={contact.id}
+                      selected={selected.includes(contact.id)}
+                      className="cursor-pointer"
+                      onClick={() => setViewContact(contact)}
+                    >
                       <TD>
                         <Checkbox
                           checked={selected.includes(contact.id)}
@@ -198,32 +243,44 @@ export default function ContactsPage() {
                       </TD>
                       <TD className="text-muted-foreground">{contact.company || '—'}</TD>
                       <TD>
-                        <div className="flex gap-1 flex-wrap max-w-48">
-                          {contact.list_names.slice(0, 2).map(l => (
-                            <span key={`l-${l.id}`} className="badge bg-muted text-muted-foreground text-xs">{l.name}</span>
-                          ))}
-                          {contact.list_names.length > 2 && (
-                            <span className="badge bg-muted text-muted-foreground text-xs">+{contact.list_names.length - 2}</span>
-                          )}
-                          {contact.tags_detail.slice(0, 2).map(t => (
-                            <span key={`t-${t.id}`} className={cn('text-xs', getTagBadgeProps(t.color).className)} style={getTagBadgeProps(t.color).style}>
-                              {t.name}
-                            </span>
-                          ))}
-                          {contact.tags_detail.length > 2 && (
-                            <span className="badge bg-muted text-muted-foreground text-xs">+{contact.tags_detail.length - 2}</span>
-                          )}
-                        </div>
+                        {contact.list_names.length > 0 ? (
+                          <div className="flex gap-1 flex-wrap max-w-40">
+                            {contact.list_names.slice(0, 2).map(l => (
+                              <span key={`l-${l.id}`} className="badge bg-muted text-muted-foreground text-xs">{l.name}</span>
+                            ))}
+                            {contact.list_names.length > 2 && (
+                              <span className="badge bg-muted text-muted-foreground text-xs">+{contact.list_names.length - 2}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TD>
                       <TD>
-                        <StatusBadge status={contact.status} />
+                        {contact.tags_detail.length > 0 ? (
+                          <div className="flex gap-1 flex-wrap max-w-40">
+                            {contact.tags_detail.slice(0, 2).map(t => {
+                              const badge = getTagBadgeProps(t.color)
+                              return (
+                                <span key={`t-${t.id}`} className={cn('text-xs', badge.className)} style={badge.style}>
+                                  {t.name}
+                                </span>
+                              )
+                            })}
+                            {contact.tags_detail.length > 2 && (
+                              <span className="badge bg-muted text-muted-foreground text-xs">+{contact.tags_detail.length - 2}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TD>
                       <TD>
                         <SpamRiskBadge contact={contact} />
                       </TD>
                       <TD className="text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(contact.created_at)}</TD>
                       <TD>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -239,7 +296,7 @@ export default function ContactsPage() {
                             title="Edit lead"
                             onClick={() => { setEditContact(contact); setShowForm(true) }}
                           >
-                            <MoreHorizontal size={14} />
+                            <Pencil size={14} />
                           </Button>
                           <Button
                             variant="ghost"
@@ -276,6 +333,12 @@ export default function ContactsPage() {
       </BulkActionBar>
 
       {/* Dialogs */}
+      <ContactViewDialog
+        open={!!viewContact}
+        onClose={() => setViewContact(null)}
+        contact={viewContact}
+        onEdit={() => { setEditContact(viewContact); setViewContact(null); setShowForm(true) }}
+      />
       <ContactFormDialog
         open={showForm}
         onClose={() => setShowForm(false)}
@@ -293,5 +356,17 @@ export default function ContactsPage() {
         loading={deleteMut.isPending}
       />
     </div>
+  )
+}
+
+export default function ContactsPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6">
+        <TableSkeleton rows={6} cols={6} />
+      </div>
+    }>
+      <ContactsContent />
+    </Suspense>
   )
 }
