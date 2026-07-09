@@ -17,12 +17,23 @@ interface Props {
 
 type Mode = 'file' | 'paste'
 
+// Column order assumed when the pasted/uploaded data has no header row.
+const DEFAULT_HEADERS = ['email', 'first_name', 'last_name', 'phone', 'company']
+
 function parseCsv(text: string) {
   const lines = text.trim().split('\n').filter(Boolean)
-  if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.')
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase())
-  if (!headers.includes('email')) throw new Error('CSV must have an "email" column.')
-  return lines.slice(1).map(line => {
+  if (lines.length === 0) throw new Error('Add at least one lead.')
+
+  // Header row is optional: only treat the first line as a header if it
+  // doesn't look like an email address itself and it actually names an
+  // "email" column — otherwise assume every line is data in the default
+  // email,first_name,last_name,phone,company order.
+  const firstCells = lines[0].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+  const looksLikeHeader = !firstCells[0].includes('@') && firstCells.some(c => c.toLowerCase() === 'email')
+  const headers = looksLikeHeader ? firstCells.map(h => h.toLowerCase()) : DEFAULT_HEADERS
+  const dataLines = looksLikeHeader ? lines.slice(1) : lines
+
+  return dataLines.map(line => {
     const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''))
     return Object.fromEntries(headers.map((h, i) => [h, values[i] || '']))
   }).filter(c => c.email)
@@ -110,9 +121,10 @@ export function ValidationImportDialog({ open, onClose, onCreated }: Props) {
           </div>
 
           <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-            <p className="font-medium mb-1">Required CSV format (first row = headers):</p>
-            <code>email,first_name,last_name,phone,company</code>
-            <p className="mt-2">Each address is checked for real mailbox existence. You review the results, then push the valid ones to your leads.</p>
+            <p className="font-medium mb-1">Format — one lead per line:</p>
+            <code className="block text-foreground">email,first_name,last_name,phone,company</code>
+            <p className="mt-2">Only <span className="font-medium text-foreground">email</span> is required — leave the rest blank or omit the columns entirely. A header row is optional; if your first line isn't an email, it's treated as headers.</p>
+            <p className="mt-1">Each address is checked for real mailbox existence. You review the results, then push the valid ones to your leads.</p>
           </div>
 
           {mode === 'file' && (
@@ -150,11 +162,11 @@ export function ValidationImportDialog({ open, onClose, onCreated }: Props) {
 
           {mode === 'paste' && (
             <div>
-              <Label>CSV Data *</Label>
+              <Label>Leads *</Label>
               <Textarea
                 value={csvText}
                 onChange={e => setCsvText(e.target.value)}
-                placeholder={"email,first_name,last_name\njohn@example.com,John,Doe"}
+                placeholder={'john@example.com,John,Doe\njane@example.com,Jane,Smith'}
                 className="mt-1 font-mono text-xs h-40"
               />
             </div>
