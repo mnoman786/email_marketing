@@ -22,18 +22,40 @@ logger = logging.getLogger(__name__)
 SendResult = namedtuple('SendResult', ['success', 'smtp_account', 'error', 'message_id', 'html', 'text', 'subject'])
 
 
-def pick_smtp_by_weight(smtp_accounts):
-    """Equal-probability random selection from active SMTP accounts."""
+def pick_smtp_account(smtp_accounts):
+    """Equal-probability random selection from active SMTP accounts. There is
+    no weight field on SMTPAccount — every active account has the same odds."""
     active = [s for s in smtp_accounts if s.is_active] if smtp_accounts else []
     return random.choice(active) if active else None
 
 
-def pick_variant_by_weight(variants):
-    """Equal-probability random selection of an active CampaignStepVariant."""
+def pick_variant(variants):
+    """Weighted random selection of an active CampaignStepVariant, honoring
+    each variant's `weight` (Instantly-style A/Z split — e.g. weight traffic
+    toward a control instead of an even split). Weights don't need to sum to
+    100; they're normalized by their total. Equal weights (the model default)
+    behave as a plain equal split, and if every active variant has weight 0
+    this falls back to equal-probability so a misconfigured step still sends.
+    Selection happens per-send, not per-contact, so a resend of the same step
+    can land on a different variant; retries reuse the original
+    SendLog.step_variant instead of re-rolling (see retry_failed_send_task)."""
     if not variants:
         return None
     active = [v for v in variants if v.is_active]
-    return random.choice(active) if active else None
+    if not active:
+        return None
+
+    total_weight = sum(max(v.weight, 0) for v in active)
+    if total_weight <= 0:
+        return random.choice(active)
+
+    r = random.uniform(0, total_weight)
+    cumulative = 0
+    for v in active:
+        cumulative += max(v.weight, 0)
+        if r <= cumulative:
+            return v
+    return active[-1]  # floating-point edge case guard
 
 
 def inject_tracking(html, campaign, sendlog_id, base_url=None):
@@ -378,7 +400,7 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
         if not remaining:
             break
 
-        smtp_account = pick_smtp_by_weight(remaining)
+        smtp_account = pick_smtp_account(remaining)
         if not smtp_account:
             break
 

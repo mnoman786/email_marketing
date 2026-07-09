@@ -188,6 +188,7 @@ export interface CampaignStepVariant {
   html_content: string
   text_content: string
   is_active: boolean
+  weight: number
 }
 
 export interface CampaignStep {

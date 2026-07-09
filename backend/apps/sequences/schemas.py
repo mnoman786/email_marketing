@@ -60,6 +60,7 @@ class CampaignStepVariantOut(Schema):
     html_content: str
     text_content: str
     is_active: bool
+    weight: int
 
     @staticmethod
     def resolve_step(obj):
@@ -72,6 +73,7 @@ class CampaignStepVariantIn(Schema):
     html_content: str = ''
     text_content: str = ''
     is_active: bool = True
+    weight: int = 50
 
 
 class CampaignStepVariantUpdateIn(Schema):
@@ -80,6 +82,7 @@ class CampaignStepVariantUpdateIn(Schema):
     html_content: Optional[str] = None
     text_content: Optional[str] = None
     is_active: Optional[bool] = None
+    weight: Optional[int] = None
 
 
 class CampaignStepOut(Schema):

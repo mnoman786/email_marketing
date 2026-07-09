@@ -56,6 +56,7 @@ interface LocalVariant {
   subject: string
   html_content: string
   text_content: string
+  weight: number
 }
 
 interface LocalTransition {
@@ -104,6 +105,7 @@ function toLocalSteps(steps?: CampaignStep[]): LocalStep[] {
       subject: v.subject,
       html_content: v.html_content,
       text_content: v.text_content,
+      weight: v.weight ?? 50,
     })),
     transitions: (s.transitions || []).map(t => ({
       id: t.id,
@@ -282,12 +284,12 @@ export function CampaignForm({ campaign, initialName }: Props) {
         return {
           ...s,
           variants: [
-            { label: 'A', subject: s.subject, html_content: s.html_content, text_content: s.text_content },
-            { label: 'B', subject: '', html_content: '', text_content: '' },
+            { label: 'A', subject: s.subject, html_content: s.html_content, text_content: s.text_content, weight: 50 },
+            { label: 'B', subject: '', html_content: '', text_content: '', weight: 50 },
           ],
         }
       }
-      return { ...s, variants: [...s.variants, { label: nextVariantLabel(s.variants), subject: '', html_content: '', text_content: '' }] }
+      return { ...s, variants: [...s.variants, { label: nextVariantLabel(s.variants), subject: '', html_content: '', text_content: '', weight: 50 }] }
     }))
   }
 
@@ -375,6 +377,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
           subject: variant.subject,
           html_content: variant.html_content,
           text_content: variant.text_content,
+          weight: variant.weight,
         }
         if (variant.id) {
           await campaignsApi.updateVariant(campaignId, stepId, variant.id, variantPayload)
@@ -788,6 +791,46 @@ export function CampaignForm({ campaign, initialName }: Props) {
                       </div>
                       <EmailBodyEditor value={editHtml} onChange={setBody} placeholder="Hi {{first_name}}, ..." />
                     </div>
+
+                    {/* Distribution — weight each variant's share of sends */}
+                    {step.variants.length > 1 && (
+                      <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                        <div>
+                          <p className="text-sm font-medium flex items-center gap-1.5">
+                            <FlaskConical size={14} /> Traffic Distribution
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Weight each variant's share of sends — equal by default, or bias toward a control
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          {(() => {
+                            const totalWeight = step.variants.reduce((sum, v) => sum + Math.max(v.weight, 0), 0)
+                            return step.variants.map((v, vi) => {
+                              const pct = totalWeight > 0 ? Math.round((Math.max(v.weight, 0) / totalWeight) * 100) : 0
+                              return (
+                                <div key={vi} className="flex items-center gap-3">
+                                  <span className="flex-none w-5 h-5 rounded-full bg-muted-foreground/20 text-[10px] font-bold flex items-center justify-center">
+                                    {v.label}
+                                  </span>
+                                  <input
+                                    type="range" min={0} max={100} value={Math.min(v.weight, 100)}
+                                    onChange={e => updateVariant(index, vi, { weight: Number(e.target.value) })}
+                                    className="flex-1 accent-primary"
+                                  />
+                                  <Input
+                                    type="number" min={0} value={v.weight}
+                                    onChange={e => updateVariant(index, vi, { weight: Math.max(0, Number(e.target.value)) })}
+                                    className="w-16 h-8 text-xs"
+                                  />
+                                  <span className="w-10 text-right text-xs font-medium text-muted-foreground tabular-nums">{pct}%</span>
+                                </div>
+                              )
+                            })
+                          })()}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Auto-optimize */}
                     {step.variants.length > 1 && (

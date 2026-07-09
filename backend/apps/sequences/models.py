@@ -111,15 +111,22 @@ class CampaignStep(models.Model):
 
 
 class CampaignStepVariant(models.Model):
-    """A/B test variant for a CampaignStep. When a step has active variants,
-    the send pipeline weighted-randomly picks one instead of using the step's
-    own content directly."""
+    """A/B (A/Z) test variant for a CampaignStep. When a step has active
+    variants, the send pipeline weighted-randomly picks one instead of using
+    the step's own content directly — see apps.campaigns.services.pick_variant.
+    Equal weight across all variants (the default) is a plain equal split;
+    setting one variant's weight higher biases sends toward it, e.g. for
+    weighting traffic toward a control (Instantly-style)."""
     step = models.ForeignKey(CampaignStep, on_delete=models.CASCADE, related_name='variants')
     label = models.CharField(max_length=10, blank=True)
     subject = models.CharField(max_length=500)
     html_content = models.TextField(blank=True)
     text_content = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    # Relative send share among a step's active variants — not required to sum
+    # to 100; pick_variant() normalizes by the total. A weight of 0 means this
+    # variant is never picked (without deactivating it, so its stats stay put).
+    weight = models.PositiveIntegerField(default=50)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
