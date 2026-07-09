@@ -279,7 +279,9 @@ def campaign_stats(request, campaign_id: int):
                 'variant_id': variant.id,
                 'label': variant.label or str(variant.id),
                 'subject': variant.subject,
+                'html_content': variant.html_content,
                 'is_active': variant.is_active,
+                'weight': variant.weight,
                 **bucket_counts(logs.filter(step_variant=variant)),
             }
             for variant in variants
@@ -297,6 +299,7 @@ def campaign_stats(request, campaign_id: int):
             'step_id': step.id,
             'order': step.order,
             'subject': step.subject,
+            'html_content': step.html_content,
             'auto_optimize': step.auto_optimize,
             'delay_days': step.delay_days,
             'delay_hours': step.delay_hours,
@@ -308,6 +311,79 @@ def campaign_stats(request, campaign_id: int):
     enrollment_counts = {
         row['status']: row['count']
         for row in campaign.enrollments.values('status').annotate(count=Count('id'))
+    }
+
+    # --- Funnel: sent → opened → clicked → replied, with drop-off between stages ---
+    def rate(numerator, denominator):
+        return round(numerator / denominator * 100, 1) if denominator > 0 else 0.0
+
+    funnel_totals = {
+        'sent': sum(s['sent'] for s in step_stats),
+        'opened': sum(s['opened'] for s in step_stats),
+        'clicked': sum(s['clicked'] for s in step_stats),
+        'replied': sum(s['replied'] for s in step_stats),
+        'failed': sum(s['failed'] for s in step_stats),
+    }
+    funnel = {
+        **funnel_totals,
+        'open_rate': rate(funnel_totals['opened'], funnel_totals['sent']),
+        'click_rate': rate(funnel_totals['clicked'], funnel_totals['sent']),
+        'reply_rate': rate(funnel_totals['replied'], funnel_totals['sent']),
+        # Drop-off between consecutive funnel stages, not against the original send count.
+        'drop_off': {
+            'sent_to_opened': rate(funnel_totals['opened'], funnel_totals['sent']),
+            'opened_to_clicked': rate(funnel_totals['clicked'], funnel_totals['opened']),
+            'clicked_to_replied': rate(funnel_totals['replied'], funnel_totals['clicked']),
+        },
+    }
+
+    # --- Best / worst performer: rank steps and variants that have enough
+    # volume to be meaningful, by reply rate first (strongest signal), then
+    # click rate, then open rate as tie-breakers. ---
+    MIN_VOLUME = 5
+
+    def engagement_rank(row):
+        sent = row['sent'] or 0
+        return (rate(row['replied'], sent), rate(row['clicked'], sent), rate(row['opened'], sent))
+
+    ranked_steps = [s for s in step_stats if s['sent'] >= MIN_VOLUME]
+    ranked_steps.sort(key=engagement_rank, reverse=True)
+    best_step = ranked_steps[0] if ranked_steps else None
+    worst_step = ranked_steps[-1] if len(ranked_steps) > 1 else None
+
+    all_variants = [
+        {**v, 'step_order': s['order'], 'step_subject': s['subject']}
+        for s in step_stats for v in s['variants']
+    ]
+    ranked_variants = [v for v in all_variants if v['sent'] >= MIN_VOLUME]
+    ranked_variants.sort(key=engagement_rank, reverse=True)
+    best_variant = ranked_variants[0] if ranked_variants else None
+    worst_variant = ranked_variants[-1] if len(ranked_variants) > 1 else None
+
+    def slim_step(s):
+        if not s:
+            return None
+        return {
+            'step_id': s['step_id'], 'order': s['order'], 'subject': s['subject'],
+            'sent': s['sent'], 'opened': s['opened'], 'clicked': s['clicked'], 'replied': s['replied'],
+            'open_rate': rate(s['opened'], s['sent']), 'click_rate': rate(s['clicked'], s['sent']),
+            'reply_rate': rate(s['replied'], s['sent']),
+        }
+
+    def slim_variant(v):
+        if not v:
+            return None
+        return {
+            'variant_id': v['variant_id'], 'label': v['label'], 'subject': v['subject'],
+            'step_order': v['step_order'], 'step_subject': v['step_subject'],
+            'sent': v['sent'], 'opened': v['opened'], 'clicked': v['clicked'], 'replied': v['replied'],
+            'open_rate': rate(v['opened'], v['sent']), 'click_rate': rate(v['clicked'], v['sent']),
+            'reply_rate': rate(v['replied'], v['sent']),
+        }
+
+    performers = {
+        'best_step': slim_step(best_step), 'worst_step': slim_step(worst_step),
+        'best_variant': slim_variant(best_variant), 'worst_variant': slim_variant(worst_variant),
     }
 
     # Opportunities (Instantly-style): enrolled contacts whose inbox thread was
@@ -337,6 +413,83 @@ def campaign_stats(request, campaign_id: int):
     sent_filter = ('sent', 'opened', 'clicked', 'replied')
     last_sent_at = all_logs.filter(status__in=sent_filter).aggregate(m=Max('sent_at'))['m']
 
+    # --- Deliverability health: bounce/complaint/failure rates + the most
+    # common failure reasons, so a sender-reputation problem is visible here
+    # instead of only in the raw send-log table. ---
+    delivery_counts = all_logs.aggregate(
+        attempted=Count('id'),
+        sent=Count(Case(When(status__in=sent_filter, then=1), output_field=IntegerField())),
+        failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
+        bounced=Count(Case(When(status='bounced', then=1), output_field=IntegerField())),
+        complained=Count(Case(When(status='complained', then=1), output_field=IntegerField())),
+    )
+    top_errors = list(
+        all_logs.filter(status='failed').exclude(error_message='')
+        .values('error_message').annotate(count=Count('id')).order_by('-count')[:5]
+    )
+    deliverability = {
+        'attempted': delivery_counts['attempted'],
+        'failed': delivery_counts['failed'],
+        'bounced': delivery_counts['bounced'],
+        'complained': delivery_counts['complained'],
+        'failed_rate': rate(delivery_counts['failed'], delivery_counts['attempted']),
+        'bounce_rate': rate(delivery_counts['bounced'], delivery_counts['attempted']),
+        'complaint_rate': rate(delivery_counts['complained'], delivery_counts['attempted']),
+        'top_errors': [{'message': e['error_message'], 'count': e['count']} for e in top_errors],
+    }
+
+    # --- Per-SMTP-account performance within this campaign ---
+    smtp_rows = (
+        all_logs.filter(smtp_account__isnull=False)
+        .values('smtp_account_id', 'smtp_account__name', 'smtp_account__from_email')
+        .annotate(
+            sent=Count(Case(When(status__in=sent_filter, then=1), output_field=IntegerField())),
+            opened=Count(Case(When(status__in=('opened', 'clicked', 'replied'), then=1), output_field=IntegerField())),
+            replied=Count(Case(When(status='replied', then=1), output_field=IntegerField())),
+            failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
+            bounced=Count(Case(When(status='bounced', then=1), output_field=IntegerField())),
+        )
+    )
+    smtp_performance = [
+        {
+            'smtp_account_id': r['smtp_account_id'],
+            'name': r['smtp_account__name'],
+            'from_email': r['smtp_account__from_email'],
+            'sent': r['sent'], 'opened': r['opened'], 'replied': r['replied'],
+            'failed': r['failed'], 'bounced': r['bounced'],
+            'open_rate': rate(r['opened'], r['sent']), 'reply_rate': rate(r['replied'], r['sent']),
+            'bounce_rate': rate(r['bounced'], r['sent'] + r['failed'] + r['bounced']),
+        }
+        for r in smtp_rows
+    ]
+
+    # --- Week-over-week trend: is this campaign improving or declining? ---
+    this_week_start = now - timedelta(days=7)
+    last_week_start = now - timedelta(days=14)
+
+    def window_counts(start, end):
+        qs = all_logs.filter(sent_at__gte=start, sent_at__lt=end)
+        return qs.aggregate(
+            sent=Count(Case(When(status__in=sent_filter, then=1), output_field=IntegerField())),
+            opened=Count(Case(When(status__in=('opened', 'clicked', 'replied'), then=1), output_field=IntegerField())),
+            clicked=Count(Case(When(status__in=('clicked', 'replied'), then=1), output_field=IntegerField())),
+            replied=Count(Case(When(status='replied', then=1), output_field=IntegerField())),
+        )
+
+    this_week = window_counts(this_week_start, now)
+    last_week = window_counts(last_week_start, this_week_start)
+
+    def pct_change(current, previous):
+        if previous == 0:
+            return None  # "new" — no prior baseline to compare against
+        return round((current - previous) / previous * 100, 1)
+
+    trend_comparison = {
+        'this_week': this_week,
+        'last_week': last_week,
+        'change': {k: pct_change(this_week[k], last_week[k]) for k in this_week},
+    }
+
     # 14-day send timeline for a sparkline/bar chart (fills gaps with 0).
     since = (now - timedelta(days=13)).date()
     rows = (
@@ -359,6 +512,12 @@ def campaign_stats(request, campaign_id: int):
         'enrollment_counts': enrollment_counts,
         'opportunities': opportunities,
         'steps': step_stats,
+        # insights
+        'funnel': funnel,
+        'performers': performers,
+        'deliverability': deliverability,
+        'smtp_performance': smtp_performance,
+        'trend_comparison': trend_comparison,
         # scheduling
         'next_send_at': next_send_at.isoformat() if next_send_at else None,
         'upcoming_count': upcoming_count,
