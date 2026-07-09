@@ -89,32 +89,56 @@ def process_due_campaign_steps():
     return {'dispatched': len(due_ids), 'batch_size': batch_size}
 
 
+# How far to push next_send_at forward when claiming an enrollment for
+# processing, before we know its real next value. Must comfortably exceed how
+# long a batch can take (SMTP sends included) so a slow batch doesn't get
+# re-claimed by the next dispatcher tick (every 60s) — but if the worker dies
+# mid-send without ever reaching enrollment.save(), the claim expires and the
+# enrollment is picked up again instead of being stuck forever.
+_CLAIM_WINDOW = timezone.timedelta(minutes=10)
+
+
 @shared_task
 def _send_enrollment_batch_task(enrollment_ids):
     """Sends the next due step for one batch of enrollments. Reuses one open
     SMTP connection per account across the whole batch (conn_cache) instead of
-    reconnecting for every single email — see campaigns.services.send_campaign_email."""
+    reconnecting for every single email — see campaigns.services.send_campaign_email.
+
+    Each enrollment is claimed with a conditional UPDATE (status='active',
+    next_send_at<=now) before it's touched. That single-statement UPDATE is
+    atomic on every backend we run on (SQLite, Postgres) without needing
+    SELECT ... FOR UPDATE, which SQLite doesn't support — so if the dispatcher's
+    60s tick overlaps a still-running previous batch, or two workers pick up
+    the same enrollment, only one of them wins the claim and actually sends."""
     from .models import CampaignEnrollment
     from apps.analytics.models import SendLog
-    from apps.campaigns.services import send_campaign_email, pick_variant_by_weight
+    from apps.campaigns.services import send_campaign_email, pick_variant
     from apps.analytics.tracking import resolve_tracking_base_url
 
     now = timezone.now()
-    sent, stopped, completed = 0, 0, 0
+    sent, stopped, completed, skipped = 0, 0, 0, 0
     conn_cache = {}
-
-    # campaign__user joined so the per-user tracking-domain lookup below doesn't
-    # lazy-load the User (and it's Redis-cached on top of that).
-    due = CampaignEnrollment.objects.filter(
-        id__in=enrollment_ids
-    ).select_related('campaign', 'campaign__user', 'contact', 'current_step')
 
     # Cache each campaign's ordered steps for the duration of this batch — many
     # enrollments in the same batch typically belong to the same campaign, so
     # without this every enrollment would re-fetch the same step rows.
     steps_by_campaign = {}
 
-    for enrollment in due:
+    for enrollment_id in enrollment_ids:
+        claimed = CampaignEnrollment.objects.filter(
+            id=enrollment_id, status='active', next_send_at__lte=now
+        ).update(next_send_at=now + _CLAIM_WINDOW)
+        if not claimed:
+            # Already claimed by a concurrent run of this task, or no longer
+            # due (advanced/stopped since the dispatcher queried) — skip.
+            skipped += 1
+            continue
+
+        # campaign__user joined so the per-user tracking-domain lookup below
+        # doesn't lazy-load the User (and it's Redis-cached on top of that).
+        enrollment = CampaignEnrollment.objects.select_related(
+            'campaign', 'campaign__user', 'contact', 'current_step'
+        ).get(id=enrollment_id)
         campaign = enrollment.campaign
         if campaign.id not in steps_by_campaign:
             steps_by_campaign[campaign.id] = list(
@@ -217,7 +241,7 @@ def _send_enrollment_batch_task(enrollment_ids):
             continue
 
         variants = list(next_step.variants.filter(is_active=True))
-        variant = pick_variant_by_weight(variants) if variants else None
+        variant = pick_variant(variants) if variants else None
         send_target = variant or next_step
 
         sendlog = SendLog.objects.create(
@@ -282,7 +306,7 @@ def _send_enrollment_batch_task(enrollment_ids):
         except Exception:
             pass
 
-    return {'sent': sent, 'stopped': stopped, 'completed': completed}
+    return {'sent': sent, 'stopped': stopped, 'completed': completed, 'skipped': skipped}
 
 
 @shared_task(bind=True)
