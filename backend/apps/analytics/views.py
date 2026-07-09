@@ -57,13 +57,24 @@ def dashboard_stats(request):
     total_smtp = SMTPAccount.objects.filter(user=user, is_active=True).count()
 
     logs = SendLog.objects.filter(campaign__user=user)
+    # `status` is a single terminal value per SendLog, not independent flags —
+    # once an email is opened it moves to status='opened' and is no longer
+    # status='sent'. So "sent" has to mean the funnel bucket (sent OR opened OR
+    # clicked OR replied — i.e. successfully delivered), same bucketing
+    # apps.sequences.views.campaign_stats already uses. Matching only
+    # status='sent' would undercount delivered mail by however many were later
+    # opened/clicked/replied to, and made open_rate divide by the wrong
+    # (disjoint) denominator.
+    sent_statuses = ('sent', 'opened', 'clicked', 'replied')
+    opened_statuses = ('opened', 'clicked', 'replied')
+
     # One aggregate query instead of 5 separate .count() calls against the
     # same base queryset.
     counts = logs.aggregate(
-        total_sent=Count(Case(When(status='sent', then=1), output_field=IntegerField())),
+        total_sent=Count(Case(When(status__in=sent_statuses, then=1), output_field=IntegerField())),
         total_failed=Count(Case(When(status='failed', then=1), output_field=IntegerField())),
-        total_opened=Count(Case(When(status='opened', then=1), output_field=IntegerField())),
-        recent_sent=Count(Case(When(status='sent', sent_at__gte=last_30, then=1), output_field=IntegerField())),
+        total_opened=Count(Case(When(status__in=opened_statuses, then=1), output_field=IntegerField())),
+        recent_sent=Count(Case(When(status__in=sent_statuses, sent_at__gte=last_30, then=1), output_field=IntegerField())),
         recent_failed=Count(Case(When(status='failed', created_at__gte=last_30, then=1), output_field=IntegerField())),
     )
     total_sent = counts['total_sent']
@@ -75,7 +86,7 @@ def dashboard_stats(request):
     # 7-day trend: 2 grouped queries instead of 14 individual per-day counts.
     week_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
     sent_by_day = dict(
-        logs.filter(status='sent', sent_at__gte=week_start)
+        logs.filter(status__in=sent_statuses, sent_at__gte=week_start)
         .annotate(day=TruncDate('sent_at')).values('day')
         .annotate(count=Count('id')).values_list('day', 'count')
     )
@@ -104,7 +115,7 @@ def dashboard_stats(request):
         aid = item['smtp_account__id']
         if aid not in smtp_summary:
             smtp_summary[aid] = {'id': aid, 'name': item['smtp_account__name'], 'sent': 0, 'failed': 0}
-        if item['status'] == 'sent':
+        if item['status'] in sent_statuses:
             smtp_summary[aid]['sent'] += item['count']
         elif item['status'] == 'failed':
             smtp_summary[aid]['failed'] += item['count']

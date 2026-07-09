@@ -34,12 +34,18 @@ class DashboardStatsAggregateTests(TestCase):
         return log
 
     def test_totals_and_recent_window(self):
+        # status is a single terminal value per SendLog — once an email is
+        # opened it moves to status='opened' and is no longer status='sent'.
+        # So "sent" (delivered) has to be the funnel bucket
+        # sent|opened|clicked|replied, not literal status='sent' — otherwise
+        # every opened/clicked/replied send silently drops out of "total sent"
+        # and open_rate ends up dividing by the wrong, disjoint denominator.
         now = timezone.now()
         old = now - timezone.timedelta(days=40)
 
         self._mk_log('sent', sent_at=now)
         self._mk_log('sent', sent_at=old)          # outside the 30d recent window
-        self._mk_log('opened', sent_at=now)
+        self._mk_log('opened', sent_at=now)        # delivered AND opened — counts toward both
         self._mk_log('failed', created_at=now)
         self._mk_log('failed', created_at=old)     # outside the 30d recent window
 
@@ -47,10 +53,10 @@ class DashboardStatsAggregateTests(TestCase):
         result = dashboard_stats(request)
 
         emails = result['emails']
-        self.assertEqual(emails['total_sent'], 2)
+        self.assertEqual(emails['total_sent'], 3)
         self.assertEqual(emails['total_failed'], 2)
         self.assertEqual(emails['total_opened'], 1)
-        self.assertEqual(emails['recent_sent_30d'], 1)
+        self.assertEqual(emails['recent_sent_30d'], 2)
         self.assertEqual(emails['recent_failed_30d'], 1)
 
     def test_trend_buckets_by_day(self):
