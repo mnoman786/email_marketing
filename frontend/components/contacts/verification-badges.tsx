@@ -26,6 +26,7 @@ export const SUB_STATUS_LABEL: Record<string, string> = {
   role_account: 'Role-based mailbox',
   gibberish: 'Gibberish / random address',
   mailbox_not_found: 'Mailbox does not exist',
+  accept_all: 'Catch-all domain',
 }
 
 export function VerificationDot({ contact }: { contact: Verifiable }) {

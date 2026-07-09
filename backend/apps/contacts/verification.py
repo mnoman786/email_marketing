@@ -390,6 +390,16 @@ def _finalize(result):
             score += 40   # role mailbox that also passed MX
         if result.is_free:
             score += 5    # free webmail: slightly higher cold-complaint rate
+    elif result.sub_status == 'accept_all':
+        # A catch-all accepts every RCPT, so the mailbox can't be *confirmed* —
+        # but that alone doesn't make every address on it equally risky. A
+        # personal-looking handle on a company (non-webmail) domain is very
+        # likely a provisioned inbox; grade by the remaining signals instead of
+        # one flat "medium" for everyone.
+        if not (result.is_free or result.is_role or result.is_gibberish or result.suggestion):
+            score = 25    # business catch-all, clean personal handle → low risk
+        elif result.is_role:
+            score = 60    # role mailbox on a catch-all — trap/complaint prone
     score = max(0, min(100, score))
 
     result.spam_score = score
@@ -478,6 +488,9 @@ def verify_email_detailed(email, mx_cache=None, smtp_probe=None):
             return _finalize(result)
         if outcome == SMTP_CATCH_ALL:
             # Domain accepts every address — deliverability can't be confirmed.
+            # Gibberish check normally runs on the 'ok' path; run it here too so
+            # _finalize can grade this catch-all by local-part quality.
+            result.is_gibberish = _looks_gibberish(local)
             result.status = UNKNOWN
             result.sub_status = 'accept_all'
             result.score = 5
