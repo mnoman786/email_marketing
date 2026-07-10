@@ -114,8 +114,8 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
                 key={c.value}
                 type="button"
                 onClick={() => setCategory(prev => (prev === c.value ? null : c.value))}
-                className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
-                  category === c.value ? `${c.badge} border-transparent` : 'text-muted-foreground border-border hover:bg-muted'
+                className={`badge ${c.badge} text-[11px] transition-all ${
+                  category === c.value ? 'ring-2 ring-offset-1 ring-foreground/50' : 'opacity-60 hover:opacity-100'
                 }`}
               >
                 {c.label}
