@@ -524,19 +524,35 @@ def campaign_stats(request, campaign_id: int):
         'change': {k: pct_change(this_week[k], last_week[k]) for k in this_week},
     }
 
-    # 14-day send timeline for a sparkline/bar chart (fills gaps with 0).
+    # 14-day engagement timeline — sent/opened/clicked/replied per day (fills
+    # gaps with 0), each grouped by the date that specific event happened
+    # (not all by sent_at) so opens/clicks/replies land on the day they
+    # actually occurred rather than the day the email was sent.
     since = (now - timedelta(days=13)).date()
-    rows = (
-        all_logs.filter(status__in=sent_filter, sent_at__date__gte=since)
-        .annotate(day=TruncDate('sent_at')).values('day')
-        .annotate(count=Count('id')).order_by('day')
-    )
-    by_day = {r['day'].isoformat(): r['count'] for r in rows if r['day']}
-    timeline = [
-        {'date': (since + timedelta(days=i)).isoformat(),
-         'count': by_day.get((since + timedelta(days=i)).isoformat(), 0)}
-        for i in range(14)
-    ]
+
+    def day_counts(qs, date_field):
+        rows = (
+            qs.filter(**{f'{date_field}__date__gte': since})
+            .annotate(day=TruncDate(date_field)).values('day')
+            .annotate(count=Count('id')).order_by('day')
+        )
+        return {r['day'].isoformat(): r['count'] for r in rows if r['day']}
+
+    sent_by_day = day_counts(all_logs.filter(status__in=sent_filter), 'sent_at')
+    opened_by_day = day_counts(all_logs.filter(opened_at__isnull=False), 'opened_at')
+    clicked_by_day = day_counts(all_logs.filter(clicked_at__isnull=False), 'clicked_at')
+    replied_by_day = day_counts(all_logs.filter(replied_at__isnull=False), 'replied_at')
+
+    timeline = []
+    for i in range(14):
+        d = (since + timedelta(days=i)).isoformat()
+        timeline.append({
+            'date': d,
+            'sent': sent_by_day.get(d, 0),
+            'opened': opened_by_day.get(d, 0),
+            'clicked': clicked_by_day.get(d, 0),
+            'replied': replied_by_day.get(d, 0),
+        })
 
     result = {
         'id': campaign.id,

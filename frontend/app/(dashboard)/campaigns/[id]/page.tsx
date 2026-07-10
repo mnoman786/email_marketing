@@ -159,7 +159,7 @@ export default function CampaignDetailPage() {
   const upcoming: number = stats?.upcoming_count || 0
   const dueNow: number = stats?.due_now || 0
   const lastSentAt: string | null = stats?.last_sent_at || null
-  const timeline: { date: string; count: number }[] = stats?.sends_timeline || []
+  const timeline: { date: string; sent: number; opened: number; clicked: number; replied: number }[] = stats?.sends_timeline || []
   const deliveryRate = pct(perf.sent, perf.sent + perf.failed)
 
   // Only surface open/click metrics if the campaign was created with that tracking
@@ -486,29 +486,79 @@ export default function CampaignDetailPage() {
             )}
           </div>
 
-          {/* Sends over the last 14 days */}
+          {/* Engagement over the last 14 days */}
           {(() => {
-            const max = Math.max(1, ...timeline.map(d => d.count))
-            const totalWindow = timeline.reduce((a, d) => a + d.count, 0)
+            const SERIES = [
+              { key: 'sent' as const, label: 'Sent', stroke: 'stroke-muted-foreground/40', dot: 'bg-muted-foreground/40' },
+              { key: 'opened' as const, label: 'Opened', stroke: 'stroke-[#2a78d6] dark:stroke-[#3987e5]', dot: 'bg-[#2a78d6] dark:bg-[#3987e5]' },
+              { key: 'clicked' as const, label: 'Clicked', stroke: 'stroke-[#1baf7a] dark:stroke-[#199e70]', dot: 'bg-[#1baf7a] dark:bg-[#199e70]' },
+              { key: 'replied' as const, label: 'Replied', stroke: 'stroke-[#4a3aa7] dark:stroke-[#9085e9]', dot: 'bg-[#4a3aa7] dark:bg-[#9085e9]' },
+            ]
+            const visibleSeries = SERIES.filter(s => {
+              if (s.key === 'opened') return trackOpens
+              if (s.key === 'clicked') return trackClicks
+              return true
+            })
+            const W = 700, H = 160, PAD_L = 28, PAD_R = 8, PAD_T = 10, PAD_B = 20
+            const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B
+            const max = Math.max(1, ...timeline.flatMap(d => visibleSeries.map(s => d[s.key])))
+            const n = Math.max(1, timeline.length - 1)
+            const x = (i: number) => PAD_L + (i / n) * plotW
+            const y = (v: number) => PAD_T + plotH - (v / max) * plotH
+            const totalSent = timeline.reduce((a, d) => a + d.sent, 0)
+
             return (
               <div className="rounded-xl border bg-card p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-sm">Sends · last 14 days</p>
-                  <p className="text-xs text-muted-foreground tabular-nums">{totalWindow.toLocaleString()} total</p>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="font-semibold text-sm">Engagement · last 14 days</p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {visibleSeries.map(s => (
+                      <span key={s.key} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span className={cn('w-2 h-2 rounded-full', s.dot)} />
+                        {s.label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-4 flex items-end gap-1.5 h-28">
-                  {timeline.map(d => (
-                    <div key={d.date} className="flex-1 h-full flex flex-col items-center justify-end group">
-                      <div
-                        className="w-full rounded-t bg-primary/70 group-hover:bg-primary transition-colors min-h-0.5"
-                        style={{ height: `${(d.count / max) * 100}%` }}
-                        title={`${d.date}: ${d.count} sent`}
-                      />
-                    </div>
+
+                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 mt-2" preserveAspectRatio="none">
+                  {/* Gridlines — hairline, recessive */}
+                  {[0.25, 0.5, 0.75, 1].map(f => (
+                    <line
+                      key={f}
+                      x1={PAD_L} x2={W - PAD_R} y1={PAD_T + plotH * (1 - f)} y2={PAD_T + plotH * (1 - f)}
+                      className="stroke-border" strokeWidth={1}
+                    />
                   ))}
-                </div>
-                <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+
+                  {visibleSeries.map(s => {
+                    const points = timeline.map((d, i) => `${x(i)},${y(d[s.key])}`).join(' ')
+                    return (
+                      <g key={s.key}>
+                        <polyline points={points} fill="none" className={s.stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                        {timeline.map((d, i) => (
+                          <circle key={i} cx={x(i)} cy={y(d[s.key])} r={3} className={cn(s.stroke, 'fill-card')} strokeWidth={2} />
+                        ))}
+                      </g>
+                    )
+                  })}
+
+                  {/* Larger invisible hover targets, one per day per series — the
+                      visible dots (r=3) are too small to reliably land a cursor on. */}
+                  {visibleSeries.map(s => (
+                    <g key={`${s.key}-hit`}>
+                      {timeline.map((d, i) => (
+                        <circle key={i} cx={x(i)} cy={y(d[s.key])} r={10} fill="transparent">
+                          <title>{`${d.date}: ${d[s.key].toLocaleString()} ${s.label.toLowerCase()}`}</title>
+                        </circle>
+                      ))}
+                    </g>
+                  ))}
+                </svg>
+
+                <div className="flex justify-between text-[10px] text-muted-foreground">
                   <span>{timeline[0]?.date?.slice(5)}</span>
+                  <span className="tabular-nums">{totalSent.toLocaleString()} sent total</span>
                   <span>{timeline[timeline.length - 1]?.date?.slice(5)}</span>
                 </div>
               </div>
