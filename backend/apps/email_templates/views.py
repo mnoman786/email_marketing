@@ -15,7 +15,8 @@ router = Router(tags=['Templates'])
 @router.get('/', response=List[TemplateListOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
 def list_templates(request, search: Optional[str] = None, is_active: Optional[bool] = None):
-    qs = EmailTemplate.objects.filter(user=request.auth)
+    # Every user's own templates, plus the built-in system library.
+    qs = EmailTemplate.objects.filter(Q(user=request.auth) | Q(is_system=True))
     if search:
         qs = qs.filter(Q(name__icontains=search) | Q(subject__icontains=search))
     if is_active is not None:
@@ -30,7 +31,7 @@ def create_template(request, data: TemplateIn):
 
 @router.get('/{template_id}/', response=TemplateOut, auth=auth)
 def get_template(request, template_id: int):
-    return get_object_or_404(EmailTemplate, id=template_id, user=request.auth)
+    return get_object_or_404(EmailTemplate, Q(user=request.auth) | Q(is_system=True), id=template_id)
 
 
 @router.patch('/{template_id}/', response=TemplateOut, auth=auth)
@@ -50,7 +51,7 @@ def delete_template(request, template_id: int):
 
 @router.post('/{template_id}/preview/', response=PreviewOut, auth=auth)
 def preview_template(request, template_id: int, data: PreviewIn):
-    template = get_object_or_404(EmailTemplate, id=template_id, user=request.auth)
+    template = get_object_or_404(EmailTemplate, Q(user=request.auth) | Q(is_system=True), id=template_id)
     try:
         rendered = Template(template.html_content).render(Context(data.variables))
         return {'subject': template.subject, 'html': rendered, 'text': template.text_content}
@@ -60,8 +61,12 @@ def preview_template(request, template_id: int, data: PreviewIn):
 
 @router.post('/{template_id}/duplicate/', response=TemplateOut, auth=auth)
 def duplicate_template(request, template_id: int):
-    template = get_object_or_404(EmailTemplate, id=template_id, user=request.auth)
+    template = get_object_or_404(EmailTemplate, Q(user=request.auth) | Q(is_system=True), id=template_id)
     template.pk = None
     template.name = f'{template.name} (Copy)'
+    # Always land as a normal personal copy — even when duplicating a
+    # system template, which has no owner and isn't itself a system row.
+    template.user = request.auth
+    template.is_system = False
     template.save()
     return template

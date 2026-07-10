@@ -12,6 +12,7 @@ class TemplateOut(Schema):
     text_content: str
     variables: List[Any]
     is_active: bool
+    is_system: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -23,6 +24,7 @@ class TemplateListOut(Schema):
     preview_text: str
     variables: List[Any]
     is_active: bool
+    is_system: bool = False
     created_at: datetime
     updated_at: datetime
     preview_html: str = ''

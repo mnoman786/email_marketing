@@ -16,7 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs } from '@/components/ui/tabs'
 import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
 import { EmailBodyEditor } from '@/components/campaigns/email-body-editor'
-import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Settings2, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye, GitBranch, ArrowRight } from 'lucide-react'
+import { TemplatePickerDialog } from '@/components/campaigns/template-picker-dialog'
+import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Settings2, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye, GitBranch, ArrowRight, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -151,6 +152,10 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const [deletedTransitions, setDeletedTransitions] = useState<{ stepId: number; transitionId: number }[]>([])
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
   const [subjectTagsOpen, setSubjectTagsOpen] = useState<string | null>(null)
+  const [templatePickerTarget, setTemplatePickerTarget] = useState<{
+    setSubject: (val: string) => void
+    setBody: (html: string, text: string) => void
+  } | null>(null)
   const subjectInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
 
   useEffect(() => {
@@ -754,6 +759,14 @@ export function CampaignForm({ campaign, initialName }: Props) {
                               placeholder="Quick question about {{company}}"
                               className="h-10 flex-1"
                             />
+                            <button
+                              type="button"
+                              onClick={() => setTemplatePickerTarget({ setSubject, setBody })}
+                              className="h-10 px-3 rounded-md border text-xs bg-muted/50 hover:bg-muted whitespace-nowrap flex items-center gap-1.5"
+                              title="Browse templates"
+                            >
+                              <Sparkles size={13} /> Templates
+                            </button>
                             <div className="relative" data-subject-tag-menu>
                               <button
                                 type="button"
@@ -1208,6 +1221,15 @@ export function CampaignForm({ campaign, initialName }: Props) {
           </div>
         )
       })()}
+
+      <TemplatePickerDialog
+        open={!!templatePickerTarget}
+        onClose={() => setTemplatePickerTarget(null)}
+        onSelect={(subject, html, text) => {
+          templatePickerTarget?.setSubject(subject)
+          templatePickerTarget?.setBody(html, text)
+        }}
+      />
     </div>
   )
 }

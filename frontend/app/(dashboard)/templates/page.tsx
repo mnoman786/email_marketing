@@ -270,20 +270,31 @@ function MyTemplateCard({
         <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, transparent 30%, hsl(var(--card)) 72%)' }} />
 
         {/* Status badge */}
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex gap-1">
+          {tpl.is_system && (
+            <Badge variant="info" className="text-[10px] px-2 py-0.5 shadow-sm">Built-in</Badge>
+          )}
           <Badge variant={tpl.is_active ? 'success' : 'secondary'} className="text-[10px] px-2 py-0.5 shadow-sm">
             {tpl.is_active ? 'Active' : 'Draft'}
           </Badge>
         </div>
 
-        {/* Hover overlay */}
-        <Link href={`/templates/${tpl.id}`}>
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-all duration-200 cursor-pointer">
+        {/* Hover overlay — built-ins have no owner to edit, so duplicate instead */}
+        {tpl.is_system ? (
+          <button type="button" onClick={onDuplicate} className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-all duration-200 cursor-pointer">
             <span className="flex items-center gap-1.5 bg-white text-foreground text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-200">
-              <Eye size={12} /> Open Editor
+              <Copy size={12} /> Duplicate to Edit
             </span>
-          </div>
-        </Link>
+          </button>
+        ) : (
+          <Link href={`/templates/${tpl.id}`}>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-all duration-200 cursor-pointer">
+              <span className="flex items-center gap-1.5 bg-white text-foreground text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-200">
+                <Eye size={12} /> Open Editor
+              </span>
+            </div>
+          </Link>
+        )}
       </div>
 
       {/* Body */}
@@ -324,21 +335,25 @@ function MyTemplateCard({
         <div className="flex items-center justify-between mt-3 pt-3 border-t">
           <span className="text-[10px] text-muted-foreground tabular-nums">{formatDateTime(tpl.updated_at)}</span>
           <div className="flex items-center gap-0.5">
-            <Link href={`/templates/${tpl.id}`}>
-              <Button variant="ghost" size="icon-sm" title="Edit" className="text-muted-foreground hover:text-foreground">
-                <Edit size={13} />
-              </Button>
-            </Link>
+            {!tpl.is_system && (
+              <Link href={`/templates/${tpl.id}`}>
+                <Button variant="ghost" size="icon-sm" title="Edit" className="text-muted-foreground hover:text-foreground">
+                  <Edit size={13} />
+                </Button>
+              </Link>
+            )}
             <Button variant="ghost" size="icon-sm" onClick={onDuplicate} loading={duplicating} title="Duplicate" className="text-muted-foreground hover:text-foreground">
               <Copy size={13} />
             </Button>
-            <Button
-              variant="ghost" size="icon-sm"
-              className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10"
-              onClick={onDelete} title="Delete"
-            >
-              <Trash2 size={13} />
-            </Button>
+            {!tpl.is_system && (
+              <Button
+                variant="ghost" size="icon-sm"
+                className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10"
+                onClick={onDelete} title="Delete"
+              >
+                <Trash2 size={13} />
+              </Button>
+            )}
           </div>
         </div>
       </div>
