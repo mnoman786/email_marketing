@@ -61,11 +61,19 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
   const linkInputRef = useRef<HTMLInputElement>(null)
   const [ac, setAc] = useState<AutocompleteState | null>(null)
   const acRef = useRef<HTMLDivElement>(null)
+  // Tracks the last HTML this editor itself emitted, so the sync effect below
+  // can tell "value changed because I typed" (skip — would reset the caret)
+  // apart from "value changed from outside" (e.g. a template was picked —
+  // sync it in). Starts at null so the very first mount always syncs.
+  const lastEmitted = useRef<string | null>(null)
 
   useEffect(() => {
-    if (divRef.current && value) divRef.current.innerHTML = value
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!divRef.current) return
+    if (value !== lastEmitted.current) {
+      divRef.current.innerHTML = value || ''
+      lastEmitted.current = value
+    }
+  }, [value])
 
   // Track caret continuously while editor has focus.
   useEffect(() => {
@@ -100,6 +108,7 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
   const emit = () => {
     if (!divRef.current) return
     const html = divRef.current.innerHTML
+    lastEmitted.current = html
     setComplexHtml(COMPLEX_HTML_RE.test(html))
     onChange(html, divRef.current.innerText)
   }

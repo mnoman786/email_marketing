@@ -745,6 +745,15 @@ export function CampaignForm({ campaign, initialName }: Props) {
                   </div>
 
                   <CardContent className="pt-4 space-y-4">
+                    {/* Templates — prominent, above Subject so it's the first thing seen */}
+                    <button
+                      type="button"
+                      onClick={() => setTemplatePickerTarget({ setSubject, setBody })}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 hover:border-primary transition-colors text-sm font-medium"
+                    >
+                      <Sparkles size={15} /> Browse Templates
+                    </button>
+
                     {/* Subject */}
                     {(() => {
                       const key = `${index}-${activeTab}`
@@ -759,14 +768,6 @@ export function CampaignForm({ campaign, initialName }: Props) {
                               placeholder="Quick question about {{company}}"
                               className="h-10 flex-1"
                             />
-                            <button
-                              type="button"
-                              onClick={() => setTemplatePickerTarget({ setSubject, setBody })}
-                              className="h-10 px-3 rounded-md border text-xs bg-muted/50 hover:bg-muted whitespace-nowrap flex items-center gap-1.5"
-                              title="Browse templates"
-                            >
-                              <Sparkles size={13} /> Templates
-                            </button>
                             <div className="relative" data-subject-tag-menu>
                               <button
                                 type="button"
