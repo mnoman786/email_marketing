@@ -435,10 +435,10 @@ function InboxPageInner() {
           )}
           <div className="flex flex-wrap gap-1.5">
             <button
-              onClick={() => setStatusFilter(null)}
+              onClick={() => { setStatusFilter(null); setDueFollowupOnly(false) }}
               className={cn(
                 'text-[11px] px-2 py-1 rounded-full border transition-colors',
-                !statusFilter ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:bg-muted'
+                !statusFilter && !dueFollowupOnly ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:bg-muted'
               )}
             >
               All
@@ -446,7 +446,10 @@ function InboxPageInner() {
             {LEAD_STATUSES.filter(s => s.value !== 'none').map(s => (
               <button
                 key={s.value}
-                onClick={() => setStatusFilter(prev => (prev === s.value ? null : s.value))}
+                onClick={() => {
+                  setDueFollowupOnly(false)
+                  setStatusFilter(prev => (prev === s.value ? null : s.value))
+                }}
                 className={cn(
                   'text-[11px] px-2 py-1 rounded-full border flex items-center gap-1 transition-colors',
                   statusFilter === s.value ? s.badge + ' border-transparent' : 'text-muted-foreground hover:bg-muted'
@@ -458,7 +461,10 @@ function InboxPageInner() {
             ))}
             {view === 'inbox' && (
               <button
-                onClick={() => setDueFollowupOnly(v => !v)}
+                onClick={() => {
+                  setStatusFilter(null)
+                  setDueFollowupOnly(v => !v)
+                }}
                 className={cn(
                   'text-[11px] px-2 py-1 rounded-full border flex items-center gap-1 transition-colors',
                   dueFollowupOnly ? 'bg-amber-50 text-amber-700 border-transparent' : 'text-muted-foreground hover:bg-muted'
