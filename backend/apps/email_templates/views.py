@@ -13,7 +13,13 @@ router = Router(tags=['Templates'])
 
 
 @router.get('/', response=List[TemplateListOut], auth=auth)
-@paginate(PageNumberPagination, page_size=20)
+# django-ninja's PageNumberPagination only accepts `page` from the client —
+# page_size is fixed here at decoration time and can't be overridden per
+# request. The template library (built-in + personal) is a small, bounded
+# set, so 250 comfortably covers the 100 built-ins plus a user's own on top,
+# instead of silently truncating to the old default of 20 (which broke the
+# picker's category chips and "All" view once the system library grew past 20).
+@paginate(PageNumberPagination, page_size=250)
 def list_templates(request, search: Optional[str] = None, is_active: Optional[bool] = None, category: Optional[str] = None):
     # Every user's own templates, plus the built-in system library.
     qs = EmailTemplate.objects.filter(Q(user=request.auth) | Q(is_system=True))
