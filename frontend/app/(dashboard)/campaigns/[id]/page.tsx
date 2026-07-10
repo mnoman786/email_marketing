@@ -1,6 +1,6 @@
 'use client'
 import { useParams, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { campaignsApi } from '@/lib/api'
 import { Campaign } from '@/lib/types'
@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Tabs } from '@/components/ui/tabs'
 import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { PageSkeleton } from '@/components/shared/loading-skeleton'
+import { PageSkeleton, Skeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { TablePagination } from '@/components/shared/table-pagination'
@@ -86,7 +86,7 @@ export default function CampaignDetailPage() {
     },
   })
 
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['campaign-stats', id],
     queryFn: () => campaignsApi.stats(Number(id)).then(r => r.data),
     enabled: !!id,
@@ -246,7 +246,25 @@ export default function CampaignDetailPage() {
         />
       </div>
 
-      {tab === 'analytics' && (
+      {tab === 'analytics' && statsLoading && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-28 md:col-span-2" />
+            <Skeleton className="h-28" />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+          </div>
+          <Skeleton className="h-40" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Skeleton className="h-36" />
+            <Skeleton className="h-36" />
+          </div>
+          <Skeleton className="h-64" />
+        </div>
+      )}
+
+      {tab === 'analytics' && !statsLoading && (
         <div className="space-y-6">
           {/* Scheduling: when does the next email go out? */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -573,39 +591,73 @@ export default function CampaignDetailPage() {
                   </TableHeaderRow>
                 </TableHead>
                 <TableBody>
-                  {steps.map((step: any) => (
-                    <TR
-                      key={step.step_id}
-                      className="cursor-pointer hover:bg-muted/40"
-                      onClick={() => setSelectedStep(step)}
-                    >
-                      <TD className="py-2.5 font-medium whitespace-nowrap">Step {step.order}</TD>
-                      <TD className="py-2.5 text-muted-foreground truncate max-w-xs">
-                        <span className="truncate">{step.subject}</span>
-                        {(step.variants || []).length > 1 && (
-                          <span className="ml-1.5 badge bg-primary/10 text-primary text-[10px]">{step.variants.length} variants</span>
-                        )}
-                      </TD>
-                      <TD className="py-2.5 whitespace-nowrap text-xs">
-                        <span className="text-muted-foreground">
-                          {step.order === 1
-                            ? (delayLabel(step.delay_days, step.delay_hours) === 'Immediately' ? 'On enrollment' : `${delayLabel(step.delay_days, step.delay_hours)} after enrollment`)
-                            : `${delayLabel(step.delay_days, step.delay_hours)} after step ${step.order - 1}`}
-                        </span>
-                        {step.waiting > 0 && (
-                          <span className="ml-1 text-amber-600">· {step.waiting} waiting</span>
-                        )}
-                        {step.order > 1 && step.sent === 0 && step.waiting === 0 && (
-                          <span className="ml-1 italic text-muted-foreground">· no leads reached yet</span>
-                        )}
-                      </TD>
-                      <TD className="py-2.5 tabular-nums font-medium">{step.sent}</TD>
-                      {trackOpens && <TD className="py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></TD>}
-                      {trackClicks && <TD className="py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></TD>}
-                      <TD className="py-2.5 tabular-nums text-green-600">{step.replied} <span className="text-xs text-muted-foreground">({pct(step.replied, step.sent)}%)</span></TD>
-                      <TD className="py-2.5 tabular-nums text-red-500">{step.failed}</TD>
-                    </TR>
-                  ))}
+                  {steps.map((step: any) => {
+                    const hasVariants = (step.variants || []).length > 1
+                    return (
+                      <Fragment key={step.step_id}>
+                        <TR
+                          className="cursor-pointer hover:bg-muted/40"
+                          onClick={() => setSelectedStep(step)}
+                        >
+                          <TD className="py-2.5 font-medium whitespace-nowrap">Step {step.order}</TD>
+                          <TD className="py-2.5 text-muted-foreground truncate max-w-xs">
+                            <span className="truncate">{step.subject}</span>
+                            {hasVariants && (
+                              <span className="ml-1.5 badge bg-primary/10 text-primary text-[10px]">
+                                {step.variants.length} variants
+                              </span>
+                            )}
+                          </TD>
+                          <TD className="py-2.5 whitespace-nowrap text-xs">
+                            <span className="text-muted-foreground">
+                              {step.order === 1
+                                ? (delayLabel(step.delay_days, step.delay_hours) === 'Immediately' ? 'On enrollment' : `${delayLabel(step.delay_days, step.delay_hours)} after enrollment`)
+                                : `${delayLabel(step.delay_days, step.delay_hours)} after step ${step.order - 1}`}
+                            </span>
+                            {step.waiting > 0 && (
+                              <span className="ml-1 text-amber-600">· {step.waiting} waiting</span>
+                            )}
+                            {step.order > 1 && step.sent === 0 && step.waiting === 0 && (
+                              <span className="ml-1 italic text-muted-foreground">· no leads reached yet</span>
+                            )}
+                          </TD>
+                          <TD className="py-2.5 tabular-nums font-medium">{step.sent}</TD>
+                          {trackOpens && <TD className="py-2.5 tabular-nums text-purple-600">{step.opened} <span className="text-xs text-muted-foreground">({pct(step.opened, step.sent)}%)</span></TD>}
+                          {trackClicks && <TD className="py-2.5 tabular-nums text-blue-600">{step.clicked} <span className="text-xs text-muted-foreground">({pct(step.clicked, step.sent)}%)</span></TD>}
+                          <TD className="py-2.5 tabular-nums text-green-600">{step.replied} <span className="text-xs text-muted-foreground">({pct(step.replied, step.sent)}%)</span></TD>
+                          <TD className="py-2.5 tabular-nums text-red-500">{step.failed}</TD>
+                        </TR>
+                        {hasVariants && step.variants.map((v: any) => (
+                          <TR
+                            key={`${step.step_id}-v${v.variant_id}`}
+                            className="cursor-pointer bg-muted/20 hover:bg-muted/40"
+                            onClick={() => setSelectedStep(step)}
+                          >
+                            <TD className="py-2 pl-8 text-xs text-muted-foreground whitespace-nowrap">
+                              <span className="flex-none w-4 h-4 rounded-full bg-muted-foreground/20 text-[9px] font-bold inline-flex items-center justify-center mr-1.5">{v.label}</span>
+                              Variant
+                            </TD>
+                            <TD className="py-2 text-muted-foreground truncate max-w-xs">
+                              <span className="truncate text-xs">{v.subject || <span className="italic">No subject</span>}</span>
+                              {!v.is_active && <span className="ml-1.5 badge bg-muted text-muted-foreground text-[9px]">Disabled</span>}
+                            </TD>
+                            <TD className="py-2 whitespace-nowrap text-xs text-muted-foreground">
+                              {(() => {
+                                const totalWeight = step.variants.reduce((sum: number, x: any) => sum + Math.max(x.weight ?? 0, 0), 0)
+                                const share = totalWeight > 0 ? Math.round((Math.max(v.weight ?? 0, 0) / totalWeight) * 100) : 0
+                                return `${share}% traffic`
+                              })()}
+                            </TD>
+                            <TD className="py-2 tabular-nums text-xs font-medium">{v.sent}</TD>
+                            {trackOpens && <TD className="py-2 tabular-nums text-xs text-purple-600">{v.opened} <span className="text-[10px] text-muted-foreground">({pct(v.opened, v.sent)}%)</span></TD>}
+                            {trackClicks && <TD className="py-2 tabular-nums text-xs text-blue-600">{v.clicked} <span className="text-[10px] text-muted-foreground">({pct(v.clicked, v.sent)}%)</span></TD>}
+                            <TD className="py-2 tabular-nums text-xs text-green-600">{v.replied} <span className="text-[10px] text-muted-foreground">({pct(v.replied, v.sent)}%)</span></TD>
+                            <TD className="py-2 tabular-nums text-xs text-red-500">{v.failed}</TD>
+                          </TR>
+                        ))}
+                      </Fragment>
+                    )
+                  })}
                   {steps.length === 0 && (
                     <tr><td colSpan={6 + (trackOpens ? 1 : 0) + (trackClicks ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground text-sm">No steps yet</td></tr>
                   )}
