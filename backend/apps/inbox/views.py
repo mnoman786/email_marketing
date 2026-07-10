@@ -109,6 +109,36 @@ def list_threads(
     return qs
 
 
+# Must come before /threads/{thread_id}/ below — django-ninja's {thread_id}
+# path segment matches any string (not just digits), so "bulk" would
+# otherwise be captured as a thread_id by that GET-only route first and the
+# real POST /threads/bulk/ handler would never be reached (405 Method Not
+# Allowed instead of running this).
+@router.post('/threads/bulk/', auth=auth)
+def bulk_thread_action(request, data: BulkActionIn):
+    qs = Thread.objects.filter(user=request.auth, id__in=data.ids)
+    count = qs.count()
+
+    if data.action == 'archive':
+        qs.update(is_archived=True)
+    elif data.action == 'unarchive':
+        qs.update(is_archived=False)
+    elif data.action == 'mark_read':
+        qs.update(is_unread=False)
+    elif data.action == 'mark_unread':
+        qs.update(is_unread=True)
+    elif data.action == 'set_status':
+        valid_statuses = {choice for choice, _ in Thread.LEAD_STATUS_CHOICES}
+        if data.lead_status not in valid_statuses:
+            raise HttpError(400, 'Invalid lead_status.')
+        qs.update(lead_status=data.lead_status, lead_status_auto=False)
+    else:
+        raise HttpError(400, 'Invalid action.')
+
+    cache.delete(unread_count_cache_key(request.auth.id))
+    return {'updated': count}
+
+
 @router.get('/threads/{thread_id}/', response=ThreadDetailOut, auth=auth)
 def get_thread(request, thread_id: int):
     thread = get_object_or_404(
@@ -221,31 +251,6 @@ def snooze_thread(request, thread_id: int, data: ThreadSnoozeIn):
     # Snoozing hides the thread from the inbox (and badge) until it expires.
     cache.delete(unread_count_cache_key(request.auth.id))
     return thread
-
-
-@router.post('/threads/bulk/', auth=auth)
-def bulk_thread_action(request, data: BulkActionIn):
-    qs = Thread.objects.filter(user=request.auth, id__in=data.ids)
-    count = qs.count()
-
-    if data.action == 'archive':
-        qs.update(is_archived=True)
-    elif data.action == 'unarchive':
-        qs.update(is_archived=False)
-    elif data.action == 'mark_read':
-        qs.update(is_unread=False)
-    elif data.action == 'mark_unread':
-        qs.update(is_unread=True)
-    elif data.action == 'set_status':
-        valid_statuses = {choice for choice, _ in Thread.LEAD_STATUS_CHOICES}
-        if data.lead_status not in valid_statuses:
-            raise HttpError(400, 'Invalid lead_status.')
-        qs.update(lead_status=data.lead_status, lead_status_auto=False)
-    else:
-        raise HttpError(400, 'Invalid action.')
-
-    cache.delete(unread_count_cache_key(request.auth.id))
-    return {'updated': count}
 
 
 @router.post('/threads/{thread_id}/reply/', response=InboxMessageOut, auth=auth)
