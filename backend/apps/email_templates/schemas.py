@@ -6,6 +6,7 @@ from datetime import datetime
 class TemplateOut(Schema):
     id: int
     name: str
+    category: str = 'other'
     subject: str
     preview_text: str
     html_content: str
@@ -20,6 +21,7 @@ class TemplateOut(Schema):
 class TemplateListOut(Schema):
     id: int
     name: str
+    category: str = 'other'
     subject: str
     preview_text: str
     variables: List[Any]
@@ -37,6 +39,7 @@ class TemplateListOut(Schema):
 
 class TemplateIn(Schema):
     name: str
+    category: str = 'other'
     subject: str
     preview_text: str = ''
     html_content: str
@@ -47,6 +50,7 @@ class TemplateIn(Schema):
 
 class TemplateUpdateIn(Schema):
     name: Optional[str] = None
+    category: Optional[str] = None
     subject: Optional[str] = None
     preview_text: Optional[str] = None
     html_content: Optional[str] = None

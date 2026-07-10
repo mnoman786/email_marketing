@@ -129,6 +129,7 @@ export interface Contact {
 export interface EmailTemplate {
   id: number
   name: string
+  category?: string
   subject: string
   preview_text: string
   html_content: string

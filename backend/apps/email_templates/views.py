@@ -14,13 +14,15 @@ router = Router(tags=['Templates'])
 
 @router.get('/', response=List[TemplateListOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
-def list_templates(request, search: Optional[str] = None, is_active: Optional[bool] = None):
+def list_templates(request, search: Optional[str] = None, is_active: Optional[bool] = None, category: Optional[str] = None):
     # Every user's own templates, plus the built-in system library.
     qs = EmailTemplate.objects.filter(Q(user=request.auth) | Q(is_system=True))
     if search:
         qs = qs.filter(Q(name__icontains=search) | Q(subject__icontains=search))
     if is_active is not None:
         qs = qs.filter(is_active=is_active)
+    if category:
+        qs = qs.filter(category=category)
     return qs
 
 

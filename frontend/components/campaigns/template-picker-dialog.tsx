@@ -9,6 +9,28 @@ import { Badge } from '@/components/ui/badge'
 import { SearchInput } from '@/components/ui/search-input'
 import { Sparkles, Mail, Eye } from 'lucide-react'
 
+// Mirrors EmailTemplate.CATEGORY_CHOICES in backend/apps/email_templates/models.py.
+// `badge` matches the badge-* variants already used for contact tags (globals.css).
+const CATEGORIES: { value: string; label: string; badge: string }[] = [
+  { value: 'cold_intro', label: 'Cold Intro', badge: 'badge-blue' },
+  { value: 'follow_up', label: 'Follow-up', badge: 'badge-amber' },
+  { value: 'breakup', label: 'Break-up', badge: 'badge-red' },
+  { value: 'meeting', label: 'Meeting', badge: 'badge-purple' },
+  { value: 'case_study', label: 'Case Study', badge: 'badge-green' },
+  { value: 'referral', label: 'Referral', badge: 'badge-orange' },
+  { value: 'event', label: 'Event', badge: 'badge-blue' },
+  { value: 'pricing', label: 'Pricing/Demo', badge: 'badge-green' },
+  { value: 'reengagement', label: 'Re-engagement', badge: 'badge-amber' },
+  { value: 'product_update', label: 'Product Update', badge: 'badge-purple' },
+  { value: 'thank_you', label: 'Thank You', badge: 'badge-green' },
+  { value: 'news_jack', label: 'News-jack', badge: 'badge-orange' },
+  { value: 'other', label: 'Other', badge: 'badge-gray' },
+]
+
+function categoryMeta(value?: string) {
+  return CATEGORIES.find(c => c.value === value) || CATEGORIES[CATEGORIES.length - 1]
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -22,6 +44,7 @@ interface Props {
 export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [category, setCategory] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -30,11 +53,20 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
   }, [search])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['templates-picker', debounced],
-    queryFn: () => templatesApi.getAll({ search: debounced || undefined, is_active: true, page_size: 100 })
+    queryKey: ['templates-picker', debounced, category],
+    queryFn: () => templatesApi.getAll({ search: debounced || undefined, is_active: true, category: category || undefined, page_size: 100 })
       .then(r => r.data as PaginatedResponse<EmailTemplate>),
     enabled: open,
   })
+
+  // Only show category chips that actually have at least one template, so
+  // the row doesn't list empty categories from the full backend choice set.
+  const { data: allData } = useQuery({
+    queryKey: ['templates-picker-categories'],
+    queryFn: () => templatesApi.getAll({ is_active: true, page_size: 200 }).then(r => r.data as PaginatedResponse<EmailTemplate>),
+    enabled: open,
+  })
+  const availableCategories = new Set((allData?.items || []).map(t => t.category).filter(Boolean))
 
   // Full detail (list response truncates html_content and omits text_content).
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -62,11 +94,34 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b">
+      <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b space-y-2.5">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Sparkles size={16} /> Browse Templates
           </DialogTitle>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCategory(null)}
+              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                !category ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              All
+            </button>
+            {CATEGORIES.filter(c => availableCategories.has(c.value)).map(c => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => setCategory(prev => (prev === c.value ? null : c.value))}
+                className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                  category === c.value ? `${c.badge} border-transparent` : 'text-muted-foreground border-border hover:bg-muted'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[17rem_1fr]">
@@ -101,7 +156,10 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
                       <div className="flex items-center gap-1.5">
                         <p className="text-xs font-medium truncate">{tpl.name}</p>
                       </div>
-                      {tpl.is_system && <Badge variant="secondary" className="text-[9px] mt-1">Built-in</Badge>}
+                      <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        <span className={`badge ${categoryMeta(tpl.category).badge} text-[9px]`}>{categoryMeta(tpl.category).label}</span>
+                        {tpl.is_system && <Badge variant="secondary" className="text-[9px]">Built-in</Badge>}
+                      </div>
                     </div>
                   </button>
                 ))

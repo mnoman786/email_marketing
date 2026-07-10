@@ -3,11 +3,28 @@ from django.conf import settings
 
 
 class EmailTemplate(models.Model):
+    CATEGORY_CHOICES = [
+        ('cold_intro', 'Cold Intro'),
+        ('follow_up', 'Follow-up'),
+        ('breakup', 'Break-up'),
+        ('meeting', 'Meeting'),
+        ('case_study', 'Case Study'),
+        ('referral', 'Referral'),
+        ('event', 'Event'),
+        ('pricing', 'Pricing/Demo'),
+        ('reengagement', 'Re-engagement'),
+        ('product_update', 'Product Update'),
+        ('thank_you', 'Thank You'),
+        ('news_jack', 'News-jack'),
+        ('other', 'Other'),
+    ]
+
     # Null user = a built-in system template, shared read-only with every
     # user (see is_system below) — not owned by anyone.
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='email_templates',
                               null=True, blank=True)
     name = models.CharField(max_length=255)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other', blank=True)
     subject = models.CharField(max_length=500)
     preview_text = models.CharField(max_length=500, blank=True)
     html_content = models.TextField()
