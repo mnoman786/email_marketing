@@ -551,7 +551,7 @@ export default function CampaignDetailPage() {
                   </div>
                 </div>
 
-                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40 mt-2" preserveAspectRatio="none">
+                <svg viewBox={`0 0 ${W} ${H}`} className="w-full mt-2" style={{ aspectRatio: `${W} / ${H}` }}>
                   {/* Gridlines — hairline, recessive, with matching y-axis labels */}
                   {ticks.map(t => (
                     <g key={t}>
