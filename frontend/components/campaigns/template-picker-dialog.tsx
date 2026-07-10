@@ -1,13 +1,18 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { templatesApi } from '@/lib/api'
 import { EmailTemplate, PaginatedResponse } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { SearchInput } from '@/components/ui/search-input'
+import { cn } from '@/lib/utils'
 import { Sparkles, Mail, Eye } from 'lucide-react'
+
+// Inline style beats any CSS cascade ambiguity between the global .badge
+// class's own font-size and a Tailwind text-size utility, so both the
+// category tag and "Built-in" tag are guaranteed to render identically small.
+const TAG_SIZE: CSSProperties = { fontSize: '10px', padding: '1px 8px', lineHeight: '14px' }
 
 // Mirrors EmailTemplate.CATEGORY_CHOICES in backend/apps/email_templates/models.py.
 // `badge` matches the badge-* variants already used for contact tags (globals.css).
@@ -103,9 +108,10 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
             <button
               type="button"
               onClick={() => setCategory(null)}
-              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
-                !category ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:bg-muted'
-              }`}
+              className={cn(
+                'badge badge-gray transition-all',
+                !category ? 'ring-2 ring-offset-1 ring-foreground/50' : 'opacity-60 hover:opacity-100'
+              )}
             >
               All
             </button>
@@ -114,9 +120,11 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
                 key={c.value}
                 type="button"
                 onClick={() => setCategory(prev => (prev === c.value ? null : c.value))}
-                className={`badge ${c.badge} text-[11px] transition-all ${
+                className={cn(
+                  'badge transition-all',
+                  c.badge,
                   category === c.value ? 'ring-2 ring-offset-1 ring-foreground/50' : 'opacity-60 hover:opacity-100'
-                }`}
+                )}
               >
                 {c.label}
               </button>
@@ -157,8 +165,8 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
                         <p className="text-xs font-medium truncate">{tpl.name}</p>
                       </div>
                       <div className="flex items-center gap-1 mt-1 flex-wrap">
-                        <span className={`badge ${categoryMeta(tpl.category).badge} text-[9px]`}>{categoryMeta(tpl.category).label}</span>
-                        {tpl.is_system && <Badge variant="secondary" className="text-[9px]">Built-in</Badge>}
+                        <span className={cn('badge', categoryMeta(tpl.category).badge)} style={TAG_SIZE}>{categoryMeta(tpl.category).label}</span>
+                        {tpl.is_system && <span className="badge badge-gray" style={TAG_SIZE}>Built-in</span>}
                       </div>
                     </div>
                   </button>

@@ -489,7 +489,7 @@ export default function CampaignDetailPage() {
           {/* Engagement over the last 14 days */}
           {(() => {
             const SERIES = [
-              { key: 'sent' as const, label: 'Sent', stroke: 'stroke-muted-foreground/40', dot: 'bg-muted-foreground/40' },
+              { key: 'sent' as const, label: 'Sent', stroke: 'stroke-muted-foreground/50', dot: 'bg-muted-foreground/50' },
               { key: 'opened' as const, label: 'Opened', stroke: 'stroke-[#2a78d6] dark:stroke-[#3987e5]', dot: 'bg-[#2a78d6] dark:bg-[#3987e5]' },
               { key: 'clicked' as const, label: 'Clicked', stroke: 'stroke-[#1baf7a] dark:stroke-[#199e70]', dot: 'bg-[#1baf7a] dark:bg-[#199e70]' },
               { key: 'replied' as const, label: 'Replied', stroke: 'stroke-[#4a3aa7] dark:stroke-[#9085e9]', dot: 'bg-[#4a3aa7] dark:bg-[#9085e9]' },
@@ -499,13 +499,43 @@ export default function CampaignDetailPage() {
               if (s.key === 'clicked') return trackClicks
               return true
             })
-            const W = 700, H = 160, PAD_L = 28, PAD_R = 8, PAD_T = 10, PAD_B = 20
+
+            // Round the axis ceiling to a clean number instead of the raw max.
+            const rawMax = Math.max(1, ...timeline.flatMap(d => visibleSeries.map(s => d[s.key])))
+            const niceMax = (() => {
+              const mag = Math.pow(10, Math.floor(Math.log10(rawMax)))
+              const norm = rawMax / mag
+              const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
+              return step * mag
+            })()
+
+            const W = 700, H = 190, PAD_L = 32, PAD_R = 8, PAD_T = 10, PAD_B = 22
             const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B
-            const max = Math.max(1, ...timeline.flatMap(d => visibleSeries.map(s => d[s.key])))
             const n = Math.max(1, timeline.length - 1)
             const x = (i: number) => PAD_L + (i / n) * plotW
-            const y = (v: number) => PAD_T + plotH - (v / max) * plotH
+            const y = (v: number) => PAD_T + plotH - (v / niceMax) * plotH
             const totalSent = timeline.reduce((a, d) => a + d.sent, 0)
+
+            // Catmull-Rom → cubic Bézier smoothing: the curve still passes exactly
+            // through every data point, only the segments between them are eased.
+            const smoothPath = (pts: [number, number][]) => {
+              if (pts.length < 2) return ''
+              let d = `M ${pts[0][0]},${pts[0][1]}`
+              for (let i = 0; i < pts.length - 1; i++) {
+                const p0 = pts[i - 1] || pts[i]
+                const p1 = pts[i]
+                const p2 = pts[i + 1]
+                const p3 = pts[i + 2] || p2
+                const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6
+                const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6
+                d += ` C ${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`
+              }
+              return d
+            }
+
+            const sentPts: [number, number][] = timeline.map((d, i) => [x(i), y(d.sent)])
+            const sentAreaPath = `${smoothPath(sentPts)} L ${x(n)},${PAD_T + plotH} L ${x(0)},${PAD_T + plotH} Z`
+            const ticks = [0, niceMax / 2, niceMax]
 
             return (
               <div className="rounded-xl border bg-card p-4">
@@ -521,23 +551,27 @@ export default function CampaignDetailPage() {
                   </div>
                 </div>
 
-                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 mt-2" preserveAspectRatio="none">
-                  {/* Gridlines — hairline, recessive */}
-                  {[0.25, 0.5, 0.75, 1].map(f => (
-                    <line
-                      key={f}
-                      x1={PAD_L} x2={W - PAD_R} y1={PAD_T + plotH * (1 - f)} y2={PAD_T + plotH * (1 - f)}
-                      className="stroke-border" strokeWidth={1}
-                    />
+                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40 mt-2" preserveAspectRatio="none">
+                  {/* Gridlines — hairline, recessive, with matching y-axis labels */}
+                  {ticks.map(t => (
+                    <g key={t}>
+                      <line x1={PAD_L} x2={W - PAD_R} y1={y(t)} y2={y(t)} className="stroke-border" strokeWidth={1} />
+                      <text x={PAD_L - 6} y={y(t)} textAnchor="end" dominantBaseline="middle" className="fill-muted-foreground" fontSize={9}>
+                        {Math.round(t).toLocaleString()}
+                      </text>
+                    </g>
                   ))}
 
+                  {/* Soft area wash under the Sent ceiling for depth — 10% opacity, no stroke */}
+                  <path d={sentAreaPath} className="fill-muted-foreground/[0.06]" />
+
                   {visibleSeries.map(s => {
-                    const points = timeline.map((d, i) => `${x(i)},${y(d[s.key])}`).join(' ')
+                    const pts: [number, number][] = timeline.map((d, i) => [x(i), y(d[s.key])])
                     return (
                       <g key={s.key}>
-                        <polyline points={points} fill="none" className={s.stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                        {timeline.map((d, i) => (
-                          <circle key={i} cx={x(i)} cy={y(d[s.key])} r={3} className={cn(s.stroke, 'fill-card')} strokeWidth={2} />
+                        <path d={smoothPath(pts)} fill="none" className={s.stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                        {pts.map(([px, py], i) => (
+                          <circle key={i} cx={px} cy={py} r={3} className={cn(s.stroke, 'fill-card')} strokeWidth={2} />
                         ))}
                       </g>
                     )
@@ -556,7 +590,7 @@ export default function CampaignDetailPage() {
                   ))}
                 </svg>
 
-                <div className="flex justify-between text-[10px] text-muted-foreground">
+                <div className="flex justify-between text-[10px] text-muted-foreground pl-8">
                   <span>{timeline[0]?.date?.slice(5)}</span>
                   <span className="tabular-nums">{totalSent.toLocaleString()} sent total</span>
                   <span>{timeline[timeline.length - 1]?.date?.slice(5)}</span>
