@@ -160,11 +160,10 @@ export function CampaignForm({ campaign, initialName }: Props) {
   // Which built-in/saved template (by name) was last used to prefill each
   // step/variant's content — purely a UI hint, not persisted to the backend.
   const [appliedTemplates, setAppliedTemplates] = useState<Record<string, string>>({})
+  // Only one step's editor shows at a time (Instantly-style) — the left nav
+  // picks which one via this index.
+  const [activeStepIndex, setActiveStepIndex] = useState(0)
   const subjectInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
-  const stepRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const scrollToStep = (index: number) => {
-    stepRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
   useEffect(() => {
     if (!subjectTagsOpen) return
@@ -284,20 +283,25 @@ export function CampaignForm({ campaign, initialName }: Props) {
 
 
   const addStep = () => {
-    setSteps(prev => [...prev, {
-      order: prev.length + 1, subject: '', html_content: '', text_content: '',
-      delay_days: prev.length === 0 ? 0 : 3, delay_hours: 0,
-      stop_on_open: false, stop_on_click: false,
-      auto_optimize: false, auto_optimize_metric: 'reply_rate', auto_optimize_min_sends: 30,
-      variants: [], transitions: [],
-    }])
+    setSteps(prev => {
+      setActiveStepIndex(prev.length)
+      return [...prev, {
+        order: prev.length + 1, subject: '', html_content: '', text_content: '',
+        delay_days: prev.length === 0 ? 0 : 3, delay_hours: 0,
+        stop_on_open: false, stop_on_click: false,
+        auto_optimize: false, auto_optimize_metric: 'reply_rate', auto_optimize_min_sends: 30,
+        variants: [], transitions: [],
+      }]
+    })
   }
 
   const removeStep = (index: number) => {
     setSteps(prev => {
       const removed = prev[index]
       if (removed.id) setDeletedStepIds(ids => [...ids, removed.id!])
-      return prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 }))
+      const next = prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 }))
+      setActiveStepIndex(i => Math.min(i, next.length - 1))
+      return next
     })
   }
 
@@ -509,45 +513,95 @@ export function CampaignForm({ campaign, initialName }: Props) {
       <div className="flex-1 overflow-y-auto">
         <div className={cn(
           'mx-auto p-6 grid grid-cols-1 gap-6 items-start',
-          tab === 'sequence' ? 'max-w-6xl lg:grid-cols-[13rem_1fr_17rem]' : 'max-w-5xl lg:grid-cols-[1fr_17rem]'
+          tab === 'sequence' ? 'max-w-none lg:grid-cols-[15rem_1fr_19rem]' : 'max-w-5xl lg:grid-cols-[1fr_17rem]'
         )}>
           {tab === 'sequence' && (
-            <aside className="hidden lg:block sticky top-6 space-y-1 max-h-[calc(100vh-8rem)] overflow-y-auto">
-              {steps.map((step, i) => (
-                <div key={step.id ?? `nav-${i}`}>
-                  <button
-                    type="button"
-                    onClick={() => scrollToStep(i)}
-                    className="w-full text-left px-2.5 py-2 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
+            <aside className="hidden lg:block sticky top-6 space-y-3 max-h-[calc(100vh-8rem)] overflow-y-auto">
+              {steps.map((step, i) => {
+                const isActiveStep = i === activeStepIndex
+                const activeVi = activeVarTab[i] ?? 0
+                return (
+                  <div
+                    key={step.id ?? `nav-${i}`}
+                    className={cn(
+                      'rounded-xl border-2 overflow-hidden transition-colors',
+                      isActiveStep ? 'border-primary' : 'border-border'
+                    )}
                   >
-                    <Mail size={12} className="text-muted-foreground shrink-0" />
-                    <span className="truncate">Step {step.order}</span>
-                  </button>
-                  {step.variants.length > 0 && (
-                    <div className="pl-6 space-y-0.5 mt-0.5">
-                      {step.variants.map((v, vi) => (
-                        <button
-                          key={vi}
-                          type="button"
-                          onClick={() => { scrollToStep(i); setActiveVarTab(prev => ({ ...prev, [i]: vi })) }}
-                          className={cn(
-                            'w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors truncate',
-                            (activeVarTab[i] ?? 0) === vi ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted'
-                          )}
-                        >
-                          Variant {v.label}
-                        </button>
-                      ))}
+                    <div
+                      role="button"
+                      onClick={() => setActiveStepIndex(i)}
+                      className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer hover:bg-muted/40"
+                    >
+                      <span className="text-sm font-semibold truncate">Step {step.order}</span>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); removeStep(i) }}
+                        disabled={steps.length === 1}
+                        title="Delete step"
+                        className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:pointer-events-none shrink-0"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    <div className="px-2.5 pb-2.5 space-y-1.5">
+                      {step.variants.length > 0 ? (
+                        step.variants.map((v, vi) => {
+                          const isActiveVariant = isActiveStep && activeVi === vi
+                          return (
+                            <div
+                              key={vi}
+                              role="button"
+                              onClick={() => { setActiveStepIndex(i); setActiveVarTab(prev => ({ ...prev, [i]: vi })) }}
+                              className={cn(
+                                'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 cursor-pointer transition-colors',
+                                isActiveVariant ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/60'
+                              )}
+                            >
+                              <span className="text-xs truncate min-w-0">
+                                <span className="font-semibold mr-1">{v.label}</span>
+                                {v.subject || <span className="italic text-muted-foreground">No subject</span>}
+                              </span>
+                              {step.variants.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); removeVariant(i, vi) }}
+                                  className="text-muted-foreground hover:text-destructive shrink-0"
+                                  title="Delete variant"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div className="rounded-lg border border-border bg-muted/20 px-2.5 py-2 text-xs truncate">
+                          {step.subject || <span className="italic text-muted-foreground">No subject</span>}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveStepIndex(i)
+                          addVariant(i)
+                          setActiveVarTab(prev => ({ ...prev, [i]: step.variants.length || 0 }))
+                        }}
+                        className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-primary hover:underline"
+                      >
+                        <Plus size={11} /> Add variant
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
               <button
                 type="button"
                 onClick={addStep}
-                className="w-full flex items-center justify-center gap-1.5 mt-2 py-2 rounded-lg border border-dashed text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-primary/30 text-primary font-medium text-sm hover:bg-primary/5 hover:border-primary transition-colors"
               >
-                <Plus size={12} /> Add Step
+                <Plus size={14} /> Add step
               </button>
             </aside>
           )}
@@ -706,96 +760,56 @@ export function CampaignForm({ campaign, initialName }: Props) {
           </div>
         )}
 
-        {tab === 'sequence' && (
-          <div className="space-y-4">
-            {steps.map((step, index) => {
-              const hasVariants = step.variants.length > 0
-              const activeTab = activeVarTab[index] ?? 0
-              const currentVariant = hasVariants ? step.variants[activeTab] : null
-              const key = `${index}-${activeTab}`
+        {tab === 'sequence' && (() => {
+          const index = Math.min(activeStepIndex, steps.length - 1)
+          const step = steps[index]
+          if (!step) return null
+          const hasVariants = step.variants.length > 0
+          const activeTab = activeVarTab[index] ?? 0
+          const currentVariant = hasVariants ? step.variants[activeTab] : null
+          const key = `${index}-${activeTab}`
 
-              // What subject/html to show in the editor area
-              const editSubject = currentVariant ? currentVariant.subject : step.subject
-              const editHtml    = currentVariant ? currentVariant.html_content : step.html_content
+          // What subject/html to show in the editor area
+          const editSubject = currentVariant ? currentVariant.subject : step.subject
+          const editHtml    = currentVariant ? currentVariant.html_content : step.html_content
 
-              const setSubject = (val: string) => currentVariant
-                ? updateVariant(index, activeTab, { subject: val })
-                : updateStep(index, { subject: val })
-              const setBody = (html: string, text: string) => currentVariant
-                ? updateVariant(index, activeTab, { html_content: html, text_content: text })
-                : updateStep(index, { html_content: html, text_content: text })
+          const setSubject = (val: string) => currentVariant
+            ? updateVariant(index, activeTab, { subject: val })
+            : updateStep(index, { subject: val })
+          const setBody = (html: string, text: string) => currentVariant
+            ? updateVariant(index, activeTab, { html_content: html, text_content: text })
+            : updateStep(index, { html_content: html, text_content: text })
 
-              return (
-                <Card key={step.id ?? `new-${index}`} ref={el => { stepRefs.current[index] = el }}>
-                  {/* ── Step header ── */}
-                  <CardHeader className="flex flex-row items-center justify-between pb-0">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      Step {step.order}
-                      {index > 0 && (
-                        <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
-                          <Clock size={11} />
-                          wait {step.delay_days}d {step.delay_hours}h
-                        </span>
-                      )}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveStep(index, -1)}>
-                        <ChevronUp size={14} />
-                      </Button>
-                      <Button variant="ghost" size="icon-sm" disabled={index === steps.length - 1} onClick={() => moveStep(index, 1)}>
-                        <ChevronDown size={14} />
-                      </Button>
-                      <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive"
-                        onClick={() => removeStep(index)} disabled={steps.length === 1}>
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </CardHeader>
-
-                  {/* ── Variant tabs ── */}
-                  <div className="flex items-center gap-1 px-4 pt-2 border-b">
-                    {hasVariants ? (
-                      <>
-                        {step.variants.map((v, vi) => {
-                          const isActive = activeTab === vi
-                          return (
-                            <div key={vi} role="tab"
-                              onClick={() => setActiveVarTab(prev => ({ ...prev, [index]: vi }))}
-                              className={cn(
-                                'group relative flex items-center gap-2 px-3 py-2 rounded-t-lg border border-b-0 -mb-px cursor-pointer transition-all select-none min-w-0 max-w-[220px]',
-                                isActive
-                                  ? 'bg-background border-border text-foreground shadow-sm'
-                                  : 'bg-muted/40 border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
-                              )}
-                            >
-                              <span className={cn(
-                                'flex-none w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center',
-                                isActive ? 'bg-primary text-primary-foreground' : 'bg-muted-foreground/20 text-muted-foreground'
-                              )}>{v.label}</span>
-                              <span className="truncate text-xs font-medium">
-                                {v.subject || <span className="italic text-muted-foreground/60">No subject</span>}
-                              </span>
-                              {step.variants.length > 1 && (
-                                <span role="button"
-                                  onClick={e => { e.stopPropagation(); removeVariant(index, vi); setActiveVarTab(prev => ({ ...prev, [index]: Math.max(0, vi - 1) })) }}
-                                  className="flex-none opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
-                                ><X size={10} /></span>
-                              )}
-                            </div>
-                          )
-                        })}
-                        <button type="button"
-                          onClick={() => { addVariant(index); setActiveVarTab(prev => ({ ...prev, [index]: step.variants.length })) }}
-                          className="flex items-center gap-1 px-2 py-1.5 ml-1 text-xs text-muted-foreground hover:text-primary rounded-md hover:bg-muted transition-colors"
-                        ><Plus size={11} /> Add Variant</button>
-                      </>
-                    ) : (
-                      <button type="button"
-                        onClick={() => { addVariant(index); setActiveVarTab(prev => ({ ...prev, [index]: 0 })) }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-xs font-medium border border-dashed rounded-md text-muted-foreground hover:text-primary hover:border-primary transition-colors"
-                      ><Plus size={11} /> Add A/B Variant</button>
+          return (
+            <div className="space-y-4">
+              <Card>
+                {/* ── Step header ── */}
+                <CardHeader className="flex flex-row items-center justify-between pb-0">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    Step {step.order}
+                    {currentVariant && (
+                      <span className="badge bg-primary/10 text-primary text-[10px]">Variant {currentVariant.label}</span>
                     )}
+                    {index > 0 && (
+                      <span className="text-xs font-normal text-muted-foreground flex items-center gap-1">
+                        <Clock size={11} />
+                        wait {step.delay_days}d {step.delay_hours}h
+                      </span>
+                    )}
+                  </CardTitle>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => moveStep(index, -1)}>
+                      <ChevronUp size={14} />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" disabled={index === steps.length - 1} onClick={() => moveStep(index, 1)}>
+                      <ChevronDown size={14} />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive"
+                      onClick={() => removeStep(index)} disabled={steps.length === 1}>
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
+                </CardHeader>
 
                   <CardContent className="pt-4 space-y-4">
                     {/* Templates — prominent, above Subject so it's the first thing seen */}
@@ -1115,17 +1129,9 @@ export function CampaignForm({ campaign, initialName }: Props) {
                     </div>
                   </CardContent>
                 </Card>
-              )
-            })}
-
-            {/* Add Step */}
-            <button type="button" onClick={addStep}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
-              <Plus size={15} /> Add Step
-            </button>
-          </div>
-        )}
-
+            </div>
+          )
+        })()}
 
           </div>
 
