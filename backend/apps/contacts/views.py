@@ -97,7 +97,7 @@ def remove_contacts_from_list(request, list_id: int, data: AddRemoveContactsIn):
 
 @router.get('/tags/', response=List[TagOut], auth=auth)
 def list_tags(request):
-    return list(Tag.objects.filter(user=request.auth).prefetch_related('contacts'))
+    return list(Tag.objects.filter(user=request.auth).prefetch_related('contacts').order_by('-created_at'))
 
 
 @router.post('/tags/', response=TagOut, auth=auth)

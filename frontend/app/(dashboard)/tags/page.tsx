@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tagsApi } from '@/lib/api'
 import { Tag } from '@/lib/types'
 import { Button } from '@/components/ui/button'
+import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
@@ -55,34 +56,50 @@ export default function TagsPage() {
           action={{ label: 'New Tag', onClick: () => setShowForm(true) }}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {tags.map(tag => (
-            <div key={tag.id} className="rounded-xl border bg-card p-5 card-hover">
-              <div className="flex items-start justify-between">
-                <span className={cn('text-sm font-medium px-3 py-1', getTagBadgeProps(tag.color).className)} style={getTagBadgeProps(tag.color).style}>
-                  {tag.name}
-                </span>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon-sm" onClick={() => { setEditTag(tag); setShowForm(true) }}>
-                    <Edit2 size={13} />
-                  </Button>
-                  <Button
-                    variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteId(tag.id)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Users size={12} /> {tag.contact_count.toLocaleString()} leads
-                </span>
-                <span>Created {formatDateTime(tag.created_at)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+        <TableContainer>
+          <TableScroll>
+            <Table>
+              <TableHead>
+                <TableHeaderRow>
+                  <TH>Tag</TH>
+                  <TH>Leads</TH>
+                  <TH>Created</TH>
+                  <TH className="text-right">Actions</TH>
+                </TableHeaderRow>
+              </TableHead>
+              <TableBody>
+                {tags.map(tag => (
+                  <TR key={tag.id}>
+                    <TD>
+                      <span className={cn('text-sm font-medium px-3 py-1', getTagBadgeProps(tag.color).className)} style={getTagBadgeProps(tag.color).style}>
+                        {tag.name}
+                      </span>
+                    </TD>
+                    <TD className="text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <Users size={13} /> {tag.contact_count.toLocaleString()}
+                      </span>
+                    </TD>
+                    <TD className="text-sm text-muted-foreground whitespace-nowrap">{formatDateTime(tag.created_at)}</TD>
+                    <TD>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon-sm" title="Edit tag" onClick={() => { setEditTag(tag); setShowForm(true) }}>
+                          <Edit2 size={13} />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon-sm" title="Delete tag" className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteId(tag.id)}
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      </div>
+                    </TD>
+                  </TR>
+                ))}
+              </TableBody>
+            </Table>
+          </TableScroll>
+        </TableContainer>
       )}
 
       <TagFormDialog
