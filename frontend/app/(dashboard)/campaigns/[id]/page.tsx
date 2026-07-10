@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { PageSkeleton } from '@/components/shared/loading-skeleton'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { TablePagination } from '@/components/shared/table-pagination'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
   ArrowLeft, Play, Pause, Pencil, Trash2, BarChart3, Users, RefreshCw, Clock, Send, CheckCircle2,
@@ -70,6 +71,8 @@ export default function CampaignDetailPage() {
   const [showDelete, setShowDelete] = useState(false)
   const [tab, setTab] = useState<'analytics' | 'leads'>('analytics')
   const [selectedStep, setSelectedStep] = useState<any>(null)
+  const [enrollmentsPage, setEnrollmentsPage] = useState(1)
+  const ENROLLMENTS_PAGE_SIZE = 25
 
   const { data: campaign, isLoading, isError } = useQuery({
     queryKey: ['campaign', id],
@@ -84,13 +87,15 @@ export default function CampaignDetailPage() {
     queryKey: ['campaign-stats', id],
     queryFn: () => campaignsApi.stats(Number(id)).then(r => r.data),
     enabled: !!id,
-    refetchInterval: 10000,
+    // Only an active campaign's numbers change between polls — a paused/
+    // draft/completed campaign would otherwise poll this forever for no reason.
+    refetchInterval: campaign?.status === 'active' ? 10000 : false,
   })
 
   const { data: enrollments } = useQuery({
-    queryKey: ['campaign-enrollments', id],
-    queryFn: () => campaignsApi.enrollments(Number(id), { page_size: 25 }).then(r => r.data),
-    enabled: !!id,
+    queryKey: ['campaign-enrollments', id, enrollmentsPage],
+    queryFn: () => campaignsApi.enrollments(Number(id), { page_size: ENROLLMENTS_PAGE_SIZE, page: enrollmentsPage }).then(r => r.data),
+    enabled: !!id && tab === 'leads',
   })
 
   const activateMut = useMutation({
@@ -598,6 +603,14 @@ export default function CampaignDetailPage() {
             <div className="p-10 text-center text-muted-foreground text-sm">
               No leads enrolled yet.
             </div>
+          )}
+          {enrollments && enrollments.count > 0 && (
+            <TablePagination
+              page={enrollmentsPage}
+              pageSize={ENROLLMENTS_PAGE_SIZE}
+              total={enrollments.count}
+              onPageChange={setEnrollmentsPage}
+            />
           )}
           </TableContainer>
         </div>

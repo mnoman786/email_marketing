@@ -119,10 +119,13 @@ def _send_enrollment_batch_task(enrollment_ids):
     sent, stopped, completed, skipped = 0, 0, 0, 0
     conn_cache = {}
 
-    # Cache each campaign's ordered steps for the duration of this batch — many
-    # enrollments in the same batch typically belong to the same campaign, so
-    # without this every enrollment would re-fetch the same step rows.
+    # Cache each campaign's ordered steps, active SMTP accounts, and suppressed
+    # emails for the duration of this batch — many enrollments in the same
+    # batch typically belong to the same campaign/user, so without this every
+    # enrollment would re-fetch the same rows.
     steps_by_campaign = {}
+    smtp_by_campaign = {}
+    suppressed_by_user = {}
 
     for enrollment_id in enrollment_ids:
         claimed = CampaignEnrollment.objects.filter(
@@ -219,8 +222,12 @@ def _send_enrollment_batch_task(enrollment_ids):
 
         # Safety net: someone may have been suppressed after enrolling. Stop the
         # enrollment instead of sending another step.
-        from apps.contacts.models import Suppression
-        if Suppression.objects.filter(user=campaign.user, email__iexact=enrollment.contact.email).exists():
+        if campaign.user_id not in suppressed_by_user:
+            from apps.contacts.models import Suppression
+            suppressed_by_user[campaign.user_id] = {
+                e.lower() for e in Suppression.objects.filter(user_id=campaign.user_id).values_list('email', flat=True)
+            }
+        if enrollment.contact.email.lower() in suppressed_by_user[campaign.user_id]:
             enrollment.status = 'unsubscribed'
             enrollment.completed_at = now
             enrollment.save(update_fields=['status', 'completed_at'])
@@ -243,7 +250,9 @@ def _send_enrollment_batch_task(enrollment_ids):
             skipped += 1
             continue
 
-        smtp_accounts = _smtp_accounts_for(campaign)
+        if campaign.id not in smtp_by_campaign:
+            smtp_by_campaign[campaign.id] = _smtp_accounts_for(campaign)
+        smtp_accounts = smtp_by_campaign[campaign.id]
         if not smtp_accounts:
             logger.error(f'Campaign {campaign.id}: no active SMTP accounts, skipping enrollment {enrollment.id}.')
             continue

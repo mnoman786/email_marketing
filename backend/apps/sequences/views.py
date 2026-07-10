@@ -3,6 +3,7 @@ from datetime import timedelta
 from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
+from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from django.db.models import Case, Count, IntegerField, Min, Max, Q, When
 from django.db.models.functions import TruncDate
@@ -255,7 +256,18 @@ def list_enrollments(request, campaign_id: int, status: Optional[str] = None):
 @router.get('/{campaign_id}/stats/', auth=auth)
 def campaign_stats(request, campaign_id: int):
     from apps.analytics.models import SendLog
+    # Ownership check runs before the cache lookup so the cache key can never
+    # be used to read another user's campaign stats.
     campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
+
+    # The detail page polls this every 10s and it runs ~15 aggregate queries
+    # per hit — a short TTL (well under the poll interval) absorbs most of
+    # that traffic while staying close enough to real-time for a dashboard.
+    cache_key = f'campaign-stats-{campaign_id}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     steps = list(campaign.steps.order_by('order'))
 
     def bucket_counts(logs):
@@ -504,7 +516,7 @@ def campaign_stats(request, campaign_id: int):
         for i in range(14)
     ]
 
-    return {
+    result = {
         'id': campaign.id,
         'name': campaign.name,
         'status': campaign.status,
@@ -525,3 +537,5 @@ def campaign_stats(request, campaign_id: int):
         'last_sent_at': last_sent_at.isoformat() if last_sent_at else None,
         'sends_timeline': timeline,
     }
+    cache.set(cache_key, result, timeout=8)
+    return result

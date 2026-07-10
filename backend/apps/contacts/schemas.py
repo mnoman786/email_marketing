@@ -15,11 +15,14 @@ class ContactListOut(Schema):
 
     @staticmethod
     def resolve_contact_count(obj):
-        return obj.contact_count
+        # list_contact_lists() annotates _contact_count so this avoids a
+        # per-row COUNT query; falls back to the model property for single-
+        # object endpoints (get_contact_list) that aren't annotated.
+        return obj._contact_count if hasattr(obj, '_contact_count') else obj.contact_count
 
     @staticmethod
     def resolve_total_contacts(obj):
-        return obj.total_contacts
+        return obj._total_contacts if hasattr(obj, '_total_contacts') else obj.total_contacts
 
 
 class ContactListIn(Schema):
@@ -46,7 +49,9 @@ class TagOut(Schema):
 
     @staticmethod
     def resolve_contact_count(obj):
-        return obj.contacts.count()
+        # Reuses list_tags()'s prefetch_related('contacts') cache instead of
+        # firing a fresh COUNT query per row.
+        return len(obj.contacts.all())
 
 
 class TagIn(Schema):

@@ -3,7 +3,7 @@ from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.utils import timezone
 from typing import Optional, List
 from django.http import HttpResponse
@@ -32,7 +32,12 @@ router = Router(tags=['Contacts'])
 @router.get('/lists/', response=List[ContactListOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
 def list_contact_lists(request, search: Optional[str] = None):
-    qs = ContactList.objects.filter(user=request.auth)
+    # Annotated here instead of via the ContactList.contact_count/total_contacts
+    # properties, which would otherwise fire 2 extra COUNT queries per row.
+    qs = ContactList.objects.filter(user=request.auth).annotate(
+        _contact_count=Count('contacts', filter=Q(contacts__status='active'), distinct=True),
+        _total_contacts=Count('contacts', distinct=True),
+    )
     if search:
         qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
     return qs

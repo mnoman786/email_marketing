@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { addDays, addHours, set } from 'date-fns'
@@ -66,6 +66,14 @@ const SNOOZE_OPTIONS = [
 type ViewTab = 'inbox' | 'archived' | 'snoozed'
 
 export default function InboxPage() {
+  return (
+    <Suspense fallback={null}>
+      <InboxPageInner />
+    </Suspense>
+  )
+}
+
+function InboxPageInner() {
   const qc = useQueryClient()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -110,10 +118,19 @@ export default function InboxPage() {
     queryFn: () => smtpApi.getAll({ page_size: 100 }).then(r => (r.data.items || []).filter((a: SMTPAccount) => a.imap_enabled)),
   })
 
+  const THREADS_PAGE_SIZE = 50
+  const [threadsLimit, setThreadsLimit] = useState(THREADS_PAGE_SIZE)
+
+  // Collapse back to the first page whenever the filter set changes, so
+  // switching views/filters doesn't keep a stale "loaded more" window.
+  useEffect(() => {
+    setThreadsLimit(THREADS_PAGE_SIZE)
+  }, [accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter])
+
   const { data, isLoading } = useQuery({
-    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter],
+    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter, threadsLimit],
     queryFn: () => inboxApi.threads({
-      page_size: 50,
+      page_size: threadsLimit,
       smtp_account_id: accountFilter || undefined,
       lead_status: statusFilter || undefined,
       due_followup: dueFollowupOnly || undefined,
@@ -606,6 +623,13 @@ export default function InboxPage() {
                 </div>
               )
             })
+          )}
+          {data && data.count > threads.length && (
+            <div className="p-3 flex justify-center">
+              <Button variant="outline" size="sm" onClick={() => setThreadsLimit(l => l + THREADS_PAGE_SIZE)}>
+                Load more ({(data.count - threads.length).toLocaleString()} remaining)
+              </Button>
+            </div>
           )}
         </div>
       </div>
