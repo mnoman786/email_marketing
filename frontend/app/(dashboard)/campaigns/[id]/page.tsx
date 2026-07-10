@@ -15,6 +15,9 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { TablePagination } from '@/components/shared/table-pagination'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
+  ComposedChart, Area, Line, Bar, Cell, LabelList, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
+import {
   ArrowLeft, Play, Pause, Pencil, Trash2, BarChart3, Users, RefreshCw, Clock, Send, CheckCircle2,
   Mail, ReplyAll, AlertTriangle, Eye, MousePointerClick, FlaskConical,
   TrendingUp, TrendingDown, Minus, Trophy, ThumbsDown, ThumbsUp, ShieldAlert, Filter,
@@ -323,34 +326,44 @@ export default function CampaignDetailPage() {
             <p className="font-semibold text-sm flex items-center gap-1.5"><Filter size={14} /> Insights</p>
 
             {/* Funnel */}
-            {funnel && funnel.sent > 0 && (
-              <div className="rounded-xl border bg-card p-4">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Conversion Funnel</p>
-                <div className="space-y-2">
-                  {([
-                    { label: 'Sent', value: funnel.sent, of: funnel.sent, tone: 'bg-muted-foreground/70' },
-                    { label: 'Opened', value: funnel.opened, of: funnel.sent, tone: 'bg-purple-500', dropLabel: `${funnel.drop_off.sent_to_opened}% of sent` },
-                    { label: 'Clicked', value: funnel.clicked, of: funnel.sent, tone: 'bg-blue-500', dropLabel: `${funnel.drop_off.opened_to_clicked}% of opened` },
-                    { label: 'Replied', value: funnel.replied, of: funnel.sent, tone: 'bg-green-500', dropLabel: `${funnel.drop_off.clicked_to_replied}% of clicked` },
-                  ] as const).map(row => {
-                    const widthPct = funnel.sent > 0 ? Math.max(2, Math.round((row.value / funnel.sent) * 100)) : 0
-                    return (
-                      <div key={row.label} className="flex items-center gap-3">
-                        <span className="w-14 shrink-0 text-xs text-muted-foreground">{row.label}</span>
-                        <div className="flex-1 h-6 rounded-md bg-muted overflow-hidden">
-                          <div className={cn('h-full rounded-md flex items-center px-2 transition-all', row.tone)} style={{ width: `${widthPct}%` }}>
-                            <span className="text-[11px] font-semibold text-white tabular-nums">{row.value.toLocaleString()}</span>
-                          </div>
-                        </div>
-                        {'dropLabel' in row && row.dropLabel && (
-                          <span className="w-28 shrink-0 text-[11px] text-muted-foreground text-right">{row.dropLabel}</span>
-                        )}
-                      </div>
-                    )
-                  })}
+            {funnel && funnel.sent > 0 && (() => {
+              const rows = [
+                { label: 'Sent', value: funnel.sent, fill: '#94a3b8', dropLabel: '' },
+                { label: 'Opened', value: funnel.opened, fill: '#a855f7', dropLabel: `${funnel.drop_off.sent_to_opened}% of sent` },
+                { label: 'Clicked', value: funnel.clicked, fill: '#3b82f6', dropLabel: `${funnel.drop_off.opened_to_clicked}% of opened` },
+                { label: 'Replied', value: funnel.replied, fill: '#22c55e', dropLabel: `${funnel.drop_off.clicked_to_replied}% of clicked` },
+              ]
+              return (
+                <div className="rounded-xl border bg-card p-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Conversion Funnel</p>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <ComposedChart
+                      data={rows} layout="vertical"
+                      margin={{ top: 5, right: 56, left: 8, bottom: 5 }}
+                      barCategoryGap={10}
+                    >
+                      <XAxis type="number" hide domain={[0, funnel.sent]} />
+                      <YAxis type="category" dataKey="label" width={56} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} className="fill-muted-foreground" />
+                      <Tooltip
+                        cursor={{ fill: 'hsl(var(--muted))' }}
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                        }}
+                        formatter={((value: any) => Number(value ?? 0).toLocaleString()) as any}
+                      />
+                      <Bar dataKey="value" background={{ fill: 'hsl(var(--muted))', radius: 4 } as any} radius={4} barSize={22}>
+                        {rows.map(r => <Cell key={r.label} fill={r.fill} />)}
+                        <LabelList dataKey="value" position="insideLeft" offset={8} formatter={((v: any) => Number(v ?? 0).toLocaleString()) as any} className="fill-white" fontSize={11} fontWeight={600} />
+                        <LabelList dataKey="dropLabel" position="right" offset={8} className="fill-muted-foreground" fontSize={11} />
+                      </Bar>
+                    </ComposedChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Performance highlights */}
@@ -488,114 +501,49 @@ export default function CampaignDetailPage() {
 
           {/* Engagement over the last 14 days */}
           {(() => {
-            const SERIES = [
-              { key: 'sent' as const, label: 'Sent', stroke: 'stroke-muted-foreground/50', dot: 'bg-muted-foreground/50' },
-              { key: 'opened' as const, label: 'Opened', stroke: 'stroke-[#2a78d6] dark:stroke-[#3987e5]', dot: 'bg-[#2a78d6] dark:bg-[#3987e5]' },
-              { key: 'clicked' as const, label: 'Clicked', stroke: 'stroke-[#1baf7a] dark:stroke-[#199e70]', dot: 'bg-[#1baf7a] dark:bg-[#199e70]' },
-              { key: 'replied' as const, label: 'Replied', stroke: 'stroke-[#4a3aa7] dark:stroke-[#9085e9]', dot: 'bg-[#4a3aa7] dark:bg-[#9085e9]' },
-            ]
-            const visibleSeries = SERIES.filter(s => {
-              if (s.key === 'opened') return trackOpens
-              if (s.key === 'clicked') return trackClicks
-              return true
-            })
-
-            // Round the axis ceiling to a clean number instead of the raw max.
-            const rawMax = Math.max(1, ...timeline.flatMap(d => visibleSeries.map(s => d[s.key])))
-            const niceMax = (() => {
-              const mag = Math.pow(10, Math.floor(Math.log10(rawMax)))
-              const norm = rawMax / mag
-              const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
-              return step * mag
-            })()
-
-            const W = 700, H = 190, PAD_L = 32, PAD_R = 8, PAD_T = 10, PAD_B = 22
-            const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B
-            const n = Math.max(1, timeline.length - 1)
-            const x = (i: number) => PAD_L + (i / n) * plotW
-            const y = (v: number) => PAD_T + plotH - (v / niceMax) * plotH
             const totalSent = timeline.reduce((a, d) => a + d.sent, 0)
-
-            // Catmull-Rom → cubic Bézier smoothing: the curve still passes exactly
-            // through every data point, only the segments between them are eased.
-            const smoothPath = (pts: [number, number][]) => {
-              if (pts.length < 2) return ''
-              let d = `M ${pts[0][0]},${pts[0][1]}`
-              for (let i = 0; i < pts.length - 1; i++) {
-                const p0 = pts[i - 1] || pts[i]
-                const p1 = pts[i]
-                const p2 = pts[i + 1]
-                const p3 = pts[i + 2] || p2
-                const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6
-                const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6
-                d += ` C ${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`
-              }
-              return d
-            }
-
-            const sentPts: [number, number][] = timeline.map((d, i) => [x(i), y(d.sent)])
-            const sentAreaPath = `${smoothPath(sentPts)} L ${x(n)},${PAD_T + plotH} L ${x(0)},${PAD_T + plotH} Z`
-            const ticks = [0, niceMax / 2, niceMax]
+            const chartData = timeline.map(d => ({ ...d, label: d.date.slice(5) }))
 
             return (
-              <div className="rounded-xl border bg-card p-4">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="font-semibold text-sm">Engagement · last 14 days</p>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {visibleSeries.map(s => (
-                      <span key={s.key} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <span className={cn('w-2 h-2 rounded-full', s.dot)} />
-                        {s.label}
-                      </span>
-                    ))}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                    <p className="font-semibold text-sm">Engagement · last 14 days</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">{totalSent.toLocaleString()} sent total</p>
                   </div>
-                </div>
-
-                <svg viewBox={`0 0 ${W} ${H}`} className="w-full mt-2" style={{ aspectRatio: `${W} / ${H}` }}>
-                  {/* Gridlines — hairline, recessive, with matching y-axis labels */}
-                  {ticks.map(t => (
-                    <g key={t}>
-                      <line x1={PAD_L} x2={W - PAD_R} y1={y(t)} y2={y(t)} className="stroke-border" strokeWidth={1} />
-                      <text x={PAD_L - 6} y={y(t)} textAnchor="end" dominantBaseline="middle" className="fill-muted-foreground" fontSize={9}>
-                        {Math.round(t).toLocaleString()}
-                      </text>
-                    </g>
-                  ))}
-
-                  {/* Soft area wash under the Sent ceiling for depth — 10% opacity, no stroke */}
-                  <path d={sentAreaPath} className="fill-muted-foreground/[0.06]" />
-
-                  {visibleSeries.map(s => {
-                    const pts: [number, number][] = timeline.map((d, i) => [x(i), y(d[s.key])])
-                    return (
-                      <g key={s.key}>
-                        <path d={smoothPath(pts)} fill="none" className={s.stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                        {pts.map(([px, py], i) => (
-                          <circle key={i} cx={px} cy={py} r={3} className={cn(s.stroke, 'fill-card')} strokeWidth={2} />
-                        ))}
-                      </g>
-                    )
-                  })}
-
-                  {/* Larger invisible hover targets, one per day per series — the
-                      visible dots (r=3) are too small to reliably land a cursor on. */}
-                  {visibleSeries.map(s => (
-                    <g key={`${s.key}-hit`}>
-                      {timeline.map((d, i) => (
-                        <circle key={i} cx={x(i)} cy={y(d[s.key])} r={10} fill="transparent">
-                          <title>{`${d.date}: ${d[s.key].toLocaleString()} ${s.label.toLowerCase()}`}</title>
-                        </circle>
-                      ))}
-                    </g>
-                  ))}
-                </svg>
-
-                <div className="flex justify-between text-[10px] text-muted-foreground pl-8">
-                  <span>{timeline[0]?.date?.slice(5)}</span>
-                  <span className="tabular-nums">{totalSent.toLocaleString()} sent total</span>
-                  <span>{timeline[timeline.length - 1]?.date?.slice(5)}</span>
-                </div>
-              </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <ComposedChart data={chartData} margin={{ top: 5, right: 8, left: -16, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="sentGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} className="fill-muted-foreground" />
+                      <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={36} className="fill-muted-foreground" allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                        }}
+                        labelFormatter={(label, payload) => payload?.[0]?.payload?.date ?? label}
+                      />
+                      <Legend iconSize={9} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                      <Area type="monotone" dataKey="sent" name="Sent" stroke="#94a3b8" fill="url(#sentGrad)" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      {trackOpens && (
+                        <Line type="monotone" dataKey="opened" name="Opened" stroke="#2a78d6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      )}
+                      {trackClicks && (
+                        <Line type="monotone" dataKey="clicked" name="Clicked" stroke="#1baf7a" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                      )}
+                      <Line type="monotone" dataKey="replied" name="Replied" stroke="#4a3aa7" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
             )
           })()}
 
