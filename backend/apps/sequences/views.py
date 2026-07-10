@@ -399,10 +399,15 @@ def campaign_stats(request, campaign_id: int):
     }
 
     # Opportunities (Instantly-style): enrolled contacts whose inbox thread was
-    # marked as a positive lead (interested / meeting booked).
+    # marked as a positive lead (interested / meeting booked). Also broken out
+    # here into a full positive/negative reply-sentiment split — a Thread
+    # exists for every enrolled contact once we've sent them anything (see
+    # log_outbound_message), so 'none' just means "hasn't replied or hasn't
+    # been triaged yet", not a real sentiment bucket — only count contacts
+    # who've actually been classified one way or the other.
     from apps.inbox.models import Thread
     enrolled_contact_ids = campaign.enrollments.values_list('contact_id', flat=True)
-    opportunities = (
+    positive_replies = (
         Thread.objects.filter(
             user=campaign.user,
             contact_id__in=enrolled_contact_ids,
@@ -412,6 +417,23 @@ def campaign_stats(request, campaign_id: int):
         .distinct()
         .count()
     )
+    negative_replies = (
+        Thread.objects.filter(
+            user=campaign.user,
+            contact_id__in=enrolled_contact_ids,
+            lead_status='not_interested',
+        )
+        .values('contact_id')
+        .distinct()
+        .count()
+    )
+    opportunities = positive_replies
+    reply_sentiment = {
+        'positive': positive_replies,
+        'negative': negative_replies,
+        'positive_rate': rate(positive_replies, funnel_totals['sent']),
+        'negative_rate': rate(negative_replies, funnel_totals['sent']),
+    }
 
     # --- Scheduling insights: when does the next email go out? ---
     now = timezone.now()
@@ -523,6 +545,7 @@ def campaign_stats(request, campaign_id: int):
         'total_enrolled': campaign.enrollments.count(),
         'enrollment_counts': enrollment_counts,
         'opportunities': opportunities,
+        'reply_sentiment': reply_sentiment,
         'steps': step_stats,
         # insights
         'funnel': funnel,

@@ -17,8 +17,8 @@ import { formatDateTime, cn } from '@/lib/utils'
 import {
   ArrowLeft, Play, Pause, Pencil, Trash2, BarChart3, Users, RefreshCw, Clock, Send, CheckCircle2,
   Mail, ReplyAll, AlertTriangle, Eye, MousePointerClick, FlaskConical,
-  TrendingUp, TrendingDown, Minus, Trophy, ThumbsDown, ShieldAlert, Filter,
-  ExternalLink, Inbox,
+  TrendingUp, TrendingDown, Minus, Trophy, ThumbsDown, ThumbsUp, ShieldAlert, Filter,
+  ExternalLink, Inbox, MessageSquareText,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
@@ -168,6 +168,7 @@ export default function CampaignDetailPage() {
   const trackClicks = campaign.track_clicks
 
   const opportunities = stats?.opportunities || 0
+  const replySentiment = stats?.reply_sentiment || null
   const funnel = stats?.funnel || null
   const performers = stats?.performers || null
   const deliverability = stats?.deliverability || null
@@ -406,6 +407,30 @@ export default function CampaignDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Reply sentiment — positive vs negative replies, as a share of sent.
+                'Unclassified' isn't shown here: a Thread exists for every enrolled
+                contact once we've emailed them, so it just means "hasn't replied /
+                hasn't been triaged yet", not a real sentiment bucket. */}
+            {replySentiment && (replySentiment.positive > 0 || replySentiment.negative > 0) && (
+              <div className="rounded-xl border bg-card p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <MessageSquareText size={13} /> Reply Sentiment
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1"><ThumbsUp size={11} className="text-emerald-600" /> Positive</p>
+                    <p className="text-xl font-bold tabular-nums mt-0.5 text-emerald-600">{replySentiment.positive_rate}%</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{replySentiment.positive.toLocaleString()} interested / meeting booked</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1"><ThumbsDown size={11} className="text-red-500" /> Negative</p>
+                    <p className="text-xl font-bold tabular-nums mt-0.5 text-red-500">{replySentiment.negative_rate}%</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{replySentiment.negative.toLocaleString()} not interested</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Deliverability health */}
             {deliverability && deliverability.attempted > 0 && (
