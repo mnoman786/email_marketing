@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { addDays, addHours, set } from 'date-fns'
 import { inboxApi, smtpApi } from '@/lib/api'
@@ -66,6 +67,12 @@ type ViewTab = 'inbox' | 'archived' | 'snoozed'
 
 export default function InboxPage() {
   const qc = useQueryClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [campaignFilter, setCampaignFilter] = useState<number | null>(() => {
+    const raw = searchParams.get('campaign_id')
+    return raw ? Number(raw) : null
+  })
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [accountFilter, setAccountFilter] = useState<number | null>(null)
@@ -104,7 +111,7 @@ export default function InboxPage() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch],
+    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter],
     queryFn: () => inboxApi.threads({
       page_size: 50,
       smtp_account_id: accountFilter || undefined,
@@ -113,6 +120,7 @@ export default function InboxPage() {
       is_archived: view === 'archived',
       snoozed: view === 'snoozed',
       search: debouncedSearch || undefined,
+      campaign_id: campaignFilter || undefined,
     }).then(r => r.data as PaginatedResponse<ThreadListItem>),
     refetchInterval: 15000,
   })
@@ -360,6 +368,17 @@ export default function InboxPage() {
               </Button>
             </div>
           </div>
+          {campaignFilter && (
+            <div className="flex items-center justify-between gap-2 text-xs px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary">
+              <span>Filtered to one campaign's leads</span>
+              <button
+                onClick={() => { setCampaignFilter(null); router.replace('/unibox') }}
+                className="hover:underline font-medium shrink-0"
+              >
+                Clear
+              </button>
+            </div>
+          )}
           <div className="flex gap-1 p-0.5 bg-muted rounded-lg w-fit">
             {(['inbox', 'archived', 'snoozed'] as ViewTab[]).map(v => (
               <button

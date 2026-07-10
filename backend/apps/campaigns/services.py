@@ -99,7 +99,7 @@ def inject_tracking(html, campaign, sendlog_id, base_url=None):
 
 def build_email_message(smtp_account, to_email, subject, html_content, text_content='',
                          from_name=None, from_email=None, reply_to=None, message_id=None, in_reply_to=None,
-                         attachments=None, unsubscribe_url=None):
+                         attachments=None, unsubscribe_url=None, text_only=False):
     """Build a MIME email message. `attachments` is an optional list of
     (filename, content_bytes, content_type) tuples."""
     msg = MIMEMultipart('mixed') if attachments else MIMEMultipart('alternative')
@@ -128,7 +128,8 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
         body = MIMEMultipart('alternative')
         if text_content:
             body.attach(MIMEText(text_content, 'plain', 'utf-8'))
-        body.attach(MIMEText(html_content, 'html', 'utf-8'))
+        if not text_only:
+            body.attach(MIMEText(html_content, 'html', 'utf-8'))
         msg.attach(body)
         for filename, content, content_type in attachments:
             maintype, _, subtype = (content_type or 'application/octet-stream').partition('/')
@@ -138,7 +139,8 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
     else:
         if text_content:
             msg.attach(MIMEText(text_content, 'plain', 'utf-8'))
-        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
+        if not text_only:
+            msg.attach(MIMEText(html_content, 'html', 'utf-8'))
 
     return msg
 
@@ -242,6 +244,21 @@ def reserve_send_slot(smtp_account):
             if smtp_account.hourly_limit:
                 cache.decr(hour_key)
             return False
+    return True
+
+
+def reserve_campaign_send_slot(campaign):
+    """Same atomic cache.add + incr pattern as reserve_send_slot, but capping
+    total sends per day across the whole campaign (all its accounts combined)
+    rather than per SMTP account. None/0 daily_limit = unlimited."""
+    if not campaign.daily_limit:
+        return True
+    now = timezone.now()
+    day_key = f'campaign-rate-{campaign.id}-day-{now.strftime("%Y%m%d")}'
+    cache.add(day_key, 0, timeout=86400)
+    if cache.incr(day_key) > campaign.daily_limit:
+        cache.decr(day_key)
+        return False
     return True
 
 
@@ -383,9 +400,11 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
         contact, campaign_variables=campaign_vars, sender=sender,
     )
     subject = render_template_for_contact(campaign.subject, contact, campaign_variables=campaign_vars, sender=sender)
+    text_only = getattr(campaign, 'text_only', False)
 
     # Inject tracking pixel / rewrite links if tracking is enabled and we have a log ID
-    if sendlog_id and (campaign.track_opens or campaign.track_clicks):
+    # (meaningless for a text-only send — there's no HTML to embed a pixel/link in).
+    if sendlog_id and not text_only and (campaign.track_opens or campaign.track_clicks):
         html = inject_tracking(html, campaign, sendlog_id, base_url=tracking_base_url)
 
     # Unsubscribe link — required for CAN-SPAM/GDPR compliance, so this runs
@@ -434,6 +453,7 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
             reply_to=campaign.reply_to or None,
             message_id=message_id,
             unsubscribe_url=unsub_url,
+            text_only=text_only,
         )
 
         if conn_cache is not None:

@@ -6,6 +6,7 @@ import { campaignsApi } from '@/lib/api'
 import { Campaign } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Tabs } from '@/components/ui/tabs'
 import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { PageSkeleton } from '@/components/shared/loading-skeleton'
@@ -14,8 +15,9 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
   ArrowLeft, Play, Pause, Pencil, Trash2, BarChart3, Users, RefreshCw, Clock, Send, CheckCircle2,
-  ListFilter, Server, Mail, ReplyAll, AlertTriangle, Eye, MousePointerClick, MessageSquareOff, FlaskConical,
+  Mail, ReplyAll, AlertTriangle, Eye, MousePointerClick, FlaskConical,
   TrendingUp, TrendingDown, Minus, Trophy, ThumbsDown, ShieldAlert, Filter,
+  ExternalLink, Inbox,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
@@ -51,8 +53,6 @@ function StatusPill({ status }: { status: string }) {
 }
 
 const pct = (num: number, denom: number) => (denom > 0 ? Math.round((num / denom) * 100) : 0)
-
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 // Human label for a step's delay since the previous step (or enrollment).
 function delayLabel(days: number, hours: number): string {
@@ -225,103 +225,16 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
-      {/* Setup summary — sending accounts, lists, from/reply-to, schedule, tracking.
-          Otherwise this is invisible unless you open Edit. */}
-      <div className="rounded-2xl border bg-card p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div>
-          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Server size={13} /> Sending accounts</p>
-          {campaign.smtp_accounts_detail.length > 0 ? (
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {campaign.smtp_accounts_detail.map(a => (
-                <span key={a.id} className={cn('badge text-xs', a.is_active ? 'bg-muted text-muted-foreground' : 'bg-red-100 text-red-700')}>
-                  {a.from_email}{!a.is_active && ' (inactive)'}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="flex items-center gap-1.5 text-sm text-amber-600 mt-1.5">
-              <AlertTriangle size={13} /> None selected — falls back to every active account
-            </p>
-          )}
-        </div>
-
-        <div>
-          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ListFilter size={13} /> Contact lists</p>
-          {campaign.contact_lists_detail.length > 0 ? (
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {campaign.contact_lists_detail.map(l => (
-                <span key={l.id} className="badge bg-muted text-muted-foreground text-xs">{l.name} · {l.contact_count}</span>
-              ))}
-            </div>
-          ) : (
-            <p className="flex items-center gap-1.5 text-sm text-amber-600 mt-1.5">
-              <AlertTriangle size={13} /> No lists attached — nobody will be enrolled
-            </p>
-          )}
-        </div>
-
-        <div>
-          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Mail size={13} /> From / Reply-To</p>
-          <p className="text-sm mt-1.5 truncate">
-            {campaign.from_name || <span className="text-muted-foreground italic">No from name</span>}
-            {campaign.from_email && <span className="text-muted-foreground"> &lt;{campaign.from_email}&gt;</span>}
-          </p>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-            <ReplyAll size={12} /> {campaign.reply_to || 'Same as sending account'}
-          </p>
-        </div>
-
-        <div>
-          <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Clock size={13} /> Schedule</p>
-          {campaign.schedule_enabled ? (
-            <>
-              <p className="text-sm mt-1.5">
-                {campaign.schedule_days.map(d => DAY_LABELS[d]).join(', ') || 'No days selected'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {campaign.schedule_start_time.slice(0, 5)}–{campaign.schedule_end_time.slice(0, 5)} ({campaign.schedule_timezone})
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground mt-1.5">Sends anytime — no business-hours restriction</p>
-          )}
-        </div>
-
-        <div className="lg:col-span-4 flex flex-wrap items-center gap-4 pt-3 border-t text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><Eye size={13} className={campaign.track_opens ? 'text-purple-600' : ''} /> Open tracking {campaign.track_opens ? 'on' : 'off'}</span>
-          <span className="flex items-center gap-1.5"><MousePointerClick size={13} className={campaign.track_clicks ? 'text-blue-600' : ''} /> Click tracking {campaign.track_clicks ? 'on' : 'off'}</span>
-          <span className="flex items-center gap-1.5"><MessageSquareOff size={13} className={campaign.stop_on_reply ? 'text-green-600' : ''} /> Stop on reply {campaign.stop_on_reply ? 'on' : 'off'}</span>
-        </div>
-      </div>
-
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b">
-        {([
-          { key: 'analytics', label: 'Analytics', icon: BarChart3 },
-          { key: 'leads', label: 'Leads', icon: Users, badge: totalEnrolled },
-        ] as const).map(t => {
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors',
-                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <t.icon size={15} />
-              {t.label}
-              {'badge' in t && t.badge !== undefined && (
-                <span className={cn('text-[10px] font-semibold rounded-full px-1.5 py-0.5',
-                  active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
-                  {t.badge}
-                </span>
-              )}
-              {active && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
-            </button>
-          )
-        })}
+      <div className="border-b">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+            { key: 'leads', label: 'Leads', icon: Users, badge: totalEnrolled },
+          ]}
+        />
       </div>
 
       {tab === 'analytics' && (
@@ -642,7 +555,13 @@ export default function CampaignDetailPage() {
       )}
 
       {tab === 'leads' && (
-        <TableContainer>
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Link href={`/unibox?campaign_id=${campaign.id}`} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+              <Inbox size={14} /> View replies in Unibox <ExternalLink size={12} />
+            </Link>
+          </div>
+          <TableContainer>
           {enrollments?.items?.length > 0 ? (
             <TableScroll>
               <Table>
@@ -680,7 +599,8 @@ export default function CampaignDetailPage() {
               No leads enrolled yet.
             </div>
           )}
-        </TableContainer>
+          </TableContainer>
+        </div>
       )}
 
       {/* Step detail — full content + every variant + timing, all in one place */}

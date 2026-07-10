@@ -235,6 +235,14 @@ def _send_enrollment_batch_task(enrollment_ids):
             enrollment.save(update_fields=['next_send_at'])
             continue
 
+        # Campaign-wide daily cap reached — leave next_send_at as the claim
+        # already pushed it (10 min out), so this just retries later; the
+        # counter resets at midnight.
+        from apps.campaigns.services import reserve_campaign_send_slot
+        if not reserve_campaign_send_slot(campaign):
+            skipped += 1
+            continue
+
         smtp_accounts = _smtp_accounts_for(campaign)
         if not smtp_accounts:
             logger.error(f'Campaign {campaign.id}: no active SMTP accounts, skipping enrollment {enrollment.id}.')

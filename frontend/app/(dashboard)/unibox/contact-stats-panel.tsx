@@ -109,8 +109,8 @@ export function ContactStatsPanel({ threadId, thread, onStatusChange }: Props) {
                   <Megaphone size={11} /> Campaigns
                 </p>
                 <div className="space-y-1">
-                  {data.campaigns.map(name => (
-                    <div key={name} className="flex items-center gap-2 text-xs px-2.5 py-2 rounded-lg bg-muted/40">
+                  {data.campaigns.map((name, i) => (
+                    <div key={`${name}-${i}`} className="flex items-center gap-2 text-xs px-2.5 py-2 rounded-lg bg-muted/40">
                       <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                       <span className="truncate">{name}</span>
                     </div>

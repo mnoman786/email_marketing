@@ -232,6 +232,8 @@ export interface Campaign {
   track_opens: boolean
   track_clicks: boolean
   stop_on_reply: boolean
+  daily_limit: number | null
+  text_only: boolean
   schedule_enabled: boolean
   schedule_days: number[]
   schedule_start_time: string

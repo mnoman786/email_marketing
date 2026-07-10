@@ -28,6 +28,12 @@ class Campaign(SendWindowMixin, models.Model):
     track_clicks = models.BooleanField(default=True)
     stop_on_reply = models.BooleanField(default=True)
 
+    # Max sends/day for this campaign across all its accounts. None = unlimited.
+    daily_limit = models.PositiveIntegerField(null=True, blank=True)
+    # Plain-text-only sends (no HTML part, no open/click tracking) — better
+    # deliverability for cold outreach at the cost of click tracking.
+    text_only = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -108,6 +114,10 @@ class CampaignStep(models.Model):
     @property
     def track_clicks(self):
         return self.campaign.track_clicks
+
+    @property
+    def text_only(self):
+        return self.campaign.text_only
 
 
 class CampaignStepVariant(models.Model):

@@ -78,9 +78,12 @@ def list_threads(
     snoozed: bool = False,
     due_followup: bool = False,
     search: Optional[str] = None,
+    campaign_id: Optional[int] = None,
 ):
     now = timezone.now()
     qs = Thread.objects.filter(user=request.auth, is_archived=is_archived).select_related('contact', 'smtp_account')
+    if campaign_id is not None:
+        qs = qs.filter(contact__send_logs__campaign_id=campaign_id).distinct()
     if snoozed:
         qs = qs.filter(snoozed_until__gt=now)
     else:

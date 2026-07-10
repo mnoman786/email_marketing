@@ -13,9 +13,10 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs } from '@/components/ui/tabs'
 import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
 import { EmailBodyEditor } from '@/components/campaigns/email-body-editor'
-import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Info, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye, GitBranch, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Settings2, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye, GitBranch, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,8 @@ const schema = z.object({
   track_opens: z.boolean().optional(),
   track_clicks: z.boolean().optional(),
   stop_on_reply: z.boolean().optional(),
+  daily_limit: z.number().int().positive().optional().nullable(),
+  text_only: z.boolean().optional(),
   schedule_enabled: z.boolean().optional(),
   schedule_days: z.array(z.number()).optional(),
   schedule_start_time: z.string().optional(),
@@ -132,7 +135,7 @@ interface Props {
 export function CampaignForm({ campaign, initialName }: Props) {
   const router = useRouter()
   const { user } = useAuth()
-  const [tab, setTab] = useState<'sequence' | 'settings'>('sequence')
+  const [tab, setTab] = useState<'sequence' | 'leads' | 'schedule' | 'options'>('sequence')
   const [steps, setSteps] = useState<LocalStep[]>(
     toLocalSteps(campaign?.steps).length ? toLocalSteps(campaign?.steps) : [
       {
@@ -202,6 +205,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
       track_opens: campaign?.track_opens ?? false,
       track_clicks: campaign?.track_clicks ?? false,
       stop_on_reply: campaign?.stop_on_reply ?? true,
+      daily_limit: campaign?.daily_limit ?? null,
+      text_only: campaign?.text_only ?? false,
       schedule_enabled: campaign?.schedule_enabled ?? false,
       schedule_days: campaign?.schedule_days ?? [0, 1, 2, 3, 4],
       schedule_start_time: campaign?.schedule_start_time?.slice(0, 5) ?? '09:00',
@@ -216,6 +221,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const trackOpens = watch('track_opens')
   const trackClicks = watch('track_clicks')
   const stopOnReply = watch('stop_on_reply')
+  const dailyLimit = watch('daily_limit')
+  const textOnly = watch('text_only')
   const scheduleEnabled = watch('schedule_enabled') ?? false
   const scheduleDays = watch('schedule_days') ?? [0, 1, 2, 3, 4]
   const scheduleStartTime = watch('schedule_start_time') ?? '09:00'
@@ -234,6 +241,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
 
   const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0 && selectedSmtp.length > 0
   const stepsValid = steps.length > 0 && steps.every(stepIsFilled)
+  const leadsValid = selectedLists.length > 0
+  const optionsValid = Boolean((name || '').trim()) && selectedSmtp.length > 0
   const canActivate = detailsValid && stepsValid
 
   const missing: string[] = []
@@ -242,7 +251,9 @@ export function CampaignForm({ campaign, initialName }: Props) {
   if (selectedLists.length === 0) missing.push('at least one target list')
   if (steps.length === 0) missing.push('at least one step')
   else if (!steps.every(stepIsFilled)) missing.push('subject & body for every step/variant')
-  const tabValid: Record<string, boolean> = { sequence: stepsValid, settings: detailsValid }
+  const tabValid: Record<string, boolean> = {
+    sequence: stepsValid, leads: leadsValid, schedule: true, options: optionsValid,
+  }
 
   const toggleList = (id: number) => {
     setValue('contact_list_ids', selectedLists.includes(id)
@@ -468,39 +479,17 @@ export function CampaignForm({ campaign, initialName }: Props) {
       </div>
 
       {/* ── Tabs — Instantly style ── */}
-      <div className="flex items-center border-b bg-card px-6 shrink-0 gap-1">
-        {([
-          { key: 'sequence', label: 'Sequence', icon: Mail, badge: steps.length },
-          { key: 'settings', label: 'Settings', icon: Info, badge: undefined as number | undefined },
-        ] as const).map(t => {
-          const active = tab === t.key
-          const valid  = tabValid[t.key]
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'relative flex items-center gap-2 px-3 py-3.5 text-sm font-medium transition-colors',
-                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <t.icon size={14} />
-              {t.label}
-              {t.badge !== undefined && (
-                <span className={cn(
-                  'text-[10px] font-semibold rounded-full w-4.5 h-4.5 flex items-center justify-center',
-                  active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                )}>{t.badge}</span>
-              )}
-              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', valid ? 'bg-green-500' : 'bg-amber-400')} />
-              {/* Active bottom highlight */}
-              {active && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />
-              )}
-            </button>
-          )
-        })}
+      <div className="border-b bg-card px-6 shrink-0">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'sequence', label: 'Sequence', icon: Mail, badge: steps.length, dotClassName: tabValid.sequence ? 'bg-green-500' : 'bg-amber-400' },
+            { key: 'leads', label: 'Leads', icon: Users, badge: selectedLists.length || undefined, dotClassName: tabValid.leads ? 'bg-green-500' : 'bg-amber-400' },
+            { key: 'schedule', label: 'Schedule', icon: Clock, dotClassName: tabValid.schedule ? 'bg-green-500' : 'bg-amber-400' },
+            { key: 'options', label: 'Options', icon: Settings2, dotClassName: tabValid.options ? 'bg-green-500' : 'bg-amber-400' },
+          ]}
+        />
       </div>
 
       {/* ── Body ── */}
@@ -508,7 +497,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
         <div className="mx-auto max-w-5xl p-6 grid grid-cols-1 lg:grid-cols-[1fr_17rem] gap-6 items-start">
           <div className="min-w-0 space-y-4">
 
-        {tab === 'settings' && (
+        {tab === 'options' && (
           <div className="space-y-4">
 
             {/* Campaign name */}
@@ -568,6 +557,54 @@ export function CampaignForm({ campaign, initialName }: Props) {
               </div>
             </div>
 
+            {/* Tracking */}
+            <div className="rounded-xl border bg-card p-5 space-y-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tracking & Behaviour</p>
+              {[
+                {
+                  label: 'Open & click tracking',
+                  desc: 'Recommended OFF for cold email — tracking pixels/links hurt deliverability and Apple Mail inflates opens',
+                  checked: !!(trackOpens && trackClicks),
+                  onChange: (v: boolean) => { setValue('track_opens', v); setValue('track_clicks', v) },
+                },
+                {
+                  label: 'Stop on reply',
+                  desc: 'Halt campaign as soon as a reply is detected',
+                  checked: !!stopOnReply,
+                  onChange: (v: boolean) => setValue('stop_on_reply', v),
+                },
+                {
+                  label: 'Delivery optimization (text-only)',
+                  desc: 'Send as plain text, no HTML — disables open/click tracking for this campaign, best deliverability',
+                  checked: !!textOnly,
+                  onChange: (v: boolean) => setValue('text_only', v),
+                },
+              ].map(row => (
+                <div key={row.label} className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.desc}</p>
+                  </div>
+                  <Switch checked={row.checked} onCheckedChange={row.onChange} />
+                </div>
+              ))}
+              <div className="pt-1 border-t">
+                <Label className="text-xs">Daily Limit <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  type="number" min={1}
+                  value={dailyLimit ?? ''}
+                  onChange={e => setValue('daily_limit', e.target.value === '' ? null : Math.max(1, Number(e.target.value)))}
+                  placeholder="Unlimited"
+                  className="mt-1 h-9 text-sm max-w-[10rem]"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Max emails to send per day for this campaign, across all sending accounts</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'leads' && (
+          <div className="space-y-4">
             {/* Target lists */}
             <div className="rounded-xl border bg-card p-5 space-y-3">
               <div>
@@ -600,34 +637,11 @@ export function CampaignForm({ campaign, initialName }: Props) {
                 })}
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Tracking */}
-            <div className="rounded-xl border bg-card p-5 space-y-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tracking & Behaviour</p>
-              {[
-                {
-                  label: 'Open & click tracking',
-                  desc: 'Recommended OFF for cold email — tracking pixels/links hurt deliverability and Apple Mail inflates opens',
-                  checked: !!(trackOpens && trackClicks),
-                  onChange: (v: boolean) => { setValue('track_opens', v); setValue('track_clicks', v) },
-                },
-                {
-                  label: 'Stop on reply',
-                  desc: 'Halt campaign as soon as a reply is detected',
-                  checked: !!stopOnReply,
-                  onChange: (v: boolean) => setValue('stop_on_reply', v),
-                },
-              ].map(row => (
-                <div key={row.label} className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium">{row.label}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{row.desc}</p>
-                  </div>
-                  <Switch checked={row.checked} onCheckedChange={row.onChange} />
-                </div>
-              ))}
-            </div>
-
+        {tab === 'schedule' && (
+          <div className="space-y-4">
             <SendingScheduleCard
               value={{ schedule_enabled: scheduleEnabled, schedule_days: scheduleDays, schedule_start_time: scheduleStartTime, schedule_end_time: scheduleEndTime, schedule_timezone: scheduleTimezone }}
               onChange={patch => { Object.entries(patch).forEach(([key, val]) => setValue(key as any, val as any)) }}
@@ -882,19 +896,28 @@ export function CampaignForm({ campaign, initialName }: Props) {
                     )}
 
                     {/* Stop conditions */}
-                    <div className="space-y-3 pt-1 border-t">
-                      {[
-                        { label: 'Stop if opened', desc: 'Skip remaining steps if this email is opened', key: 'stop_on_open' as const },
-                        { label: 'Stop if clicked', desc: 'Skip remaining steps if a link is clicked', key: 'stop_on_click' as const },
-                      ].map(row => (
-                        <div key={row.key} className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium">{row.label}</p>
-                            <p className="text-xs text-muted-foreground">{row.desc}</p>
-                          </div>
-                          <Switch checked={step[row.key]} onCheckedChange={v => updateStep(index, { [row.key]: v })} />
-                        </div>
-                      ))}
+                    <div className="pt-1 border-t">
+                      <div>
+                        <p className="text-sm font-medium">Stop condition</p>
+                        <p className="text-xs text-muted-foreground">
+                          Skip remaining steps once this email is engaged with
+                        </p>
+                      </div>
+                      <NativeSelect
+                        value={step.stop_on_open ? 'opened' : step.stop_on_click ? 'clicked' : 'never'}
+                        onChange={e => {
+                          const v = e.target.value
+                          updateStep(index, {
+                            stop_on_open: v === 'opened',
+                            stop_on_click: v === 'clicked',
+                          })
+                        }}
+                        wrapperClassName="mt-2 w-full"
+                      >
+                        <option value="never">Never — always send every step</option>
+                        <option value="opened">If opened (or clicked)</option>
+                        <option value="clicked">If clicked only, not just opened</option>
+                      </NativeSelect>
                     </div>
 
                     {/* Branching */}

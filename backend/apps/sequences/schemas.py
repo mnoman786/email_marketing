@@ -167,6 +167,8 @@ class CampaignOut(Schema):
     track_opens: bool
     track_clicks: bool
     stop_on_reply: bool
+    daily_limit: Optional[int] = None
+    text_only: bool = False
     schedule_enabled: bool
     schedule_days: List[int]
     schedule_start_time: time
@@ -251,6 +253,8 @@ class CampaignIn(Schema):
     track_opens: bool = False
     track_clicks: bool = False
     stop_on_reply: bool = True
+    daily_limit: Optional[int] = None
+    text_only: bool = False
     schedule_enabled: bool = False
     schedule_days: List[int] = [0, 1, 2, 3, 4]
     schedule_start_time: time = time(9, 0)
@@ -268,6 +272,8 @@ class CampaignUpdateIn(Schema):
     track_opens: Optional[bool] = None
     track_clicks: Optional[bool] = None
     stop_on_reply: Optional[bool] = None
+    daily_limit: Optional[int] = None
+    text_only: Optional[bool] = None
     schedule_enabled: Optional[bool] = None
     schedule_days: Optional[List[int]] = None
     schedule_start_time: Optional[time] = None
