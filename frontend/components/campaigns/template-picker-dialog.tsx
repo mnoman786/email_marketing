@@ -12,7 +12,7 @@ import { Sparkles, Mail, Eye } from 'lucide-react'
 interface Props {
   open: boolean
   onClose: () => void
-  onSelect: (subject: string, html: string, text: string) => void
+  onSelect: (subject: string, html: string, text: string, name: string) => void
 }
 
 /** Browse the built-in template library (plus any of the user's own saved
@@ -51,7 +51,7 @@ export function TemplatePickerDialog({ open, onClose, onSelect }: Props) {
 
   const handleUse = () => {
     if (!detail) return
-    onSelect(detail.subject, detail.html_content, detail.text_content)
+    onSelect(detail.subject, detail.html_content, detail.text_content, detail.name)
     handleClose()
   }
 

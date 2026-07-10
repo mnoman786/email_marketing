@@ -153,10 +153,18 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
   const [subjectTagsOpen, setSubjectTagsOpen] = useState<string | null>(null)
   const [templatePickerTarget, setTemplatePickerTarget] = useState<{
+    key: string
     setSubject: (val: string) => void
     setBody: (html: string, text: string) => void
   } | null>(null)
+  // Which built-in/saved template (by name) was last used to prefill each
+  // step/variant's content — purely a UI hint, not persisted to the backend.
+  const [appliedTemplates, setAppliedTemplates] = useState<Record<string, string>>({})
   const subjectInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+  const stepRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const scrollToStep = (index: number) => {
+    stepRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     if (!subjectTagsOpen) return
@@ -499,7 +507,51 @@ export function CampaignForm({ campaign, initialName }: Props) {
 
       {/* ── Body ── */}
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl p-6 grid grid-cols-1 lg:grid-cols-[1fr_17rem] gap-6 items-start">
+        <div className={cn(
+          'mx-auto p-6 grid grid-cols-1 gap-6 items-start',
+          tab === 'sequence' ? 'max-w-6xl lg:grid-cols-[13rem_1fr_17rem]' : 'max-w-5xl lg:grid-cols-[1fr_17rem]'
+        )}>
+          {tab === 'sequence' && (
+            <aside className="hidden lg:block sticky top-6 space-y-1 max-h-[calc(100vh-8rem)] overflow-y-auto">
+              {steps.map((step, i) => (
+                <div key={step.id ?? `nav-${i}`}>
+                  <button
+                    type="button"
+                    onClick={() => scrollToStep(i)}
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
+                  >
+                    <Mail size={12} className="text-muted-foreground shrink-0" />
+                    <span className="truncate">Step {step.order}</span>
+                  </button>
+                  {step.variants.length > 0 && (
+                    <div className="pl-6 space-y-0.5 mt-0.5">
+                      {step.variants.map((v, vi) => (
+                        <button
+                          key={vi}
+                          type="button"
+                          onClick={() => { scrollToStep(i); setActiveVarTab(prev => ({ ...prev, [i]: vi })) }}
+                          className={cn(
+                            'w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors truncate',
+                            (activeVarTab[i] ?? 0) === vi ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted'
+                          )}
+                        >
+                          Variant {v.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addStep}
+                className="w-full flex items-center justify-center gap-1.5 mt-2 py-2 rounded-lg border border-dashed text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              >
+                <Plus size={12} /> Add Step
+              </button>
+            </aside>
+          )}
+
           <div className="min-w-0 space-y-4">
 
         {tab === 'options' && (
@@ -660,6 +712,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
               const hasVariants = step.variants.length > 0
               const activeTab = activeVarTab[index] ?? 0
               const currentVariant = hasVariants ? step.variants[activeTab] : null
+              const key = `${index}-${activeTab}`
 
               // What subject/html to show in the editor area
               const editSubject = currentVariant ? currentVariant.subject : step.subject
@@ -673,7 +726,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
                 : updateStep(index, { html_content: html, text_content: text })
 
               return (
-                <Card key={step.id ?? `new-${index}`}>
+                <Card key={step.id ?? `new-${index}`} ref={el => { stepRefs.current[index] = el }}>
                   {/* ── Step header ── */}
                   <CardHeader className="flex flex-row items-center justify-between pb-0">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -746,17 +799,42 @@ export function CampaignForm({ campaign, initialName }: Props) {
 
                   <CardContent className="pt-4 space-y-4">
                     {/* Templates — prominent, above Subject so it's the first thing seen */}
-                    <button
-                      type="button"
-                      onClick={() => setTemplatePickerTarget({ setSubject, setBody })}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 hover:border-primary transition-colors text-sm font-medium"
-                    >
-                      <Sparkles size={15} /> Browse Templates
-                    </button>
+                    {appliedTemplates[key] ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+                        <p className="text-sm text-primary flex items-center gap-1.5 min-w-0">
+                          <Sparkles size={14} className="shrink-0" />
+                          <span className="truncate">Using template: <span className="font-medium">{appliedTemplates[key]}</span></span>
+                        </p>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setTemplatePickerTarget({ key, setSubject, setBody })}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            Change
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAppliedTemplates(prev => { const next = { ...prev }; delete next[key]; return next })}
+                            className="p-1 rounded hover:bg-primary/10 text-primary/70 hover:text-primary"
+                            title="Clear (keeps the current content)"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setTemplatePickerTarget({ key, setSubject, setBody })}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 hover:border-primary transition-colors text-sm font-medium"
+                      >
+                        <Sparkles size={15} /> Browse Templates
+                      </button>
+                    )}
 
                     {/* Subject */}
                     {(() => {
-                      const key = `${index}-${activeTab}`
                       return (
                         <div>
                           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject *</Label>
@@ -1226,9 +1304,12 @@ export function CampaignForm({ campaign, initialName }: Props) {
       <TemplatePickerDialog
         open={!!templatePickerTarget}
         onClose={() => setTemplatePickerTarget(null)}
-        onSelect={(subject, html, text) => {
+        onSelect={(subject, html, text, name) => {
           templatePickerTarget?.setSubject(subject)
           templatePickerTarget?.setBody(html, text)
+          if (templatePickerTarget) {
+            setAppliedTemplates(prev => ({ ...prev, [templatePickerTarget.key]: name }))
+          }
         }}
       />
     </div>
