@@ -2,6 +2,7 @@
 import logging
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 from django.db.models import Case, Count, IntegerField, When
 from django.utils import timezone
 
@@ -97,6 +98,14 @@ def process_due_campaign_steps():
 # enrollment is picked up again instead of being stuck forever.
 _CLAIM_WINDOW = timezone.timedelta(minutes=10)
 
+# When a send fails transiently (all accounts rate-capped, a 4xx deferral, a
+# connection blip), retry the SAME step after this delay instead of skipping
+# it — long enough for an hourly cap to roll and a transient network issue to
+# clear. Bounded by MAX_SEND_ATTEMPTS so a persistently-broken account can't
+# wedge the sequence forever; past that the step is skipped (old behaviour).
+_TRANSIENT_RETRY_DELAY = timezone.timedelta(minutes=15)
+MAX_SEND_ATTEMPTS = 5
+
 
 @shared_task
 def _send_enrollment_batch_task(enrollment_ids):
@@ -116,7 +125,7 @@ def _send_enrollment_batch_task(enrollment_ids):
     from apps.analytics.tracking import resolve_tracking_base_url
 
     now = timezone.now()
-    sent, stopped, completed, skipped = 0, 0, 0, 0
+    sent, stopped, completed, skipped, deferred = 0, 0, 0, 0, 0
     conn_cache = {}
 
     # Cache each campaign's ordered steps, active SMTP accounts, and suppressed
@@ -280,7 +289,24 @@ def _send_enrollment_batch_task(enrollment_ids):
         sendlog.sent_at = timezone.now() if result.success else None
         sendlog.error_message = result.error or ''
         sendlog.message_id = result.message_id or ''
+
+        # Transient failure → retry the SAME step shortly instead of skipping it.
+        # Bounded per (enrollment, step) so a permanently-broken account can't
+        # wedge the sequence; the pending log is discarded so analytics only
+        # reflect terminal outcomes (a real send or a give-up).
+        attempt_key = f'send-attempts-{enrollment.id}-{next_step.id}'
+        if not result.success and result.transient:
+            cache.add(attempt_key, 0, timeout=86400)
+            if cache.incr(attempt_key) <= MAX_SEND_ATTEMPTS:
+                sendlog.delete()
+                enrollment.next_send_at = timezone.now() + _TRANSIENT_RETRY_DELAY
+                enrollment.save(update_fields=['next_send_at'])
+                deferred += 1
+                continue
+            # Exhausted retries — record the failure and advance (skip) below.
+
         sendlog.save(update_fields=['smtp_account', 'status', 'sent_at', 'error_message', 'message_id'])
+        cache.delete(attempt_key)  # terminal outcome — reset the retry counter
 
         if result.success and result.smtp_account:
             from apps.inbox.services import log_outbound_message
@@ -323,7 +349,7 @@ def _send_enrollment_batch_task(enrollment_ids):
         except Exception:
             pass
 
-    return {'sent': sent, 'stopped': stopped, 'completed': completed, 'skipped': skipped}
+    return {'sent': sent, 'stopped': stopped, 'completed': completed, 'skipped': skipped, 'deferred': deferred}
 
 
 @shared_task(bind=True)

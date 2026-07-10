@@ -19,7 +19,37 @@ from django.template import Template, Context
 
 logger = logging.getLogger(__name__)
 
-SendResult = namedtuple('SendResult', ['success', 'smtp_account', 'error', 'message_id', 'html', 'text', 'subject'])
+SendResult = namedtuple(
+    'SendResult',
+    ['success', 'smtp_account', 'error', 'message_id', 'html', 'text', 'subject', 'transient'],
+)
+# `transient` defaults to False so any older/other SendResult(...) construction
+# that doesn't pass it still works and reads as a permanent (non-retryable) outcome.
+SendResult.__new__.__defaults__ = (False,)
+
+
+# SMTP failure strings that mean "retrying won't help" — a bad mailbox or bad
+# credentials. Everything else (rate caps, 4xx temporary deferrals, connection
+# blips, unknown errors) is treated as transient and worth retrying the same
+# sequence step shortly instead of skipping it. See is_transient_error().
+_PERMANENT_ERROR_MARKERS = ('recipient refused', 'authentication failed')
+
+
+def is_transient_error(error):
+    """Classify an SMTP failure message as transient (worth a bounded retry of
+    the same step) vs permanent. Errs toward transient for unknown errors — the
+    caller bounds total attempts, so a misclassification can't wedge a sequence."""
+    if not error:
+        return True
+    low = error.lower()
+    if any(marker in low for marker in _PERMANENT_ERROR_MARKERS):
+        return False
+    # A 5xx SMTP code is a permanent rejection; a 4xx is a temporary deferral.
+    code = re.search(r'\b([45]\d\d)\b', error)
+    if code:
+        return code.group(1)[0] == '4'
+    # Connection errors, server disconnects, "at its send limit", unexpected → retry.
+    return True
 
 
 def pick_smtp_account(smtp_accounts):
@@ -385,6 +415,11 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
     """
     available = list(smtp_accounts)
     attempted = []
+    # Track why a send failed so the caller can tell a transient failure (rate
+    # cap hit, temporary deferral) — which should retry the same step — from a
+    # permanent one (bad mailbox) that should skip it.
+    any_rate_limited = False
+    last_error = None
 
     campaign_vars = campaign.campaign_variables or {}
     sender = getattr(campaign, 'user', None)
@@ -426,8 +461,9 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
         attempted.append(smtp_account)
 
         if not reserve_send_slot(smtp_account):
-            error = f'{smtp_account.name} is at its hourly/daily send limit'
-            logger.warning(f'[Campaign {campaign.id}] Skipping {smtp_account.name} for {contact.email}: {error}')
+            any_rate_limited = True
+            last_error = f'{smtp_account.name} is at its hourly/daily send limit'
+            logger.warning(f'[Campaign {campaign.id}] Skipping {smtp_account.name} for {contact.email}: {last_error}')
             continue
 
         # Append this account's signature if one is set.
@@ -463,14 +499,18 @@ def send_campaign_email(campaign, contact, smtp_accounts, max_retries=3, sendlog
 
         if success:
             logger.info(f'[Campaign {campaign.id}] Sent to {contact.email} via {smtp_account.name}')
-            return SendResult(True, smtp_account, None, message_id, html, text, subject)
+            return SendResult(True, smtp_account, None, message_id, html, text, subject, False)
         else:
+            last_error = error
             logger.warning(
                 f'[Campaign {campaign.id}] Failed to send to {contact.email} via {smtp_account.name}: {error}'
                 f' (attempt {attempt + 1}/{max_retries})'
             )
 
+    # Defer-and-retry (transient) if any account was merely rate-capped, or the
+    # last real error looks temporary; skip only on a genuinely permanent error.
+    transient = any_rate_limited or is_transient_error(last_error)
     return SendResult(
         False, attempted[-1] if attempted else None,
-        error if 'error' in dir() else 'No SMTP accounts available', message_id, html, text, subject,
+        last_error or 'No SMTP accounts available', message_id, html, text, subject, transient,
     )
