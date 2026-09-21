@@ -1,13 +1,12 @@
 'use client'
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, startTransition, useCallback, useContext, useEffect, useState } from 'react'
 
 /**
  * Lightweight replacement for next-themes. next-themes injects its anti-flash
  * <script> from a *client* component, which React 19 flags with "Encountered a
  * script tag while rendering React component" — and it exposes no way to turn
- * that off. Here the anti-flash script lives in the server RootLayout instead
- * (see app/layout.tsx: themeInitScript), so no client component renders a
- * <script>, and this provider only owns the runtime state + toggling.
+ * that off. This provider owns the theme state and applies it after mounting,
+ * so no React component needs to render a script element.
  *
  * Behaviour mirrors the old config: attribute="class", defaultTheme="system",
  * enableSystem, and the same localStorage key ('theme') so existing prefs carry
@@ -39,9 +38,7 @@ function applyTheme(theme: Theme): 'light' | 'dark' {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // SSR/first render assume the config default; the real stored value is read
-  // on mount below. The server script has already set the <html> class, so
-  // there's no flash regardless.
+  // SSR/first render assume the config default; the stored value is read on mount.
   const [theme, setThemeState] = useState<Theme>('system')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
 
@@ -50,8 +47,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     try {
       stored = (localStorage.getItem(THEME_STORAGE_KEY) as Theme) || 'system'
     } catch {}
-    setThemeState(stored)
-    setResolvedTheme(applyTheme(stored))
+    startTransition(() => {
+      setThemeState(stored)
+      setResolvedTheme(applyTheme(stored))
+    })
   }, [])
 
   // Follow OS changes while in "system" mode.

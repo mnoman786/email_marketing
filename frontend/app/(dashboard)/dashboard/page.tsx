@@ -3,9 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { analyticsApi, authApi } from '@/lib/api'
 import { DashboardStats, UserSession } from '@/lib/types'
 import { StatCard } from '@/components/shared/stat-card'
-import { StatusBadge } from '@/components/shared/status-badge'
 import { CardSkeleton } from '@/components/shared/loading-skeleton'
-import { formatNumber, formatPercent, formatDateTime } from '@/lib/utils'
+import { formatNumber, formatPercent } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -17,7 +16,7 @@ import Link from 'next/link'
 const COLORS = ['#573cdd', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => analyticsApi.dashboard().then(r => r.data as DashboardStats),
     refetchInterval: 30000,
@@ -44,7 +43,29 @@ export default function DashboardPage() {
     )
   }
 
-  if (!data) return null
+  if (isError || !data) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Dashboard unavailable</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              We could not load your dashboard data. Check that the backend is running and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            >
+              Try again
+            </button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const statusData = data.campaigns.statuses.map(s => ({
     name: s.status.charAt(0).toUpperCase() + s.status.slice(1),

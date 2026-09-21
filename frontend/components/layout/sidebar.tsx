@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Users, Server, Megaphone, BarChart3,
   ChevronLeft, ChevronRight, Zap, ListFilter, Inbox, Bell, BellOff, ShieldBan, Search, ShieldCheck, Workflow, Tags
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 
 const topItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
@@ -63,10 +63,14 @@ export function Sidebar() {
   })
   const unreadCount = unreadData?.count || 0
 
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(
-    () => (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : null)
-  )
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null)
   const prevUnreadRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      startTransition(() => setNotifPermission(Notification.permission))
+    }
+  }, [])
 
   // Fire a desktop notification whenever unread count rises — covers replies
   // landing while the user is on any page, not just the inbox.

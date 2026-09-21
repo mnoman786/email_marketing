@@ -41,6 +41,7 @@ BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 VENV_DIR="$BACKEND_DIR/venv"
 SERVICE_USER="$(whoami)"
+# Project Python version: 3.12.14
 PYTHON_BIN="python3"
 NODE_BIN="node"
 NPM_BIN="npm"

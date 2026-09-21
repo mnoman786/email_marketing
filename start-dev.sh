@@ -29,6 +29,10 @@ fi
 
 source "$VENV/bin/activate"
 
+# Development should not require a separately managed Redis service. Set
+# USE_REDIS_CACHE=True explicitly when testing the shared Redis-backed setup.
+export USE_REDIS_CACHE="${USE_REDIS_CACHE:-False}"
+
 # ─── Backend dependencies ─────────────────────────────────────
 echo -e "${YELLOW}[SETUP]${NC} Installing backend dependencies..."
 pip install -r "$BACKEND/requirements.txt" --quiet
