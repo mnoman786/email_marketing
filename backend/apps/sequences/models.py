@@ -34,6 +34,18 @@ class Campaign(SendWindowMixin, models.Model):
     # deliverability for cold outreach at the cost of click tracking.
     text_only = models.BooleanField(default=False)
 
+    # Deliverability guardrails. A campaign is evaluated after each matched
+    # bounce and by the periodic health task; it pauses before more mail is
+    # sent once the configured minimum sample and rate are reached.
+    bounce_protection_enabled = models.BooleanField(default=True)
+    bounce_pause_threshold = models.PositiveSmallIntegerField(default=10)
+    bounce_minimum_sends = models.PositiveIntegerField(default=50)
+    bounce_window_hours = models.PositiveSmallIntegerField(default=24)
+    bounce_auto_disable_account = models.BooleanField(default=False)
+    auto_paused = models.BooleanField(default=False)
+    auto_pause_reason = models.CharField(max_length=255, blank=True)
+    auto_paused_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -247,5 +259,4 @@ class CampaignEnrollment(models.Model):
 
     def __str__(self):
         return f'{self.contact.email} in {self.campaign.name} ({self.status})'
-
 

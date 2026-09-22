@@ -169,6 +169,14 @@ class CampaignOut(Schema):
     stop_on_reply: bool
     daily_limit: Optional[int] = None
     text_only: bool = False
+    bounce_protection_enabled: bool
+    bounce_pause_threshold: int
+    bounce_minimum_sends: int
+    bounce_window_hours: int
+    bounce_auto_disable_account: bool
+    auto_paused: bool
+    auto_pause_reason: str
+    auto_paused_at: Optional[datetime] = None
     schedule_enabled: bool
     schedule_days: List[int]
     schedule_start_time: time
@@ -257,6 +265,11 @@ class CampaignIn(Schema):
     stop_on_reply: bool = True
     daily_limit: Optional[int] = None
     text_only: bool = False
+    bounce_protection_enabled: bool = True
+    bounce_pause_threshold: int = 10
+    bounce_minimum_sends: int = 50
+    bounce_window_hours: int = 24
+    bounce_auto_disable_account: bool = False
     schedule_enabled: bool = False
     schedule_days: List[int] = [0, 1, 2, 3, 4]
     schedule_start_time: time = time(9, 0)
@@ -276,6 +289,11 @@ class CampaignUpdateIn(Schema):
     stop_on_reply: Optional[bool] = None
     daily_limit: Optional[int] = None
     text_only: Optional[bool] = None
+    bounce_protection_enabled: Optional[bool] = None
+    bounce_pause_threshold: Optional[int] = None
+    bounce_minimum_sends: Optional[int] = None
+    bounce_window_hours: Optional[int] = None
+    bounce_auto_disable_account: Optional[bool] = None
     schedule_enabled: Optional[bool] = None
     schedule_days: Optional[List[int]] = None
     schedule_start_time: Optional[time] = None

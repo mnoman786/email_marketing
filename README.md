@@ -49,6 +49,11 @@ email_marketing/
 
 ## Features
 
+Google and Microsoft mailbox OAuth setup: [connection guide](docs/mailbox-oauth.md).
+
+Campaign bounce protection pauses campaigns that exceed their configured bounce
+rate after a minimum sample, and can disable the sending mailbox automatically.
+
 ### Core Modules
 | Module | Features |
 |--------|----------|

@@ -1,5 +1,6 @@
 """Celery tasks: poll each user's mailbox over IMAP for replies to sent emails."""
 import imaplib
+import ssl
 import logging
 import re
 from email import message_from_bytes
@@ -26,11 +27,19 @@ MAX_ATTACHMENTS_PER_MESSAGE = 10          # could otherwise exhaust disk via unb
 
 def _connect(account):
     if account.imap_use_ssl:
-        conn = imaplib.IMAP4_SSL(account.imap_host, account.imap_port, timeout=30)
+        conn = imaplib.IMAP4_SSL(account.imap_host, account.imap_port, timeout=30, ssl_context=ssl.create_default_context())
     else:
         conn = imaplib.IMAP4(account.imap_host, account.imap_port, timeout=30)
-    conn.login(account.imap_username, account.imap_password)
-    conn.select('INBOX')
+    from .oauth import authenticate_imap
+    try:
+        authenticate_imap(conn, account)
+        conn.select('INBOX')
+    except Exception:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+        raise
     return conn
 
 
@@ -247,6 +256,12 @@ def poll_imap_replies():
     for account_id in account_ids:
         poll_account_replies.delay(account_id)
     return f'Dispatched {len(account_ids)} mailbox poll(s).'
+
+
+@shared_task
+def evaluate_bounce_protection_task():
+    from apps.smtp_accounts.bounces import evaluate_all_bounce_protection
+    return {'paused': len(evaluate_all_bounce_protection())}
 
 
 @shared_task

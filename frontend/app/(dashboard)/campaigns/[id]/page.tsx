@@ -202,6 +202,9 @@ export default function CampaignDetailPage() {
             <p className="text-sm text-muted-foreground mt-0.5">
               {campaign.steps.length} step(s) · Created {formatDateTime(campaign.created_at)} · Updated {formatDateTime(campaign.updated_at)}
             </p>
+            {campaign.auto_paused && campaign.auto_pause_reason && (
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">{campaign.auto_pause_reason}</p>
+            )}
           </div>
         </div>
 

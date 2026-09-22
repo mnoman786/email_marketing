@@ -55,6 +55,7 @@ interface Props {
 }
 
 export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
+  const isOAuth = !!account?.oauth_provider
   const [tab, setTab] = useState<StepKey>('sending')
   const stepIndex = STEPS.findIndex(s => s.key === tab)
   const isLastStep = stepIndex === STEPS.length - 1
@@ -229,13 +230,14 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
                 <div>
                   <Label>SMTP Host *</Label>
-                  <Input {...register('host')} placeholder="smtp.gmail.com" className="mt-1" autoComplete="off" />
+                  <Input {...register('host')} readOnly={isOAuth} placeholder="smtp.gmail.com" className="mt-1" autoComplete="off" />
                   {errors.host && <p className="text-xs text-destructive mt-1">{errors.host.message}</p>}
                 </div>
                 <div>
                   <Label>Port *</Label>
                   <Input
                     {...register('port', { valueAsNumber: true })}
+                    readOnly={isOAuth}
                     type="number"
                     placeholder="587"
                     className="mt-1"
@@ -244,7 +246,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
                 <div>
                   <Label>Security</Label>
-                  <Select value={security} onValueChange={onSecurityChange}>
+                  <Select value={security} onValueChange={onSecurityChange} disabled={isOAuth}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
@@ -258,14 +260,15 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
                 <div>
                   <Label>Username *</Label>
-                  <Input {...register('username')} placeholder="you@gmail.com" className="mt-1" autoComplete="username" />
+                  <Input {...register('username')} readOnly={isOAuth} placeholder="you@gmail.com" className="mt-1" autoComplete="username" />
                 </div>
                 <div>
-                  <Label>{account ? 'Password (leave blank to keep)' : 'Password *'}</Label>
+                  <Label>{isOAuth ? 'Authorized by provider' : account ? 'Password (leave blank to keep)' : 'Password *'}</Label>
                   <Input
                     {...register('password')}
+                    disabled={isOAuth}
                     type="password"
-                    placeholder="App password"
+                    placeholder={isOAuth ? 'No password needed' : 'App password'}
                     className="mt-1"
                     autoComplete="current-password"
                   />
@@ -273,7 +276,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
 
                 <div>
                   <Label>From Email *</Label>
-                  <Input {...register('from_email')} placeholder="noreply@yourdomain.com" className="mt-1" autoComplete="email" />
+                  <Input {...register('from_email')} readOnly={isOAuth} placeholder="noreply@yourdomain.com" className="mt-1" autoComplete="email" />
                   {errors.from_email && <p className="text-xs text-destructive mt-1">{errors.from_email.message}</p>}
                 </div>
                 <div>
@@ -321,24 +324,25 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>IMAP Host *</Label>
-                      <Input {...register('imap_host')} placeholder="imap.gmail.com" className="mt-1" autoComplete="off" />
+                      <Input {...register('imap_host')} readOnly={isOAuth} placeholder="imap.gmail.com" className="mt-1" autoComplete="off" />
                     </div>
                     <div>
                       <Label>IMAP Port *</Label>
-                      <Input {...register('imap_port', { valueAsNumber: true })} type="number" placeholder="993" className="mt-1" autoComplete="off" />
+                      <Input {...register('imap_port', { valueAsNumber: true })} readOnly={isOAuth} type="number" placeholder="993" className="mt-1" autoComplete="off" />
                     </div>
                     <div>
                       <Label>IMAP Username *</Label>
-                      <Input {...register('imap_username')} placeholder="you@gmail.com" className="mt-1" autoComplete="username" />
+                      <Input {...register('imap_username')} readOnly={isOAuth} placeholder="you@gmail.com" className="mt-1" autoComplete="username" />
                     </div>
                     <div>
-                      <Label>{account ? 'IMAP Password (leave blank to keep)' : 'IMAP Password *'}</Label>
-                      <Input {...register('imap_password')} type="password" placeholder="App password" className="mt-1" autoComplete="current-password" />
+                      <Label>{isOAuth ? 'Authorized by provider' : account ? 'IMAP Password (leave blank to keep)' : 'IMAP Password *'}</Label>
+                      <Input {...register('imap_password')} disabled={isOAuth} type="password" placeholder={isOAuth ? 'No password needed' : 'App password'} className="mt-1" autoComplete="current-password" />
                     </div>
                     <div className="col-span-2 flex items-center justify-between">
                       <Label>Use SSL (port 993)</Label>
                       <Switch
                         checked={watch('imap_use_ssl') ?? true}
+                        disabled={isOAuth}
                         onCheckedChange={v => setValue('imap_use_ssl', v)}
                       />
                     </div>
@@ -359,8 +363,7 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
                     </div>
 
                     <div className="col-span-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-                      Use the <strong>same email account</strong> you send from. Most providers want an{' '}
-                      <strong>app password</strong> here, not your normal login password — see below for where to get one.
+                      {isOAuth ? 'This mailbox uses your provider authorization for sending and replies. Use Reconnect on the Accounts page if access expires.' : <>Use the <strong>same email account</strong> you send from. Most providers want an <strong>app password</strong> here, not your normal login password.</>}
                     </div>
 
                     <div className="col-span-2">

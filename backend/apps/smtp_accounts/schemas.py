@@ -6,6 +6,8 @@ from datetime import datetime
 
 class SMTPAccountOut(Schema):
     id: int
+    oauth_provider: str = ''
+    oauth_reconnect_required: bool = False
     name: str
     host: str
     port: int
@@ -30,6 +32,9 @@ class SMTPAccountOut(Schema):
     last_imap_tested_at: Optional[datetime] = None
     last_imap_test_success: Optional[bool] = None
     signature_html: str
+    bounce_protection_disabled: bool = False
+    bounce_disabled_at: Optional[datetime] = None
+    bounce_disabled_reason: str = ''
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +67,7 @@ class SMTPAccountIn(Schema):
     imap_use_ssl: bool = True
     capture_cold_leads: bool = False
     signature_html: str = ''
+    bounce_protection_disabled: bool = False
 
 
 class SMTPAccountUpdateIn(Schema):
@@ -84,10 +90,21 @@ class SMTPAccountUpdateIn(Schema):
     imap_use_ssl: Optional[bool] = None
     capture_cold_leads: Optional[bool] = None
     signature_html: Optional[str] = None
+    bounce_protection_disabled: Optional[bool] = None
 
 
 class SMTPTestIn(Schema):
     test_email: EmailStr
+
+
+class OAuthStartIn(Schema):
+    provider: str
+    account_id: Optional[int] = None
+
+
+class OAuthCompleteIn(Schema):
+    state: str
+    code: str
 
 
 class IMAPTestIn(Schema):

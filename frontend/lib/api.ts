@@ -122,6 +122,10 @@ export const templatesApi = {
 
 // SMTP Accounts
 export const smtpApi = {
+  oauthProviders: () => api.get<{ provider: 'google' | 'microsoft'; enabled: boolean }[]>('/api/smtp/oauth/providers/'),
+  oauthStart: (provider: 'google' | 'microsoft', accountId?: number) =>
+    api.post<{ authorization_url: string; state: string }>('/api/smtp/oauth/start/', { provider, account_id: accountId }),
+  oauthComplete: (state: string, code: string) => api.post('/api/smtp/oauth/complete/', { state, code }),
   getAll: (params?: any) => api.get('/api/smtp/', { params }),
   get: (id: number) => api.get(`/api/smtp/${id}/`),
   create: (data: any) => api.post('/api/smtp/', data),

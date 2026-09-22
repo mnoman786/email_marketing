@@ -80,7 +80,7 @@ def process_due_campaign_steps():
     max_due = getattr(settings, 'CAMPAIGN_MAX_DUE_PER_TICK', 5000)
     due_ids = list(
         CampaignEnrollment.objects.filter(
-            status='active', next_send_at__lte=timezone.now()
+            status='active', next_send_at__lte=timezone.now(), campaign__status='active'
         ).order_by('next_send_at').values_list('id', flat=True)[:max_due]
     )
     batch_size = getattr(settings, 'CAMPAIGN_SEND_BATCH_SIZE', 50)
@@ -152,6 +152,13 @@ def _send_enrollment_batch_task(enrollment_ids):
             'campaign', 'campaign__user', 'contact', 'current_step'
         ).get(id=enrollment_id)
         campaign = enrollment.campaign
+        # The dispatcher query is filtered too, but this second check closes
+        # the race where a campaign is paused after an enrollment is claimed.
+        if campaign.status != 'active':
+            enrollment.next_send_at = now
+            enrollment.save(update_fields=['next_send_at'])
+            deferred += 1
+            continue
         if campaign.id not in steps_by_campaign:
             steps_by_campaign[campaign.id] = list(
                 campaign.steps.order_by('order').prefetch_related('transitions')

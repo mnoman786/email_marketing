@@ -45,6 +45,11 @@ const schema = z.object({
   stop_on_reply: z.boolean().optional(),
   daily_limit: z.number().int().positive().optional().nullable(),
   text_only: z.boolean().optional(),
+  bounce_protection_enabled: z.boolean().optional(),
+  bounce_pause_threshold: z.number().int().min(1).max(100),
+  bounce_minimum_sends: z.number().int().min(1),
+  bounce_window_hours: z.number().int().min(1).max(720),
+  bounce_auto_disable_account: z.boolean().optional(),
   schedule_enabled: z.boolean().optional(),
   schedule_days: z.array(z.number()).optional(),
   schedule_start_time: z.string().optional(),
@@ -219,6 +224,11 @@ export function CampaignForm({ campaign, initialName }: Props) {
       stop_on_reply: campaign?.stop_on_reply ?? true,
       daily_limit: campaign?.daily_limit ?? null,
       text_only: campaign?.text_only ?? false,
+      bounce_protection_enabled: campaign?.bounce_protection_enabled ?? true,
+      bounce_pause_threshold: campaign?.bounce_pause_threshold ?? 10,
+      bounce_minimum_sends: campaign?.bounce_minimum_sends ?? 50,
+      bounce_window_hours: campaign?.bounce_window_hours ?? 24,
+      bounce_auto_disable_account: campaign?.bounce_auto_disable_account ?? false,
       schedule_enabled: campaign?.schedule_enabled ?? false,
       schedule_days: campaign?.schedule_days ?? [0, 1, 2, 3, 4],
       schedule_start_time: campaign?.schedule_start_time?.slice(0, 5) ?? '09:00',
@@ -235,6 +245,11 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const stopOnReply = watch('stop_on_reply')
   const dailyLimit = watch('daily_limit')
   const textOnly = watch('text_only')
+  const bounceProtectionEnabled = watch('bounce_protection_enabled')
+  const bouncePauseThreshold = watch('bounce_pause_threshold')
+  const bounceMinimumSends = watch('bounce_minimum_sends')
+  const bounceWindowHours = watch('bounce_window_hours')
+  const bounceAutoDisableAccount = watch('bounce_auto_disable_account')
   const scheduleEnabled = watch('schedule_enabled') ?? false
   const scheduleDays = watch('schedule_days') ?? [0, 1, 2, 3, 4]
   const scheduleStartTime = watch('schedule_start_time') ?? '09:00'
@@ -709,6 +724,43 @@ export function CampaignForm({ campaign, initialName }: Props) {
                   className="mt-1 h-9 text-sm max-w-[10rem]"
                 />
                 <p className="text-xs text-muted-foreground mt-1">Max emails to send per day for this campaign, across all sending accounts</p>
+              </div>
+              <div className="pt-3 border-t space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Bounce protection</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Pause this campaign when its recent bounce rate is unsafe</p>
+                  </div>
+                  <Switch checked={!!bounceProtectionEnabled} onCheckedChange={v => setValue('bounce_protection_enabled', v)} />
+                </div>
+                {bounceProtectionEnabled && (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-xs">Pause at (%)</Label>
+                        <Input type="number" min={1} max={100} value={bouncePauseThreshold ?? 10}
+                          onChange={e => setValue('bounce_pause_threshold', Math.max(1, Math.min(100, Number(e.target.value))))} className="mt-1 h-9 text-sm" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">After sends</Label>
+                        <Input type="number" min={1} value={bounceMinimumSends ?? 50}
+                          onChange={e => setValue('bounce_minimum_sends', Math.max(1, Number(e.target.value)))} className="mt-1 h-9 text-sm" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Window (hours)</Label>
+                        <Input type="number" min={1} max={720} value={bounceWindowHours ?? 24}
+                          onChange={e => setValue('bounce_window_hours', Math.max(1, Math.min(720, Number(e.target.value))))} className="mt-1 h-9 text-sm" />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium">Disable sending account</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Also deactivate the account that caused the protection trigger</p>
+                      </div>
+                      <Switch checked={!!bounceAutoDisableAccount} onCheckedChange={v => setValue('bounce_auto_disable_account', v)} />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

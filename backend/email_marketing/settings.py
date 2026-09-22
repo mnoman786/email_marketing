@@ -185,6 +185,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.workflows.tasks.evaluate_no_reply_workflows',
         'schedule': 1800.0,  # every 30 min — matches auto-optimize's cadence
     },
+    'evaluate-bounce-protection': {
+        'task': 'apps.smtp_accounts.tasks.evaluate_bounce_protection_task',
+        'schedule': 300.0,
+    },
 }
 
 # Email verification / temp-mail blocking.
@@ -220,6 +224,16 @@ SITE_URL = config('SITE_URL', default='http://localhost:8000')
 # Frontend base URL — used to build links (e.g. email verification) that the
 # user clicks and that resolve to a page in the Next.js app, not the API.
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+# Confidential web application credentials. Never expose these to Next.js.
+GOOGLE_OAUTH_CLIENT_ID = config('GOOGLE_OAUTH_CLIENT_ID', default='')
+GOOGLE_OAUTH_CLIENT_SECRET = config('GOOGLE_OAUTH_CLIENT_SECRET', default='')
+MICROSOFT_OAUTH_CLIENT_ID = config('MICROSOFT_OAUTH_CLIENT_ID', default='')
+MICROSOFT_OAUTH_CLIENT_SECRET = config('MICROSOFT_OAUTH_CLIENT_SECRET', default='')
+MICROSOFT_OAUTH_TENANT = config('MICROSOFT_OAUTH_TENANT', default='common')
+MAILBOX_OAUTH_REDIRECT_URI = config(
+    'MAILBOX_OAUTH_REDIRECT_URI', default=FRONTEND_URL.rstrip('/') + '/accounts/oauth/callback',
+)
 
 # Transactional email (account verification, etc.). Distinct from the per-user
 # SMTP accounts used to send campaigns — this is the system's own mailbox.

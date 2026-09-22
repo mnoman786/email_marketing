@@ -12,6 +12,7 @@ are recorded but never suppress, since the address may still be reachable.
 import logging
 import re
 from email.utils import parseaddr
+from datetime import timedelta
 
 from django.utils import timezone
 
@@ -158,6 +159,7 @@ def process_bounce(parsed, account):
         log.save(update_fields=['status', 'error_message'])
         from apps.workflows.services import evaluate_send_log_event
         evaluate_send_log_event(log, 'bounced')
+        evaluate_bounce_protection(log.campaign_id, account.id)
 
     if is_hard and log.contact_id and log.contact:
         suppress_email(log.contact.user, log.contact.email, reason='bounced', note=(status or action))
@@ -165,3 +167,77 @@ def process_bounce(parsed, account):
         logger.info(f'Soft bounce for SendLog {log.id} ({status or action}) — not suppressing.')
 
     return True
+
+
+def _bounce_window_stats(*, campaign_id=None, account_id=None, window_hours=24):
+    from apps.analytics.models import SendLog
+    since = timezone.now() - timedelta(hours=max(1, window_hours))
+    qs = SendLog.objects.filter(
+        sent_at__gte=since,
+        status__in=['sent', 'opened', 'clicked', 'replied', 'bounced'],
+    )
+    if campaign_id is not None:
+        qs = qs.filter(campaign_id=campaign_id)
+    if account_id is not None:
+        qs = qs.filter(smtp_account_id=account_id)
+    total = qs.count()
+    bounced = qs.filter(status='bounced').count()
+    return total, bounced
+
+
+def bounce_rate(total, bounced):
+    return (bounced / total * 100) if total else 0.0
+
+
+def evaluate_bounce_protection(campaign_id, account_id=None):
+    """Pause an unsafe active campaign and optionally disable its mailbox."""
+    from apps.sequences.models import Campaign
+
+    campaign = Campaign.objects.filter(id=campaign_id).first()
+    if not campaign or not campaign.bounce_protection_enabled or campaign.status != 'active':
+        return None
+    total, bounced = _bounce_window_stats(
+        campaign_id=campaign.id, window_hours=campaign.bounce_window_hours,
+    )
+    rate = bounce_rate(total, bounced)
+    if total < campaign.bounce_minimum_sends or rate < campaign.bounce_pause_threshold:
+        return {'paused': False, 'total': total, 'bounced': bounced, 'rate': rate}
+
+    now = timezone.now()
+    reason = (
+        f'Automatically paused: {bounced}/{total} bounces ({rate:.1f}%) in the '
+        f'last {campaign.bounce_window_hours} hours.'
+    )
+    campaign.status = 'paused'
+    campaign.auto_paused = True
+    campaign.auto_pause_reason = reason
+    campaign.auto_paused_at = now
+    campaign.save(update_fields=['status', 'auto_paused', 'auto_pause_reason', 'auto_paused_at'])
+
+    if campaign.bounce_auto_disable_account:
+        accounts = campaign.smtp_accounts.filter(is_active=True)
+        if account_id:
+            accounts = accounts.filter(id=account_id)
+        for account in accounts:
+            account.is_active = False
+            account.bounce_protection_disabled = True
+            account.bounce_disabled_at = now
+            account.bounce_disabled_reason = reason
+            account.save(update_fields=[
+                'is_active', 'bounce_protection_disabled', 'bounce_disabled_at',
+                'bounce_disabled_reason', 'updated_at',
+            ])
+    logger.warning('Bounce protection paused campaign %s: %s', campaign.id, reason)
+    return {'paused': True, 'total': total, 'bounced': bounced, 'rate': rate, 'reason': reason}
+
+
+def evaluate_all_bounce_protection():
+    from apps.sequences.models import Campaign
+    results = []
+    for campaign_id in Campaign.objects.filter(
+        status='active', bounce_protection_enabled=True,
+    ).values_list('id', flat=True):
+        result = evaluate_bounce_protection(campaign_id)
+        if result and result.get('paused'):
+            results.append((campaign_id, result))
+    return results

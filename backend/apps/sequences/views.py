@@ -238,7 +238,11 @@ def resume_campaign(request, campaign_id: int):
     if campaign.status != 'paused':
         raise HttpError(400, 'Only paused campaigns can be resumed.')
     campaign.status = 'active'
-    campaign.save(update_fields=['status'])
+    # A user explicitly chose to resume; the next health check will still
+    # protect the campaign if its configured rate remains above the threshold.
+    campaign.auto_paused = False
+    campaign.auto_pause_reason = ''
+    campaign.save(update_fields=['status', 'auto_paused', 'auto_pause_reason'])
     return {'status': 'active'}
 
 

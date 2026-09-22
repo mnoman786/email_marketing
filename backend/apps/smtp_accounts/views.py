@@ -13,14 +13,49 @@ from .models import SMTPAccount, WarmupSettings, WarmupActivity
 from .schemas import (
     SMTPAccountOut, SMTPAccountIn, SMTPAccountUpdateIn, SMTPTestIn, SMTPStatOut,
     IMAPTestIn, WarmupOut, WarmupUpdateIn,
+    OAuthStartIn, OAuthCompleteIn,
 )
 from apps.accounts.auth import auth
+from .oauth import OAuthError, configured_provider, start_authorization, complete_authorization
 
 router = Router(tags=['SMTP'])
 
 
 def _invalidate_stats_cache(user_id):
     cache.delete(f'smtp-stats-{user_id}')
+
+
+@router.get('/oauth/providers/', auth=auth)
+def oauth_providers(request):
+    result = []
+    for provider in ('google', 'microsoft'):
+        try:
+            configured_provider(provider)
+            enabled = True
+        except OAuthError:
+            enabled = False
+        result.append({'provider': provider, 'enabled': enabled})
+    return result
+
+
+@router.post('/oauth/start/', auth=auth)
+def oauth_start(request, data: OAuthStartIn):
+    try:
+        return start_authorization(request.auth, data.provider, data.account_id)
+    except OAuthError as exc:
+        raise HttpError(400, str(exc))
+
+
+@router.post('/oauth/complete/', response=SMTPAccountOut, auth=auth)
+def oauth_complete(request, data: OAuthCompleteIn):
+    if not data.code or not data.state or len(data.state) > 128 or len(data.code) > 8192:
+        raise HttpError(400, 'Invalid mailbox authorization response.')
+    try:
+        account = complete_authorization(request.auth, data.state, data.code)
+    except OAuthError as exc:
+        raise HttpError(400, str(exc))
+    _invalidate_stats_cache(request.auth.id)
+    return account
 
 
 @router.get('/stats/', response=List[SMTPStatOut], auth=auth)
@@ -127,15 +162,33 @@ def get_smtp_account(request, smtp_id: int):
 def update_smtp_account(request, smtp_id: int, data: SMTPAccountUpdateIn):
     instance = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
     payload = data.dict(exclude_none=True)
+    if instance.oauth_provider:
+        # Never send bearer tokens to a host supplied through the edit form.
+        locked = ('host', 'port', 'username', 'from_email', 'security', 'imap_host',
+                  'imap_port', 'imap_username', 'imap_use_ssl')
+        if any(key in payload and payload[key] != getattr(instance, key) for key in locked):
+            raise HttpError(400, 'OAuth mailbox connection details are managed by the provider.')
+        if payload.get('password') or payload.get('imap_password'):
+            raise HttpError(400, 'OAuth mailboxes use provider authorization, not passwords.')
     password = payload.pop('password', None)
     imap_password = payload.pop('imap_password', None)
     for field, value in payload.items():
         setattr(instance, field, value)
+    if payload.get('bounce_protection_disabled') is False:
+        instance.bounce_disabled_at = None
+        instance.bounce_disabled_reason = ''
+        updated_fields = ['bounce_disabled_at', 'bounce_disabled_reason']
+    else:
+        updated_fields = []
+    updated_fields = [*updated_fields, *payload, 'updated_at']
     if password:
         instance.password = password
+        updated_fields.append('_password')
     if imap_password:
         instance.imap_password = imap_password
-    instance.save()
+        updated_fields.append('_imap_password')
+    # Editing a label/limit must not overwrite credentials refreshed by a worker.
+    instance.save(update_fields=updated_fields)
     _invalidate_stats_cache(request.auth.id)
     return instance
 
@@ -178,24 +231,18 @@ def test_smtp_account(request, smtp_id: int, data: SMTPTestIn):
         msg['From'] = f'{smtp_account.from_name} <{smtp_account.from_email}>'
         msg['To'] = data.test_email
 
-        if smtp_account.use_ssl:
-            server = smtplib.SMTP_SSL(smtp_account.host, smtp_account.port, timeout=15)
-        else:
-            server = smtplib.SMTP(smtp_account.host, smtp_account.port, timeout=15)
-            if smtp_account.use_tls:
-                server.starttls()
-
-        if smtp_account.username and smtp_account.password:
-            server.login(smtp_account.username, smtp_account.password)
-        server.sendmail(smtp_account.from_email, [data.test_email], msg.as_string())
-        server.quit()
+        from apps.campaigns.services import open_smtp_connection
+        with open_smtp_connection(smtp_account) as server:
+            server.sendmail(smtp_account.from_email, [data.test_email], msg.as_string())
 
         _save_test_result(True)
         return {'success': True, 'message': f'Test email sent to {data.test_email}'}
 
     except smtplib.SMTPAuthenticationError:
         _save_test_result(False)
-        raise HttpError(400, 'Authentication failed. Check username/password.')
+        message = ('Authentication failed. Reconnect the mailbox and check that SMTP access is enabled by your provider.'
+                   if smtp_account.oauth_provider else 'Authentication failed. Check username/password.')
+        raise HttpError(400, message)
     except smtplib.SMTPConnectError:
         _save_test_result(False)
         raise HttpError(400, 'Cannot connect to SMTP server. Check host/port.')
@@ -213,6 +260,22 @@ def test_imap_account(request, smtp_id: int, data: IMAPTestIn):
     password blank reuses the saved one.
     """
     smtp_account = get_object_or_404(SMTPAccount, id=smtp_id, user=request.auth)
+
+    if smtp_account.oauth_provider:
+        # OAuth tests always use pinned provider hosts and the saved identity.
+        from .tasks import _connect
+        try:
+            conn = _connect(smtp_account)
+            conn.logout()
+        except Exception:
+            smtp_account.last_imap_tested_at = timezone.now()
+            smtp_account.last_imap_test_success = False
+            smtp_account.save(update_fields=['last_imap_tested_at', 'last_imap_test_success'])
+            raise HttpError(400, 'Mailbox connection failed. Reconnect the account and check that IMAP is enabled by your provider.')
+        smtp_account.last_imap_tested_at = timezone.now()
+        smtp_account.last_imap_test_success = True
+        smtp_account.save(update_fields=['last_imap_tested_at', 'last_imap_test_success'])
+        return {'success': True, 'message': 'IMAP connection successful.'}
 
     host = data.imap_host or smtp_account.imap_host
     port = data.imap_port or smtp_account.imap_port

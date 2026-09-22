@@ -144,6 +144,11 @@ export interface EmailTemplate {
 
 export interface SMTPAccount {
   id: number
+  oauth_provider: '' | 'google' | 'microsoft'
+  oauth_reconnect_required: boolean
+  bounce_protection_disabled: boolean
+  bounce_disabled_at: string | null
+  bounce_disabled_reason: string
   name: string
   host: string
   port: number
@@ -236,6 +241,14 @@ export interface Campaign {
   stop_on_reply: boolean
   daily_limit: number | null
   text_only: boolean
+  bounce_protection_enabled: boolean
+  bounce_pause_threshold: number
+  bounce_minimum_sends: number
+  bounce_window_hours: number
+  bounce_auto_disable_account: boolean
+  auto_paused: boolean
+  auto_pause_reason: string
+  auto_paused_at: string | null
   schedule_enabled: boolean
   schedule_days: number[]
   schedule_start_time: string

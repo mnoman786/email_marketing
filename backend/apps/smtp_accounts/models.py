@@ -41,6 +41,17 @@ class SMTPAccount(models.Model):
     last_tested_at = models.DateTimeField(null=True, blank=True)
     last_test_success = models.BooleanField(null=True, blank=True)
     signature_html = models.TextField(blank=True, help_text='Appended to outgoing replies/compose when enabled.')
+    bounce_protection_disabled = models.BooleanField(default=False)
+    bounce_disabled_at = models.DateTimeField(null=True, blank=True)
+    bounce_disabled_reason = models.CharField(max_length=255, blank=True)
+    oauth_provider = models.CharField(max_length=16, blank=True, choices=[('google', 'Google'), ('microsoft', 'Microsoft')])
+    oauth_subject = models.CharField(max_length=512, blank=True)
+    _oauth_access_token = models.TextField(blank=True)
+    _oauth_refresh_token = models.TextField(blank=True)
+    oauth_expires_at = models.DateTimeField(null=True, blank=True)
+    oauth_reconnect_required = models.BooleanField(default=False)
+    # A short database lease serializes refresh-token rotation across workers.
+    oauth_refresh_lock_until = models.DateTimeField(null=True, blank=True)
 
     # IMAP / reply detection (optional — same mailbox used to send, polled for replies)
     imap_enabled = models.BooleanField(default=False)
@@ -64,6 +75,10 @@ class SMTPAccount(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [models.UniqueConstraint(
+            fields=['user', 'oauth_provider', 'oauth_subject'],
+            condition=~models.Q(oauth_provider=''), name='unique_oauth_mailbox_per_user',
+        )]
 
     def __str__(self):
         return f'{self.name} ({self.from_email})'
@@ -111,6 +126,17 @@ class SMTPAccount(models.Model):
             self._imap_password = f.encrypt(value.encode()).decode()
         else:
             self._imap_password = ''
+
+
+class MailboxOAuthAttempt(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    account = models.ForeignKey(SMTPAccount, on_delete=models.CASCADE, null=True, blank=True)
+    provider = models.CharField(max_length=16)
+    state_hash = models.CharField(max_length=64, unique=True)
+    verifier = models.TextField()
+    nonce = models.CharField(max_length=128)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed = models.BooleanField(default=False)
 
 
 class WarmupSettings(models.Model):

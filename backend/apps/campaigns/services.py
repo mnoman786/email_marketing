@@ -3,6 +3,7 @@ Email sending service with SMTP probability routing, retry, and logging.
 """
 import re
 import smtplib
+import ssl
 import random
 import logging
 import urllib.parse
@@ -16,6 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from django.template import Template, Context
+from apps.smtp_accounts.oauth import authenticate_smtp
 
 logger = logging.getLogger(__name__)
 
@@ -178,20 +180,8 @@ def build_email_message(smtp_account, to_email, subject, html_content, text_cont
 def send_via_smtp(smtp_account, msg, to_email):
     """Send an email via a specific SMTP account. Returns (success, error_msg)."""
     try:
-        if smtp_account.use_ssl:
-            server = smtplib.SMTP_SSL(smtp_account.host, smtp_account.port, timeout=30)
-        else:
-            server = smtplib.SMTP(smtp_account.host, smtp_account.port, timeout=30)
-            if smtp_account.use_tls:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-
-        if smtp_account.username and smtp_account.password:
-            server.login(smtp_account.username, smtp_account.password)
-
-        server.sendmail(smtp_account.from_email, [to_email], msg.as_string())
-        server.quit()
+        with open_smtp_connection(smtp_account) as server:
+            server.sendmail(smtp_account.from_email, [to_email], msg.as_string())
         return True, None
 
     except smtplib.SMTPRecipientsRefused as e:
@@ -211,16 +201,19 @@ def open_smtp_connection(smtp_account):
     sends instead of reconnecting per email (which is what made bulk sends take
     hours — handshake+TLS+auth alone is ~1-3s, paid on every single message)."""
     if smtp_account.use_ssl:
-        server = smtplib.SMTP_SSL(smtp_account.host, smtp_account.port, timeout=30)
+        server = smtplib.SMTP_SSL(smtp_account.host, smtp_account.port, timeout=30, context=ssl.create_default_context())
     else:
         server = smtplib.SMTP(smtp_account.host, smtp_account.port, timeout=30)
         if smtp_account.use_tls:
             server.ehlo()
-            server.starttls()
+            server.starttls(context=ssl.create_default_context())
             server.ehlo()
 
-    if smtp_account.username and smtp_account.password:
-        server.login(smtp_account.username, smtp_account.password)
+    try:
+        authenticate_smtp(server, smtp_account)
+    except Exception:
+        server.close()
+        raise
     return server
 
 

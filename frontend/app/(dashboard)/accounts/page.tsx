@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { smtpApi } from '@/lib/api'
 import { SMTPAccount } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -12,7 +11,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDateTime } from '@/lib/utils'
 import {
-  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame, ShieldCheck
+  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame, ShieldCheck, RefreshCw
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { SMTPFormDialog } from '@/components/smtp/smtp-form-dialog'
@@ -34,9 +33,23 @@ export default function SMTPPage() {
     queryFn: () => smtpApi.getAll().then(r => r.data.items || []),
   })
 
-  const { data: stats } = useQuery({
-    queryKey: ['smtp-stats'],
-    queryFn: () => smtpApi.stats().then(r => r.data),
+  const { data: providers } = useQuery({
+    queryKey: ['mailbox-oauth-providers'],
+    queryFn: () => smtpApi.oauthProviders().then(r => r.data),
+  })
+
+  const connectMut = useMutation({
+    mutationFn: ({ provider, accountId }: { provider: 'google' | 'microsoft'; accountId?: number }) =>
+      smtpApi.oauthStart(provider, accountId),
+    onSuccess: ({ data }) => {
+      // Bind the provider callback to the tab that initiated the connection.
+      sessionStorage.setItem('mailbox_oauth_state', data.state)
+      window.location.assign(data.authorization_url)
+    },
+    onError: (error: unknown) => {
+      const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      toast.error(detail || 'Could not start mailbox connection')
+    },
   })
 
   const deleteMut = useMutation({
@@ -53,14 +66,28 @@ export default function SMTPPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">SMTP Accounts</h1>
+          <h1 className="text-2xl font-bold">Email Accounts</h1>
           <p className="text-sm text-muted-foreground">Connect the mailboxes you send from. Each campaign picks its own accounts, which rotate equally.</p>
         </div>
-        <Button onClick={() => { setEditAccount(null); setShowForm(true) }}>
-          <Plus size={16} /> Add SMTP Account
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {(['google', 'microsoft'] as const).map(provider => {
+            const enabled = providers?.some(p => p.provider === provider && p.enabled)
+            return (
+              <Button key={provider} variant="outline" disabled={!enabled || connectMut.isPending}
+                title={enabled ? undefined : 'Ask your administrator to configure this provider'}
+                onClick={() => connectMut.mutate({ provider })}>
+                <Plus size={16} /> Connect {provider === 'google' ? 'Google' : 'Microsoft'}
+              </Button>
+            )
+          })}
+          <Button onClick={() => { setEditAccount(null); setShowForm(true) }}>
+            <Plus size={16} /> Add SMTP Account
+          </Button>
+        </div>
       </div>
-
+      {providers?.some(p => !p.enabled) && (
+        <p className="text-sm text-muted-foreground">Some sign-in providers are unavailable until your administrator enables them. You can still connect using SMTP credentials.</p>
+      )}
 
       {isLoading ? (
         <TableSkeleton rows={4} cols={6} />
@@ -92,6 +119,7 @@ export default function SMTPPage() {
                     <TD>
                       <p className="font-medium">{account.name}</p>
                       <p className="text-xs text-muted-foreground">{account.username}</p>
+                      {account.oauth_provider && <p className="text-xs text-muted-foreground mt-1">{account.oauth_provider === 'google' ? 'Google' : 'Microsoft'} · OAuth</p>}
                     </TD>
                     <TD className="font-mono text-xs whitespace-nowrap">
                       {account.host}:{account.port}
@@ -108,8 +136,8 @@ export default function SMTPPage() {
                       </Badge>
                     </TD>
                     <TD>
-                      <Badge variant={account.is_active ? 'success' : 'secondary'}>
-                        {account.is_active ? 'Active' : 'Inactive'}
+                      <Badge variant={account.oauth_reconnect_required ? 'warning' : account.bounce_protection_disabled ? 'warning' : account.is_active ? 'success' : 'secondary'}>
+                        {account.oauth_reconnect_required ? 'Reconnect required' : account.bounce_protection_disabled ? 'Bounce protection' : account.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </TD>
                     <TD>
@@ -132,6 +160,13 @@ export default function SMTPPage() {
                     </TD>
                     <TD>
                       <div className="flex gap-1">
+                        {account.oauth_provider && (
+                          <Button variant="ghost" size="icon-sm" title="Reconnect mailbox"
+                            disabled={connectMut.isPending}
+                            onClick={() => account.oauth_provider && connectMut.mutate({ provider: account.oauth_provider, accountId: account.id })}>
+                            <RefreshCw size={14} />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon-sm"
