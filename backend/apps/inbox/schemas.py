@@ -82,13 +82,22 @@ class ThreadListOut(ThreadOut):
 
     @staticmethod
     def resolve_last_message_preview(obj):
-        last = obj.messages.order_by('-occurred_at').first()
-        if not last:
+        # Thread lists annotate the latest bodies to avoid one query per row.
+        # Keep the related-manager fallback for callers that don't use that
+        # queryset (e.g. admin or older integrations).
+        body_text = getattr(obj, 'latest_body_text', None)
+        body_html = getattr(obj, 'latest_body_html', None)
+        if body_text is None and body_html is None:
+            last = obj.messages.order_by('-occurred_at').first()
+            if not last:
+                return ''
+            body_text, body_html = last.body_text, last.body_html
+        if not body_text and not body_html:
             return ''
         # body_text is often empty for rich-text replies, so we fall back to
         # body_html — which carries invisible markup like the open-tracking
         # pixel <img>. Strip tags so that never leaks into the preview text.
-        preview = last.body_text or _WS_RE.sub(' ', _TAG_RE.sub(' ', last.body_html)).strip()
+        preview = body_text or _WS_RE.sub(' ', _TAG_RE.sub(' ', body_html or '')).strip()
         return preview[:140]
 
 

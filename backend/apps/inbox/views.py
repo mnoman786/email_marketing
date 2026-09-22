@@ -5,7 +5,7 @@ from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Q, OuterRef, Subquery
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -81,7 +81,11 @@ def list_threads(
     campaign_id: Optional[int] = None,
 ):
     now = timezone.now()
-    qs = Thread.objects.filter(user=request.auth, is_archived=is_archived).select_related('contact', 'smtp_account')
+    latest_message = InboxMessage.objects.filter(thread=OuterRef('pk')).order_by('-occurred_at')
+    qs = Thread.objects.filter(user=request.auth, is_archived=is_archived).select_related('contact', 'smtp_account').annotate(
+        latest_body_text=Subquery(latest_message.values('body_text')[:1]),
+        latest_body_html=Subquery(latest_message.values('body_html')[:1]),
+    )
     if campaign_id is not None:
         qs = qs.filter(contact__send_logs__campaign_id=campaign_id).distinct()
     if snoozed:
@@ -268,6 +272,10 @@ def reply_to_thread(
     )
     smtp_account = thread.smtp_account
     contact = thread.contact
+    if not smtp_account.is_active:
+        raise HttpError(400, 'This mailbox is inactive and cannot send replies.')
+    if not smtp_account.imap_enabled:
+        raise HttpError(400, 'Enable IMAP on this mailbox before replying from the inbox.')
     attachments = _read_uploaded_files(files)
     html_content = _with_signature(html_content, smtp_account, include_signature)
 
@@ -321,6 +329,8 @@ def compose_email(
 
     contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
     smtp_account = get_object_or_404(SMTPAccount, id=smtp_account_id, user=request.auth)
+    if not smtp_account.is_active:
+        raise HttpError(400, 'This mailbox is inactive and cannot send email.')
     if not smtp_account.imap_enabled:
         raise HttpError(400, 'Enable IMAP on this mailbox to compose from the inbox.')
 

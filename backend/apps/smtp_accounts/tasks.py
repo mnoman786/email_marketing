@@ -299,11 +299,12 @@ def poll_account_replies(account_id):
 
         highest_seen = account.last_imap_uid
         for uid in new_uids:
-            highest_seen = max(highest_seen, uid)
             try:
                 typ, msg_data = conn.uid('fetch', str(uid), '(BODY.PEEK[])')
                 if typ != 'OK' or not msg_data or not msg_data[0]:
-                    continue
+                    # Keep the cursor before this UID so a transient IMAP
+                    # failure is retried on the next poll.
+                    break
                 raw_message = msg_data[0][1] if isinstance(msg_data[0], tuple) else msg_data[0]
                 parsed = message_from_bytes(raw_message)
                 from_name, from_email = parseaddr(_header_str(parsed.get('From', '')))
@@ -317,6 +318,7 @@ def poll_account_replies(account_id):
                     except Exception:
                         pass
                     handle_received_warmup(account, parsed, from_email)
+                    highest_seen = uid
                     continue
 
                 # Bounce (DSN from the receiving MTA, not the contact) — never
@@ -332,6 +334,10 @@ def poll_account_replies(account_id):
                         process_bounce(parsed, account)
                     except Exception as e:
                         logger.warning(f'Failed processing bounce for SMTPAccount {account.id}: {e}')
+                        # Leave the cursor before this UID so bounce handling
+                        # is retried instead of losing the suppression event.
+                        break
+                    highest_seen = uid
                     continue
 
                 log = _match_sendlog(parsed, from_email, account)
@@ -345,6 +351,7 @@ def poll_account_replies(account_id):
                     contact = _create_cold_contact(from_email, from_name, account)
                     is_cold_lead = bool(contact)
                 if not contact:
+                    highest_seen = uid
                     continue
 
                 if log and log.status != 'replied':
@@ -362,8 +369,12 @@ def poll_account_replies(account_id):
                     html, text, _header_str(parsed.get('Message-ID', '')), _header_str(parsed.get('In-Reply-To', '')),
                     attachments=attachments, is_cold_lead=is_cold_lead,
                 )
+                highest_seen = uid
             except Exception as e:
                 logger.warning(f'Failed processing IMAP UID {uid} for SMTPAccount {account.id}: {e}')
+                # Do not advance past a message that failed to process. The
+                # next poll should retry it instead of silently losing a reply.
+                break
 
         account.last_imap_uid = highest_seen
         account.last_imap_checked_at = now

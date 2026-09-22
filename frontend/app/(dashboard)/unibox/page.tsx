@@ -115,7 +115,9 @@ function InboxPageInner() {
 
   const { data: smtpAccounts } = useQuery({
     queryKey: ['smtp-accounts-imap'],
-    queryFn: () => smtpApi.getAll({ page_size: 100 }).then(r => (r.data.items || []).filter((a: SMTPAccount) => a.imap_enabled)),
+    queryFn: () => smtpApi.getAll({ page_size: 100 }).then(r =>
+      (r.data.items || []).filter((a: SMTPAccount) => a.imap_enabled && a.is_active)
+    ),
   })
 
   const THREADS_PAGE_SIZE = 50
