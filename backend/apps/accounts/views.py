@@ -15,12 +15,14 @@ from .auth import (
 )
 from .emails import send_verification_email
 from .utils import parse_user_agent, get_client_ip
+from .rate_limit import limit_auth_request
 
 router = Router(tags=['Auth'])
 
 
 @router.post('/register/', response=RegisterOut, auth=None)
 def register(request, data: RegisterIn):
+    limit_auth_request(request, 'register', 5, 3600)
     if User.objects.filter(email=data.email).exists():
         raise HttpError(400, 'Email already registered.')
     if User.objects.filter(username=data.username).exists():
@@ -57,6 +59,7 @@ def verify_email(request, data: VerifyEmailIn):
 
 @router.post('/resend-verification/', auth=None)
 def resend_verification(request, data: ResendVerificationIn):
+    limit_auth_request(request, 'resend-verification', 5, 3600)
     # Always returns the same response regardless of whether the account exists
     # or is already verified, to avoid leaking which emails are registered.
     user = User.objects.filter(email=data.email).first()
@@ -67,6 +70,7 @@ def resend_verification(request, data: ResendVerificationIn):
 
 @router.post('/login/', response=TokenOut, auth=None)
 def login(request, data: LoginIn):
+    limit_auth_request(request, 'login', 10, 300)
     user = authenticate(username=data.email, password=data.password)
     if not user:
         raise HttpError(401, 'Invalid credentials.')
@@ -93,6 +97,7 @@ def logout(request):
 
 @router.post('/token/refresh/', response=TokenRefreshOut, auth=None)
 def token_refresh(request, data: TokenRefreshIn):
+    limit_auth_request(request, 'token-refresh', 60, 60)
     result = decode_refresh_token(data.refresh)
     if not result:
         raise HttpError(401, 'Invalid or expired refresh token.')

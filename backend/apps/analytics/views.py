@@ -3,6 +3,7 @@ from ninja import Router
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
+from django.core.signing import BadSignature, Signer
 from django.db.models import Case, Count, IntegerField, Q, When
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse, HttpResponseRedirect
@@ -267,14 +268,18 @@ def track_open(request, log_id: int):
 
 
 @router.get('/track/click/{log_id}/', auth=None, include_in_schema=False)
-def track_click(request, log_id: int, url: str = ''):
+def track_click(request, log_id: int, url: str = '', sig: str = ''):
     """Record a link click and redirect the recipient to the original URL."""
     if not url:
         return HttpResponse('Missing url', status=400)
 
-    # Basic safety check — only allow http/https redirects
     if not url.startswith(('http://', 'https://')):
         return HttpResponse('Invalid url', status=400)
+    try:
+        if Signer(salt='mailflow-click-tracking').unsign(sig) != f'{log_id}:{url}':
+            raise BadSignature
+    except BadSignature:
+        return HttpResponse('Invalid tracking link', status=400)
 
     try:
         log = SendLog.objects.get(id=log_id)

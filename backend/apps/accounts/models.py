@@ -26,6 +26,10 @@ class User(AbstractUser):
         return self.email
 
     @property
+    def has_apollo_api_key(self):
+        return bool(self._apollo_api_key)
+
+    @property
     def apollo_api_key(self):
         if not self._apollo_api_key:
             return ''

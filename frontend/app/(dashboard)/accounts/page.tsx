@@ -5,13 +5,14 @@ import { smtpApi } from '@/lib/api'
 import { SMTPAccount } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { TableContainer, TableScroll, Table, TableHead, TableBody, TableHeaderRow, TH, TR, TD } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { formatDateTime } from '@/lib/utils'
 import {
-  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame, ShieldCheck, RefreshCw
+  Plus, Server, Trash2, Edit, CheckCircle, XCircle, FlaskConical, AlertCircle, Flame, ShieldCheck, RefreshCw, Mail, ArrowRight, Loader2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { SMTPFormDialog } from '@/components/smtp/smtp-form-dialog'
@@ -22,6 +23,7 @@ import { DeliverabilityDialog } from '@/components/smtp/deliverability-dialog'
 export default function SMTPPage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
+  const [showAddOptions, setShowAddOptions] = useState(false)
   const [editAccount, setEditAccount] = useState<SMTPAccount | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [testAccount, setTestAccount] = useState<SMTPAccount | null>(null)
@@ -69,34 +71,17 @@ export default function SMTPPage() {
           <h1 className="text-2xl font-bold">Email Accounts</h1>
           <p className="text-sm text-muted-foreground">Connect the mailboxes you send from. Each campaign picks its own accounts, which rotate equally.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {(['google', 'microsoft'] as const).map(provider => {
-            const enabled = providers?.some(p => p.provider === provider && p.enabled)
-            return (
-              <Button key={provider} variant="outline" disabled={!enabled || connectMut.isPending}
-                title={enabled ? undefined : 'Ask your administrator to configure this provider'}
-                onClick={() => connectMut.mutate({ provider })}>
-                <Plus size={16} /> Connect {provider === 'google' ? 'Google' : 'Microsoft'}
-              </Button>
-            )
-          })}
-          <Button onClick={() => { setEditAccount(null); setShowForm(true) }}>
-            <Plus size={16} /> Add SMTP Account
-          </Button>
-        </div>
+        {!!accounts?.length && <Button onClick={() => setShowAddOptions(true)}><Plus size={16} /> Add new</Button>}
       </div>
-      {providers?.some(p => !p.enabled) && (
-        <p className="text-sm text-muted-foreground">Some sign-in providers are unavailable until your administrator enables them. You can still connect using SMTP credentials.</p>
-      )}
 
       {isLoading ? (
         <TableSkeleton rows={4} cols={6} />
       ) : !accounts?.length ? (
         <EmptyState
           icon={Server}
-          title="No SMTP accounts configured"
-          description="Add SMTP accounts to start sending campaigns. Configure multiple accounts for load distribution."
-          action={{ label: 'Add SMTP Account', onClick: () => setShowForm(true) }}
+          title="No email accounts yet"
+          description="Connect a mailbox to start sending campaigns."
+          action={{ label: 'Add new', onClick: () => setShowAddOptions(true) }}
         />
       ) : (
         <TableContainer>
@@ -218,6 +203,58 @@ export default function SMTPPage() {
         </TableContainer>
       )}
 
+      <Dialog open={showAddOptions} onOpenChange={setShowAddOptions}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden">
+          <div className="border-b bg-muted/30 px-6 py-6 sm:px-7">
+            <DialogHeader className="space-y-2">
+              <DialogTitle className="text-xl">Add an email account</DialogTitle>
+              <DialogDescription>Choose a connection method to send emails and track replies.</DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="space-y-5 px-6 pb-6 sm:px-7">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connect with your provider</p>
+              {(['google', 'microsoft'] as const).map(provider => {
+                const enabled = providers?.some(p => p.provider === provider && p.enabled)
+                const pending = connectMut.isPending && connectMut.variables?.provider === provider
+                return (
+                  <button key={provider} type="button" disabled={!enabled || connectMut.isPending}
+                    onClick={() => connectMut.mutate({ provider })}
+                    className="group flex w-full items-center gap-4 rounded-xl border bg-background px-4 py-4 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border disabled:hover:bg-background disabled:hover:shadow-sm">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border bg-background shadow-sm" aria-hidden="true">
+                      {provider === 'google' ? (
+                        <span className="text-2xl font-bold text-[#4285f4]">G</span>
+                      ) : (
+                        <span className="grid grid-cols-2 gap-0.5">
+                          <span className="h-2.5 w-2.5 bg-[#f25022]" /><span className="h-2.5 w-2.5 bg-[#7fba00]" />
+                          <span className="h-2.5 w-2.5 bg-[#00a4ef]" /><span className="h-2.5 w-2.5 bg-[#ffb900]" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{provider === 'google' ? 'Google / Gmail' : 'Microsoft / Outlook'}</span>
+                      <span className="block text-sm text-muted-foreground">{enabled ? 'Connect securely with your account' : 'Available after administrator setup'}</span>
+                    </span>
+                    {pending ? <Loader2 size={18} className="shrink-0 animate-spin text-primary" /> : <ArrowRight size={18} className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Manual setup</p>
+              <button type="button" onClick={() => { setShowAddOptions(false); setEditAccount(null); setShowForm(true) }}
+                className="group flex w-full items-center gap-4 rounded-xl border bg-background px-4 py-4 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border bg-muted/60 text-foreground" aria-hidden="true"><Mail size={23} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">SMTP / IMAP</span>
+                  <span className="block text-sm text-muted-foreground">Enter your mail server details</span>
+                </span>
+                <ArrowRight size={18} className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <SMTPFormDialog
         open={showForm}
         onClose={() => setShowForm(false)}

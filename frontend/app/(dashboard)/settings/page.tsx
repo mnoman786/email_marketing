@@ -45,7 +45,7 @@ export default function SettingsPage() {
   const { user, updateUser } = useAuth()
   const [tab, setTab] = useState<TabKey>('profile')
   const [pwLoading, setPwLoading] = useState(false)
-  const [apolloKey, setApolloKey] = useState(user?.apollo_api_key || '')
+  const [apolloKey, setApolloKey] = useState('')
   const [apolloLoading, setApolloLoading] = useState(false)
 
   const profileForm = useForm<ProfileForm>({
@@ -214,19 +214,22 @@ export default function SettingsPage() {
                     type="password"
                     value={apolloKey}
                     onChange={e => setApolloKey(e.target.value)}
-                    placeholder="Enter your Apollo.io API key"
+                    placeholder={user?.has_apollo_api_key ? "Key saved — enter a new key to replace it" : "Enter your Apollo.io API key"}
                     className="mt-1 font-mono text-sm"
                   />
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Find your API key at apollo.io → Settings → Integrations → API Keys
+                    {user?.has_apollo_api_key ? "An API key is saved. Enter a new key to replace it." : "Find your API key at apollo.io → Settings → Integrations → API Keys"}
                   </p>
                 </div>
                 <Button
                   loading={apolloLoading}
+                  disabled={!apolloKey.trim()}
                   onClick={async () => {
+                    if (!apolloKey.trim()) return
                     setApolloLoading(true)
                     try {
                       await updateUser({ apollo_api_key: apolloKey })
+                      setApolloKey('')
                       toast.success('Apollo API key saved')
                     } catch {
                       toast.error('Failed to save API key')

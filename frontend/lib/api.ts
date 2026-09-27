@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios'
+import { getAccessToken, getRefreshToken } from './auth'
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -10,7 +11,7 @@ export const api = axios.create({
 // Attach JWT token to every request
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('access_token')
+    const token = getAccessToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -26,14 +27,17 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true
       try {
-        const refresh = localStorage.getItem('refresh_token')
+        const refresh = getRefreshToken()
         if (!refresh) throw new Error('No refresh token')
         const res = await axios.post(`${API_URL}/api/auth/token/refresh/`, { refresh })
-        localStorage.setItem('access_token', res.data.access)
+        sessionStorage.setItem('access_token', res.data.access)
+        localStorage.removeItem('access_token')
         original.headers.Authorization = `Bearer ${res.data.access}`
         return api(original)
       } catch {
+        sessionStorage.removeItem('access_token')
         localStorage.removeItem('access_token')
+        sessionStorage.removeItem('refresh_token')
         localStorage.removeItem('refresh_token')
         window.location.href = '/login'
       }

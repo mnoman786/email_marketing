@@ -7,7 +7,7 @@ export interface User {
   company_name: string
   timezone: string
   is_email_verified: boolean
-  apollo_api_key: string
+  has_apollo_api_key: boolean
   created_at: string
 }
 

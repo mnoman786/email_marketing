@@ -13,7 +13,7 @@ class UserOut(Schema):
     company_name: str
     timezone: str
     is_email_verified: bool
-    apollo_api_key: str
+    has_apollo_api_key: bool
     created_at: datetime
 
 

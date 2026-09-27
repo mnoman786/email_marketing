@@ -9,9 +9,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # .delay() don't need a live broker/worker in the test environment.
 TESTING = 'test' in sys.argv
 
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-change-in-production-xyz123')
-DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
+DEBUG = config('DEBUG', default=False, cast=bool)
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-change-in-production-xyz123' if DEBUG else '')
+ALLOWED_HOSTS = [host.strip() for host in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',') if host.strip()]
+if not DEBUG and (not SECRET_KEY or SECRET_KEY.startswith('django-insecure-') or SECRET_KEY == 'your-super-secret-key-here'):
+    raise RuntimeError('Set a unique SECRET_KEY before running with DEBUG=False.')
+if not DEBUG and ('*' in ALLOWED_HOSTS or not ALLOWED_HOSTS):
+    raise RuntimeError('Set explicit ALLOWED_HOSTS before running with DEBUG=False.')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 INSTALLED_APPS = [
     'django.contrib.admin',

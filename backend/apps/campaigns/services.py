@@ -15,6 +15,7 @@ from email.mime.application import MIMEApplication
 from email.utils import formataddr
 from django.conf import settings
 from django.core.cache import cache
+from django.core.signing import Signer
 from django.utils import timezone
 from django.template import Template, Context
 from apps.smtp_accounts.oauth import authenticate_smtp
@@ -121,7 +122,8 @@ def inject_tracking(html, campaign, sendlog_id, base_url=None):
             if not url.startswith(('http://', 'https://')):
                 return match.group(0)
             encoded = urllib.parse.quote(url, safe='')
-            redirect = f'{base_url}/api/analytics/track/click/{sendlog_id}/?url={encoded}'
+            sig = urllib.parse.quote(Signer(salt='mailflow-click-tracking').sign(f'{sendlog_id}:{url}'), safe='')
+            redirect = f'{base_url}/api/analytics/track/click/{sendlog_id}/?url={encoded}&sig={sig}'
             return f'href={quote}{redirect}{quote}'
 
         html = re.sub(r'href=(["\'])(https?://[^"\'>\s]+)\1', rewrite_href, html)

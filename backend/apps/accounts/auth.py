@@ -8,7 +8,7 @@ from ninja.security import HttpBearer
 def create_tokens(user_id: int, jti: str) -> tuple[str, str]:
     now = datetime.now(tz=tz.utc)
     access = jwt.encode(
-        {'user_id': user_id, 'type': 'access', 'jti': jti, 'exp': now + timedelta(hours=24)},
+        {'user_id': user_id, 'type': 'access', 'jti': jti, 'exp': now + timedelta(minutes=15)},
         settings.SECRET_KEY, algorithm='HS256'
     )
     refresh = jwt.encode(
