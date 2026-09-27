@@ -15,6 +15,7 @@ import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { cn } from '@/lib/utils'
 import { Plus, Trash2, Megaphone, Play, Pause, Mail, Layers } from 'lucide-react'
 import toast from 'react-hot-toast'
+import axios from 'axios'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -63,7 +64,7 @@ export default function CampaignsPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['campaigns', { search, status, page }],
     queryFn: () => campaignsApi.getAll({ search, status: status || undefined, page }).then(r => r.data as PaginatedResponse<CampaignListItem>),
-    refetchInterval: 10000,
+    refetchInterval: 30000,
   })
 
   const deleteMut = useMutation({
@@ -74,7 +75,7 @@ export default function CampaignsPage() {
   const activateMut = useMutation({
     mutationFn: (id: number) => campaignsApi.activate(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign activated') },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to activate'),
+    onError: (err: unknown) => toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to activate') : 'Failed to activate'),
   })
 
   const pauseMut = useMutation({

@@ -2,7 +2,7 @@
 import { useState, Suspense } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { analyticsApi, campaignsApi } from '@/lib/api'
-import { SendLog, PaginatedResponse } from '@/lib/types'
+import { SendLog, CampaignListItem, PaginatedResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { SearchInput } from '@/components/ui/search-input'
@@ -38,7 +38,7 @@ function AnalyticsContent() {
       campaign_id: campaign || undefined,
       page,
     }).then(r => r.data as PaginatedResponse<SendLog>),
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   })
 
   const { data: campaigns } = useQuery({
@@ -124,7 +124,7 @@ function AnalyticsContent() {
           className="max-w-48"
         >
           <option value="">All Campaigns</option>
-          {campaigns?.map((c: any) => (
+          {campaigns?.map((c: CampaignListItem) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </NativeSelect>

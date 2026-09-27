@@ -222,17 +222,15 @@ class CampaignListOut(Schema):
 
     @staticmethod
     def resolve_contact_list_count(obj):
-        # len(...all()) reuses the queryset's prefetch_related cache from
-        # list_campaigns() instead of firing a fresh COUNT query per row.
-        return len(obj.contact_lists.all())
+        return obj.contact_list_total if hasattr(obj, 'contact_list_total') else obj.contact_lists.count()
 
     @staticmethod
     def resolve_step_count(obj):
-        return len(obj.steps.all())
+        return obj.step_total if hasattr(obj, 'step_total') else obj.steps.count()
 
     @staticmethod
     def resolve_enrollment_count(obj):
-        return len(obj.enrollments.all())
+        return obj.enrollment_total if hasattr(obj, 'enrollment_total') else obj.enrollments.count()
 
     @staticmethod
     def resolve_sent(obj):

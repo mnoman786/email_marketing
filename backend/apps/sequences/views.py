@@ -5,8 +5,8 @@ from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
-from django.db.models import Case, Count, IntegerField, Min, Max, Q, When
-from django.db.models.functions import TruncDate
+from django.db.models import Case, Count, IntegerField, Min, Max, OuterRef, Q, Subquery, When
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from typing import Optional, List
 from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment, StepTransition
@@ -26,10 +26,20 @@ router = Router(tags=['Campaigns'])
 @router.get('/', response=List[CampaignListOut], auth=auth)
 @paginate(PageNumberPagination, page_size=20)
 def list_campaigns(request, status: Optional[str] = None, search: Optional[str] = None):
+    list_count = (Campaign.contact_lists.through.objects.filter(campaign_id=OuterRef('pk'))
+                  .order_by().values('campaign_id').annotate(total=Count('pk')).values('total')[:1])
+    step_count = (CampaignStep.objects.filter(campaign_id=OuterRef('pk'))
+                  .order_by().values('campaign_id').annotate(total=Count('pk')).values('total')[:1])
     qs = (
         Campaign.objects.filter(user=request.auth)
-        .prefetch_related('contact_lists', 'steps', 'enrollments')
         .annotate(
+            contact_list_total=Coalesce(Subquery(list_count), 0),
+            step_total=Coalesce(Subquery(step_count), 0),
+            enrollment_total=Coalesce(Subquery(
+                CampaignEnrollment.objects.filter(campaign_id=OuterRef('pk'))
+                .order_by().values('campaign_id').annotate(total=Count('pk'))
+                .values('total')[:1]
+            ), 0),
             sent_count=Count('send_logs', filter=Q(send_logs__status__in=['sent', 'opened', 'clicked', 'replied'])),
             opened_count=Count('send_logs', filter=Q(send_logs__status__in=['opened', 'clicked', 'replied'])),
             clicked_count=Count('send_logs', filter=Q(send_logs__status__in=['clicked', 'replied'])),

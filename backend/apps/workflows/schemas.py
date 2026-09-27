@@ -38,11 +38,11 @@ class WorkflowListOut(Schema):
 
     @staticmethod
     def resolve_node_count(obj):
-        return obj.nodes.count()
+        return obj._node_count if hasattr(obj, '_node_count') else obj.nodes.count()
 
     @staticmethod
     def resolve_run_count(obj):
-        return obj.runs.count()
+        return obj._run_count if hasattr(obj, '_run_count') else obj.runs.count()
 
 
 class WorkflowDetailOut(Schema):

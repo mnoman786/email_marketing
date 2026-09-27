@@ -1,12 +1,14 @@
 from typing import List
 
 from django.shortcuts import get_object_or_404
+from django.db.models import Count, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from ninja import Router
 from ninja.pagination import PageNumberPagination, paginate
 
 from apps.accounts.auth import auth
 
-from .models import Workflow, WorkflowEdge, WorkflowNode
+from .models import Workflow, WorkflowEdge, WorkflowNode, WorkflowRun
 from .schemas import (
     WorkflowDetailOut, WorkflowGraphIn, WorkflowIn, WorkflowListOut,
     WorkflowRunOut, WorkflowUpdateIn,
@@ -17,7 +19,14 @@ router = Router(tags=['Workflows'])
 
 @router.get('/', response=List[WorkflowListOut], auth=auth)
 def list_workflows(request):
-    return list(Workflow.objects.filter(user=request.auth).prefetch_related('nodes', 'runs'))
+    node_count = (WorkflowNode.objects.filter(workflow_id=OuterRef('pk'))
+                  .order_by().values('workflow_id').annotate(total=Count('pk')).values('total')[:1])
+    run_count = (WorkflowRun.objects.filter(workflow_id=OuterRef('pk'))
+                 .order_by().values('workflow_id').annotate(total=Count('pk')).values('total')[:1])
+    return list(Workflow.objects.filter(user=request.auth).annotate(
+        _node_count=Coalesce(Subquery(node_count), 0),
+        _run_count=Coalesce(Subquery(run_count), 0),
+    ))
 
 
 @router.post('/', response=WorkflowDetailOut, auth=auth)

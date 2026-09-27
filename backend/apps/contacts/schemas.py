@@ -49,9 +49,8 @@ class TagOut(Schema):
 
     @staticmethod
     def resolve_contact_count(obj):
-        # Reuses list_tags()'s prefetch_related('contacts') cache instead of
-        # firing a fresh COUNT query per row.
-        return len(obj.contacts.all())
+        # list_tags() annotates the count without loading every contact.
+        return obj._contact_count if hasattr(obj, '_contact_count') else obj.contacts.count()
 
 
 class TagIn(Schema):
