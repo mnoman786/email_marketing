@@ -5,7 +5,7 @@ from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.core.cache import cache
-from django.db.models import Q, OuterRef, Subquery
+from django.db.models import Q, OuterRef, Subquery, Exists
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -102,14 +102,17 @@ def list_threads(
         cutoff = now - timedelta(days=FOLLOW_UP_DAYS)
         qs = qs.filter(last_message_direction='outbound', last_message_at__lte=cutoff).exclude(lead_status__in=NO_FOLLOW_UP_STATUSES)
     if search:
-        qs = qs.filter(
+        # Avoid multiplying thread rows for every matching message before paging.
+        matching_messages = InboxMessage.objects.filter(thread=OuterRef('pk')).filter(
+            Q(body_text__icontains=search) | Q(body_html__icontains=search)
+        )
+        qs = qs.alias(has_matching_message=Exists(matching_messages)).filter(
             Q(contact__email__icontains=search)
             | Q(contact__first_name__icontains=search)
             | Q(contact__last_name__icontains=search)
             | Q(subject__icontains=search)
-            | Q(messages__body_text__icontains=search)
-            | Q(messages__body_html__icontains=search)
-        ).distinct()
+            | Q(has_matching_message=True)
+        )
     return qs
 
 

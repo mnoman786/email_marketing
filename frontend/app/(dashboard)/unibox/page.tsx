@@ -1,7 +1,7 @@
 'use client'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient, InfiniteData } from '@tanstack/react-query'
 import { addDays, addHours, set } from 'date-fns'
 import { inboxApi, smtpApi } from '@/lib/api'
 import { ThreadListItem, ThreadDetail, PaginatedResponse, SMTPAccount } from '@/lib/types'
@@ -11,13 +11,14 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Skeleton } from '@/components/shared/loading-skeleton'
-import { cn, formatDateTime, formatRelativeTime, avatarColor, initials } from '@/lib/utils'
+import { cn, formatRelativeTime, avatarColor, initials } from '@/lib/utils'
 import {
   Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox,
   Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, X, Plus,
   Square, CheckSquare, UserPlus,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import axios from 'axios'
 import { RichTextEditor, RichTextEditorHandle } from './rich-text-editor'
 import { ComposeModal } from './compose-modal'
 import { ContactStatsPanel } from './contact-stats-panel'
@@ -108,7 +109,8 @@ function InboxPageInner() {
   const toggleQuote = (id: number) => {
     setExpandedQuotes(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -121,18 +123,12 @@ function InboxPageInner() {
   })
 
   const THREADS_PAGE_SIZE = 50
-  const [threadsLimit, setThreadsLimit] = useState(THREADS_PAGE_SIZE)
-
-  // Collapse back to the first page whenever the filter set changes, so
-  // switching views/filters doesn't keep a stale "loaded more" window.
-  useEffect(() => {
-    setThreadsLimit(THREADS_PAGE_SIZE)
-  }, [accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter])
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter, threadsLimit],
-    queryFn: () => inboxApi.threads({
-      page_size: threadsLimit,
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['inbox-threads', accountFilter, statusFilter, dueFollowupOnly, view, debouncedSearch, campaignFilter],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => inboxApi.threads({
+      page: pageParam,
+      page_size: THREADS_PAGE_SIZE,
       smtp_account_id: accountFilter || undefined,
       lead_status: statusFilter || undefined,
       due_followup: dueFollowupOnly || undefined,
@@ -141,7 +137,9 @@ function InboxPageInner() {
       search: debouncedSearch || undefined,
       campaign_id: campaignFilter || undefined,
     }).then(r => r.data as PaginatedResponse<ThreadListItem>),
-    refetchInterval: 15000,
+    getNextPageParam: (lastPage, pages) =>
+      pages.length * THREADS_PAGE_SIZE < lastPage.count ? pages.length + 1 : undefined,
+    refetchInterval: 30000,
   })
 
   const { data: thread, isLoading: threadLoading } = useQuery({
@@ -150,7 +148,7 @@ function InboxPageInner() {
     enabled: !!selectedId,
   })
 
-  const threads = data?.items || []
+  const threads = data?.pages.flatMap(page => page.items) || []
 
   // scrollHeight read synchronously here can be stale — a message's image/
   // attachment chip may not have finished laying out yet, undershooting the
@@ -167,14 +165,14 @@ function InboxPageInner() {
   useEffect(() => {
     if (!thread?.id) return
 
-    const cached = qc.getQueriesData<PaginatedResponse<ThreadListItem>>({ queryKey: ['inbox-threads'] })
-    const wasUnread = cached.some(([, d]) => d?.items.some(t => t.id === thread.id && t.is_unread))
+    const cached = qc.getQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>({ queryKey: ['inbox-threads'] })
+    const wasUnread = cached.some(([, d]) => d?.pages.some(page => page.items.some(t => t.id === thread.id && t.is_unread)))
 
-    qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+    qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
       { queryKey: ['inbox-threads'] },
       old => old && {
         ...old,
-        items: old.items.map(t => t.id === thread.id ? { ...t, is_unread: false } : t),
+        pages: old.pages.map(page => ({ ...page, items: page.items.map(t => t.id === thread.id ? { ...t, is_unread: false } : t) })),
       }
     )
     if (wasUnread) {
@@ -185,28 +183,37 @@ function InboxPageInner() {
     // Mark stale but DON'T force an immediate refetch — the optimistic updates
     // above already reflect the read state, and firing a full list refetch on
     // every thread open competes with the detail request for the (few) sync
-    // workers, which is what makes opening a thread feel slow. The 15s poll
+    // workers, which is what makes opening a thread feel slow. The 30s poll
     // reconciles anyway.
     qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'none' })
     qc.invalidateQueries({ queryKey: ['inbox-unread-count'], refetchType: 'none' })
-  }, [thread?.id])
+  }, [thread?.id, qc])
 
   const resetComposer = () => {
     setReplyHtml(''); setReplyText(''); setReplyFiles([])
     editorRef.current?.clear()
   }
 
+  const selectThread = (id: number | null) => {
+    if (id === selectedId) return
+    resetComposer()
+    setExpandedQuotes(new Set())
+    setSelectedId(id)
+  }
+
   const replyMut = useMutation({
-    mutationFn: () => inboxApi.reply(selectedId as number, {
-      html_content: replyHtml, text_content: replyText, include_signature: includeSignature, files: replyFiles,
-    }),
-    onSuccess: () => {
-      resetComposer()
-      qc.invalidateQueries({ queryKey: ['inbox-thread', selectedId] })
+    mutationFn: (draft: { threadId: number; html: string; text: string; files: File[] }) =>
+      inboxApi.reply(draft.threadId, {
+        html_content: draft.html, text_content: draft.text,
+        include_signature: includeSignature, files: draft.files,
+      }),
+    onSuccess: (_res, draft) => {
+      if (selectedId === draft.threadId) resetComposer()
+      qc.invalidateQueries({ queryKey: ['inbox-thread', draft.threadId] })
       qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'all' })
       toast.success('Reply sent')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to send reply'),
+    onError: (err: unknown) => toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to send reply') : 'Failed to send reply'),
   })
 
   const statusMut = useMutation({
@@ -214,11 +221,11 @@ function InboxPageInner() {
     onSuccess: (res) => {
       const updated = res.data as ThreadDetail
       qc.setQueryData<ThreadDetail>(['inbox-thread', selectedId], updated)
-      qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+      qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
         { queryKey: ['inbox-threads'] },
         old => old && {
           ...old,
-          items: old.items.map(t => t.id === updated.id ? { ...t, lead_status: updated.lead_status } : t),
+          pages: old.pages.map(page => ({ ...page, items: page.items.map(t => t.id === updated.id ? { ...t, lead_status: updated.lead_status } : t) })),
         }
       )
       toast.success('Status updated')
@@ -232,12 +239,12 @@ function InboxPageInner() {
       const updated = res.data as ThreadDetail
       // Optimistic filter only removes from the *current* view's cache — it can't add
       // the thread back into another tab's already-cached list, so invalidate too.
-      qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+      qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
         { queryKey: ['inbox-threads'] },
-        old => old && { ...old, items: old.items.filter(t => t.id !== updated.id) }
+        old => old && { ...old, pages: old.pages.map(page => ({ ...page, items: page.items.filter(t => t.id !== updated.id) })) }
       )
       qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'all' })
-      setSelectedId(null)
+      selectThread(null)
       toast.success(updated.is_archived ? 'Conversation archived' : 'Conversation moved back to inbox')
     },
     onError: () => toast.error('Failed to update conversation'),
@@ -248,9 +255,9 @@ function InboxPageInner() {
     onSuccess: (res) => {
       const updated = res.data as ThreadDetail
       qc.setQueryData<ThreadDetail>(['inbox-thread', selectedId], updated)
-      qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+      qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
         { queryKey: ['inbox-threads'] },
-        old => old && { ...old, items: old.items.map(t => t.id === updated.id ? { ...t, is_unread: updated.is_unread } : t) }
+        old => old && { ...old, pages: old.pages.map(page => ({ ...page, items: page.items.map(t => t.id === updated.id ? { ...t, is_unread: updated.is_unread } : t) })) }
       )
       qc.invalidateQueries({ queryKey: ['inbox-unread-count'] })
     },
@@ -263,9 +270,9 @@ function InboxPageInner() {
     mutationFn: (id: number) => inboxApi.setRead(id, false),
     onSuccess: (res) => {
       const updated = res.data as ThreadDetail
-      qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+      qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
         { queryKey: ['inbox-threads'] },
-        old => old && { ...old, items: old.items.map(t => t.id === updated.id ? { ...t, is_unread: false } : t) }
+        old => old && { ...old, pages: old.pages.map(page => ({ ...page, items: page.items.map(t => t.id === updated.id ? { ...t, is_unread: false } : t) })) }
       )
       if (selectedId === updated.id) qc.setQueryData<ThreadDetail>(['inbox-thread', selectedId], updated)
       qc.invalidateQueries({ queryKey: ['inbox-unread-count'] })
@@ -277,12 +284,12 @@ function InboxPageInner() {
     mutationFn: (id: number) => inboxApi.setArchived(id, false),
     onSuccess: (res) => {
       const updated = res.data as ThreadDetail
-      qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+      qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
         { queryKey: ['inbox-threads'] },
-        old => old && { ...old, items: old.items.filter(t => t.id !== updated.id) }
+        old => old && { ...old, pages: old.pages.map(page => ({ ...page, items: page.items.filter(t => t.id !== updated.id) })) }
       )
       qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'all' })
-      if (selectedId === updated.id) setSelectedId(null)
+      if (selectedId === updated.id) selectThread(null)
       toast.success('Moved back to inbox')
     },
     onError: () => toast.error('Failed to update conversation'),
@@ -293,12 +300,12 @@ function InboxPageInner() {
     onSuccess: (res) => {
       const updated = res.data as ThreadDetail
       setSnoozeMenuOpen(false)
-      qc.setQueriesData<PaginatedResponse<ThreadListItem>>(
+      qc.setQueriesData<InfiniteData<PaginatedResponse<ThreadListItem>>>(
         { queryKey: ['inbox-threads'] },
-        old => old && { ...old, items: old.items.filter(t => t.id !== updated.id) }
+        old => old && { ...old, pages: old.pages.map(page => ({ ...page, items: page.items.filter(t => t.id !== updated.id) })) }
       )
       qc.invalidateQueries({ queryKey: ['inbox-threads'], refetchType: 'all' })
-      setSelectedId(null)
+      selectThread(null)
       toast.success(updated.snoozed_until ? 'Conversation snoozed' : 'Conversation unsnoozed')
     },
     onError: () => toast.error('Failed to snooze conversation'),
@@ -318,8 +325,9 @@ function InboxPageInner() {
 
 
   const followupDraftMut = useMutation({
-    mutationFn: () => inboxApi.followupDraft(selectedId as number),
-    onSuccess: (res) => {
+    mutationFn: (threadId: number) => inboxApi.followupDraft(threadId),
+    onSuccess: (res, threadId) => {
+      if (selectedId !== threadId) return
       const { html_content, text_content } = res.data as { html_content: string; text_content: string }
       editorRef.current?.clear()
       editorRef.current?.insertHTML(html_content)
@@ -333,7 +341,8 @@ function InboxPageInner() {
   const toggleSelected = (id: number) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -349,10 +358,10 @@ function InboxPageInner() {
       const idx = threads.findIndex(t => t.id === selectedId)
       if (e.key === 'j') {
         e.preventDefault()
-        setSelectedId(threads[Math.min(threads.length - 1, idx + 1)]?.id ?? threads[0].id)
+        selectThread(threads[Math.min(threads.length - 1, idx + 1)]?.id ?? threads[0].id)
       } else if (e.key === 'k') {
         e.preventDefault()
-        setSelectedId(threads[Math.max(0, idx - 1)]?.id ?? threads[0].id)
+        selectThread(threads[Math.max(0, idx - 1)]?.id ?? threads[0].id)
       } else if (e.key === 'e' && selectedId) {
         e.preventDefault()
         archiveMut.mutate(true)
@@ -362,7 +371,6 @@ function InboxPageInner() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   })
 
   const unreadTotal = threads.filter(t => t.is_unread).length
@@ -389,7 +397,7 @@ function InboxPageInner() {
           </div>
           {campaignFilter && (
             <div className="flex items-center justify-between gap-2 text-xs px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary">
-              <span>Filtered to one campaign's leads</span>
+              <span>Filtered to one campaign&apos;s leads</span>
               <button
                 onClick={() => { setCampaignFilter(null); router.replace('/unibox') }}
                 className="hover:underline font-medium shrink-0"
@@ -402,7 +410,7 @@ function InboxPageInner() {
             {(['inbox', 'archived', 'snoozed'] as ViewTab[]).map(v => (
               <button
                 key={v}
-                onClick={() => { setView(v); setSelectedId(null); setSelectedIds(new Set()) }}
+                onClick={() => { setView(v); selectThread(null); setSelectedIds(new Set()) }}
                 className={cn('text-xs px-3 py-1 rounded-md transition-colors capitalize', view === v ? 'bg-card shadow-sm font-medium' : 'text-muted-foreground')}
               >
                 {v}
@@ -421,7 +429,7 @@ function InboxPageInner() {
           {smtpAccounts && smtpAccounts.length > 1 && (
             <Select
               value={accountFilter ? String(accountFilter) : 'all'}
-              onValueChange={v => { setAccountFilter(v === 'all' ? null : Number(v)); setSelectedId(null) }}
+              onValueChange={v => { setAccountFilter(v === 'all' ? null : Number(v)); selectThread(null) }}
             >
               <SelectTrigger className="h-8 text-xs rounded-lg">
                 <Mailbox size={12} className="mr-1.5 text-muted-foreground" />
@@ -548,7 +556,7 @@ function InboxPageInner() {
               return (
                 <div
                   key={t.id}
-                  onClick={() => setSelectedId(t.id)}
+                  onClick={() => selectThread(t.id)}
                   className={cn(
                     'relative w-full text-left px-3 py-3.5 border-b flex gap-2.5 hover:bg-muted/50 transition-colors cursor-pointer group border-l-2',
                     selectedId === t.id ? 'bg-primary/5 hover:bg-primary/5 border-l-primary' : 'border-l-transparent',
@@ -632,10 +640,10 @@ function InboxPageInner() {
               )
             })
           )}
-          {data && data.count > threads.length && (
+          {data && hasNextPage && (
             <div className="p-3 flex justify-center">
-              <Button variant="outline" size="sm" onClick={() => setThreadsLimit(l => l + THREADS_PAGE_SIZE)}>
-                Load more ({(data.count - threads.length).toLocaleString()} remaining)
+              <Button variant="outline" size="sm" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                {isFetchingNextPage ? 'Loading…' : `Load more (${(data.pages[0].count - threads.length).toLocaleString()} remaining)`}
               </Button>
             </div>
           )}
@@ -742,13 +750,14 @@ function InboxPageInner() {
 
             <div className="p-4 border-t bg-card space-y-2.5">
               <RichTextEditor
+                key={thread.id}
                 ref={editorRef}
                 placeholder={`Reply to ${thread.contact_name || thread.contact_email}…`}
                 onChange={(html, text) => { setReplyHtml(html); setReplyText(text) }}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !replyDisabled) {
                     e.preventDefault()
-                    replyMut.mutate()
+                    replyMut.mutate({ threadId: thread.id, html: replyHtml, text: replyText, files: replyFiles })
                   }
                 }}
               />
@@ -783,7 +792,7 @@ function InboxPageInner() {
                   {thread.last_message_direction === 'outbound' && (
                     <button
                       type="button"
-                      onClick={() => followupDraftMut.mutate()}
+                      onClick={() => followupDraftMut.mutate(thread.id)}
                       disabled={followupDraftMut.isPending}
                       className="text-xs text-amber-700 hover:text-amber-800 flex items-center gap-1 disabled:opacity-60"
                     >
@@ -801,7 +810,7 @@ function InboxPageInner() {
                   size="sm"
                   disabled={replyDisabled}
                   loading={replyMut.isPending}
-                  onClick={() => replyMut.mutate()}
+                  onClick={() => replyMut.mutate({ threadId: thread.id, html: replyHtml, text: replyText, files: replyFiles })}
                   className="rounded-lg"
                 >
                   <Send size={14} /> Send Reply
