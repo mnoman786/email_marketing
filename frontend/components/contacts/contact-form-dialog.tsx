@@ -14,7 +14,7 @@ import { NativeSelect } from '@/components/ui/native-select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { Plus, UserRound, Tag as TagIcon, X, ListFilter, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, UserRound, Tag as TagIcon, X, ListFilter, ChevronDown, ChevronUp, Mail, BriefcaseBusiness, MapPin, CalendarClock, SlidersHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getTagBadgeProps, randomTagColor } from './tag-form-dialog'
 
@@ -201,69 +201,62 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className={cn(
         'w-[calc(100vw-2rem)] max-h-[92vh] p-0 gap-0 overflow-hidden transition-[max-width] duration-200',
-        showMoreDetails ? 'max-w-6xl' : 'max-w-xl'
+        showMoreDetails ? 'max-w-6xl' : 'max-w-2xl'
       )}>
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 pt-6 pb-5 border-b bg-muted/30">
-          <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/10 text-primary shrink-0">
-            <UserRound size={20} />
+        <div className="flex items-center gap-4 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-background px-6 py-6 pr-12 sm:px-8">
+          <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-primary-foreground shadow-sm shrink-0">
+            <UserRound size={22} />
           </div>
           <div>
-            <DialogTitle className="text-lg font-semibold leading-tight">{contact ? 'Edit Lead' : 'Add Lead'}</DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground mt-0">
-              {contact ? 'Update this contact’s details, lists and tags.' : 'Create a new contact in your lead base.'}
+            <DialogTitle className="text-xl font-semibold leading-tight">{contact ? 'Edit lead' : 'Add a new lead'}</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground mt-1">
+              {contact ? 'Keep this contact’s profile and follow-up details current.' : 'Create a complete profile so your team can follow up with confidence.'}
             </DialogDescription>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))}>
+        <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))} className="flex min-h-0 flex-col">
           {/* Body */}
-          <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
-            <div>
-              <Label>Email <span className="text-destructive">*</span></Label>
-              <Input {...register('email')} placeholder="contact@example.com" className="mt-1.5" />
-              {errors.email && <p className="text-xs text-destructive mt-1">{errors.email.message}</p>}
-            </div>
+          <div className="max-h-[calc(92vh-174px)] space-y-6 overflow-y-auto bg-muted/20 px-5 py-6 sm:px-8">
+            <section className="rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
+              <div className="mb-5 flex items-center gap-3 border-b pb-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><UserRound size={18} /></span>
+                <div>
+                  <h3 className="text-sm font-semibold">Contact information</h3>
+                  <p className="text-xs text-muted-foreground">The essentials for identifying and reaching this lead</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Label className="flex items-center gap-1.5"><Mail size={13} className="text-muted-foreground" /> Email address <span className="text-destructive">*</span></Label>
+                  <Input {...register('email')} type="email" placeholder="name@company.com" className="mt-1.5" />
+                  {errors.email && <p className="text-xs text-destructive mt-1">{errors.email.message}</p>}
+                </div>
+                <div><Label>First name</Label><Input {...register('first_name')} placeholder="John" className="mt-1.5" /></div>
+                <div><Label>Last name</Label><Input {...register('last_name')} placeholder="Doe" className="mt-1.5" /></div>
+                <div><Label>Phone number</Label><Input {...register('phone')} type="tel" placeholder="+1 234 567 890" className="mt-1.5" /></div>
+                <div><Label>Company</Label><Input {...register('company')} placeholder="Acme Inc." className="mt-1.5" /></div>
+              </div>
+            </section>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>First Name</Label>
-                <Input {...register('first_name')} placeholder="John" className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Last Name</Label>
-                <Input {...register('last_name')} placeholder="Doe" className="mt-1.5" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Phone</Label>
-                <Input {...register('phone')} placeholder="+1 234 567 890" className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Company</Label>
-                <Input {...register('company')} placeholder="Acme Inc." className="mt-1.5" />
-              </div>
-            </div>
-
-            <div className={cn('rounded-xl border transition-colors', showMoreDetails ? 'border-primary/40 bg-primary/[0.02]' : 'border-primary/30 bg-primary/[0.05] hover:border-primary/60 hover:bg-primary/[0.08]')}>
+            <section className={cn('rounded-2xl border bg-background shadow-sm transition-colors', showMoreDetails ? 'border-primary/40' : 'border-primary/25 hover:border-primary/60')}>
               <button type="button" onClick={() => setShowMoreDetails(value => !value)}
                 aria-expanded={showMoreDetails}
-                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left">
+                className="flex w-full items-center justify-between gap-3 px-5 py-5 text-left sm:px-6">
                 <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Plus size={18} /></span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Plus size={20} /></span>
                   <span>
-                    <span className="block text-sm font-semibold text-foreground">{showMoreDetails ? 'More lead details' : 'Add more lead details'}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">Work, location, source, follow-up, notes and custom fields</span>
+                    <span className="block text-sm font-semibold text-foreground">{showMoreDetails ? 'Additional lead details' : 'Add more details'}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Work, location, source, follow-up and custom fields</span>
                   </span>
                 </span>
                 {showMoreDetails ? <ChevronUp size={18} className="shrink-0 text-primary" /> : <ChevronDown size={18} className="shrink-0 text-primary" />}
               </button>
               {showMoreDetails && (
-                <div className="grid grid-cols-1 gap-5 border-t border-primary/20 bg-background px-4 py-5 lg:grid-cols-2">
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work and company</p>
+                <div className="grid grid-cols-1 gap-5 border-t bg-muted/20 p-4 sm:p-5 lg:grid-cols-2">
+                  <div className="rounded-xl border bg-background p-4">
+                    <p className="mb-4 flex items-center gap-2 text-sm font-semibold"><BriefcaseBusiness size={16} className="text-primary" /> Work and company</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div><Label>Job title</Label><Input {...register('title')} placeholder="Marketing Manager" className="mt-1.5" /></div>
                       <div><Label>Industry</Label><Input {...register('industry')} placeholder="Software" className="mt-1.5" /></div>
@@ -272,16 +265,16 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
                       <div className="col-span-2"><Label>LinkedIn profile</Label><Input {...register('linkedin_url')} type="url" placeholder="https://linkedin.com/in/name" className="mt-1.5" />{errors.linkedin_url && <p className="mt-1 text-xs text-destructive">Enter a valid URL</p>}</div>
                     </div>
                   </div>
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location</p>
-                    <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-xl border bg-background p-4">
+                    <p className="mb-4 flex items-center gap-2 text-sm font-semibold"><MapPin size={16} className="text-primary" /> Location</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div><Label>City</Label><Input {...register('city')} className="mt-1.5" /></div>
                       <div><Label>State / region</Label><Input {...register('state')} className="mt-1.5" /></div>
-                      <div><Label>Country</Label><Input {...register('country')} className="mt-1.5" /></div>
+                      <div className="sm:col-span-2"><Label>Country</Label><Input {...register('country')} className="mt-1.5" /></div>
                     </div>
                   </div>
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tracking</p>
+                  <div className="rounded-xl border bg-background p-4">
+                    <p className="mb-4 flex items-center gap-2 text-sm font-semibold"><CalendarClock size={16} className="text-primary" /> Tracking and follow-up</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div><Label>Lead source</Label><Input {...register('lead_source')} placeholder="Referral, event, website…" className="mt-1.5" /></div>
                       <div><Label>Stage</Label><NativeSelect {...register('lead_stage')} wrapperClassName="mt-1.5 w-full"><option value="new">New</option><option value="contacted">Contacted</option><option value="replied">Replied</option><option value="qualified">Qualified</option><option value="won">Won</option><option value="lost">Lost</option></NativeSelect></div>
@@ -289,14 +282,14 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
                     </div>
                     <div className="mt-3"><Label>Notes</Label><Textarea {...register('notes')} placeholder="Conversation history, interests, or anything your team should remember" rows={4} className="mt-1.5" /></div>
                   </div>
-                  <div>
+                  <div className="rounded-xl border bg-background p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom details</p>
+                      <p className="flex items-center gap-2 text-sm font-semibold"><SlidersHorizontal size={16} className="text-primary" /> Custom details</p>
                       <Button type="button" variant="outline" size="sm" onClick={() => setExtraFields(fields => [...fields, { id: Math.max(0, ...fields.map(field => field.id)) + 1, key: '', value: '' }])}><Plus size={13} /> Add field</Button>
                     </div>
                     <div className="mt-2 space-y-2">
                       {extraFields.map(field => (
-                        <div key={field.id} className="flex items-center gap-2">
+                        <div key={field.id} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                           <Input aria-label="Custom field name" placeholder="Field name" value={field.key} onChange={e => setExtraFields(fields => fields.map(item => item.id === field.id ? { ...item, key: e.target.value } : item))} />
                           <Input aria-label="Custom field value" placeholder="Value" value={field.value} onChange={e => setExtraFields(fields => fields.map(item => item.id === field.id ? { ...item, value: e.target.value } : item))} />
                           <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove custom field" onClick={() => setExtraFields(fields => fields.filter(item => item.id !== field.id))}><X size={15} /></Button>
@@ -306,14 +299,23 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
                   </div>
                 </div>
               )}
-            </div>
+            </section>
 
-            {listsData && listsData.length > 0 && (
+            <section className="rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
+              <div className="mb-5 flex items-center gap-3 border-b pb-4">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><ListFilter size={18} /></span>
+                <div>
+                  <h3 className="text-sm font-semibold">Organization</h3>
+                  <p className="text-xs text-muted-foreground">Add this lead to lists and tag it for easy filtering</p>
+                </div>
+              </div>
+              <div className={cn('grid grid-cols-1 gap-5', listsData && listsData.length > 0 && 'lg:grid-cols-2')}>
+              {listsData && listsData.length > 0 && (
               <div>
                 <Label className="flex items-center gap-1.5">
                   <ListFilter size={13} className="text-muted-foreground" /> Assign to Lists
                 </Label>
-                <div className="mt-1.5 grid grid-cols-2 gap-1 max-h-36 overflow-y-auto rounded-lg border border-input p-1.5">
+                <div className="mt-2 grid grid-cols-1 gap-1 max-h-40 overflow-y-auto rounded-lg border border-input p-1.5 sm:grid-cols-2">
                   {listsData.map((list: any) => {
                     const active = selectedLists.includes(list.id)
                     return (
@@ -331,7 +333,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
                   })}
                 </div>
               </div>
-            )}
+              )}
 
             {/* Tags — Tagify-style chip input */}
             <div>
@@ -398,13 +400,15 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
                 </div>
               )}
             </div>
+              </div>
+            </section>
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 px-6 py-4 border-t bg-muted/30">
+          <div className="flex shrink-0 justify-end gap-2 border-t bg-background px-5 py-4 sm:px-8">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" loading={mutation.isPending}>
-              {contact ? 'Update' : 'Create'}
+              {contact ? 'Save changes' : 'Create lead'}
             </Button>
           </div>
         </form>
