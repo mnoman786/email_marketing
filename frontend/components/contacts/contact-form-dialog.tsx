@@ -199,7 +199,10 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden">
+      <DialogContent className={cn(
+        'w-[calc(100vw-2rem)] max-h-[92vh] p-0 gap-0 overflow-hidden transition-[max-width] duration-200',
+        showMoreDetails ? 'max-w-6xl' : 'max-w-xl'
+      )}>
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-5 border-b bg-muted/30">
           <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/10 text-primary shrink-0">
@@ -215,7 +218,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
 
         <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))}>
           {/* Body */}
-          <div className="px-6 py-5 space-y-5 max-h-[62vh] overflow-y-auto">
+          <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
             <div>
               <Label>Email <span className="text-destructive">*</span></Label>
               <Input {...register('email')} placeholder="contact@example.com" className="mt-1.5" />
@@ -244,14 +247,21 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
               </div>
             </div>
 
-            <div className="rounded-lg border border-input">
+            <div className={cn('rounded-xl border transition-colors', showMoreDetails ? 'border-primary/40 bg-primary/[0.02]' : 'border-primary/30 bg-primary/[0.05] hover:border-primary/60 hover:bg-primary/[0.08]')}>
               <button type="button" onClick={() => setShowMoreDetails(value => !value)}
-                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium hover:bg-muted/50">
-                <span>{showMoreDetails ? 'Additional lead details' : 'Add more details'}</span>
-                {showMoreDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                aria-expanded={showMoreDetails}
+                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left">
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Plus size={18} /></span>
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">{showMoreDetails ? 'More lead details' : 'Add more lead details'}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">Work, location, source, follow-up, notes and custom fields</span>
+                  </span>
+                </span>
+                {showMoreDetails ? <ChevronUp size={18} className="shrink-0 text-primary" /> : <ChevronDown size={18} className="shrink-0 text-primary" />}
               </button>
               {showMoreDetails && (
-                <div className="space-y-5 border-t px-4 py-4">
+                <div className="grid grid-cols-1 gap-5 border-t border-primary/20 bg-background px-4 py-5 lg:grid-cols-2">
                   <div>
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work and company</p>
                     <div className="grid grid-cols-2 gap-3">
