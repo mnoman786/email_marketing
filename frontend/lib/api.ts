@@ -90,6 +90,14 @@ export const contactsApi = {
   update: (id: number, data: any) => api.patch(`/api/contacts/${id}/`, data),
   delete: (id: number) => api.delete(`/api/contacts/${id}/`),
   bulkImport: (data: any) => api.post('/api/contacts/bulk-import/', data),
+  importFile: (file: File, listId?: number) => {
+    const data = new FormData()
+    data.append('file', file)
+    return api.post<{ task_id: string; total: number }>('/api/contacts/import-file/', data, {
+      params: listId ? { list_id: listId } : undefined,
+      headers: { 'Content-Type': undefined },
+    })
+  },
   importStatus: (taskId: string) => api.get(`/api/contacts/import-status/${taskId}/`),
   bulkDelete: (ids: number[]) => api.post('/api/contacts/bulk-delete/', { ids }),
   verify: (id: number) => api.post(`/api/contacts/${id}/verify/`),

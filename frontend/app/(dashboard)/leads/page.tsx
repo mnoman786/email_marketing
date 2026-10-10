@@ -18,11 +18,12 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
-  Plus, Trash2, Pencil, Users, ListFilter, X
+  Plus, Trash2, Pencil, Users, ListFilter, X, Upload
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
 import { ContactViewDialog } from '@/components/contacts/contact-view-dialog'
+import { LeadImportDialog } from '@/components/contacts/lead-import-dialog'
 import { VerificationDot, SpamRiskBadge } from '@/components/contacts/verification-badges'
 import { getTagBadgeProps } from '@/components/contacts/tag-form-dialog'
 
@@ -66,6 +67,7 @@ function ContactsContent() {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not add leads'),
   })
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [editContact, setEditContact] = useState<Contact | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [viewContact, setViewContact] = useState<Contact | null>(null)
@@ -138,6 +140,9 @@ function ContactsContent() {
           <p className="text-sm text-muted-foreground">Manage your lead base</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload size={16} /> Import Leads
+          </Button>
           <Button onClick={() => { setEditContact(null); setShowForm(true) }}>
             <Plus size={16} /> Add Lead
           </Button>
@@ -204,8 +209,9 @@ function ContactsContent() {
           <EmptyState
             icon={Users}
             title="No leads found"
-            description="Add leads manually, or import them from the Email Validation section."
+            description="Add a lead manually or import a CSV or Excel file."
             action={{ label: 'Add Lead', onClick: () => setShowForm(true) }}
+            secondaryAction={{ label: 'Import Leads', onClick: () => setShowImport(true) }}
           />
         ) : (
           <>
@@ -375,6 +381,7 @@ function ContactsContent() {
       </Dialog>
 
       {/* Dialogs */}
+      <LeadImportDialog open={showImport} onClose={() => setShowImport(false)} listId={listId} />
       <ContactViewDialog
         open={!!viewContact}
         onClose={() => setViewContact(null)}

@@ -1,4 +1,6 @@
 from ninja import Router
+from ninja import File as NinjaFile
+from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.pagination import paginate, PageNumberPagination
 from django.conf import settings
@@ -271,6 +273,21 @@ def create_contact(request, data: ContactIn):
 
 
 # Static paths must come before /{contact_id}/ to avoid route capture conflicts
+@router.post('/import-file/', response=BulkImportStartOut, auth=auth)
+def import_lead_file(request, file: UploadedFile = NinjaFile(...), list_id: Optional[int] = None):
+    """Accept a CSV or Excel file and queue its rows for verified lead import."""
+    from .import_files import parse_lead_file
+    from .tasks import bulk_import_contacts_task
+
+    if list_id:
+        get_object_or_404(ContactList, id=list_id, user=request.auth)
+    contacts = parse_lead_file(file)
+    task = bulk_import_contacts_task.delay(
+        user_id=request.auth.id, contacts_data=contacts, list_id=list_id,
+    )
+    return {'task_id': task.id, 'total': len(contacts)}
+
+
 @router.post('/bulk-import/', response=BulkImportStartOut, auth=auth)
 def bulk_import(request, data: BulkImportIn):
     if data.list_id:
