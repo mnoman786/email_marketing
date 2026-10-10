@@ -202,12 +202,20 @@ info "Python $PYTHON_VER  |  Node $NODE_VER  |  npm $(npm -v)"
 # ─── 1. Backend — Python virtual environment ──────────────────────────────────
 echo ""
 info "━━━ [1/8] Setting up Python virtual environment..."
-# Ensure python3-venv is available (Ubuntu splits it into a separate package)
-if ! $PYTHON_BIN -m venv --help >/dev/null 2>&1; then
-    warn "python3-venv missing — installing..."
-    sudo apt-get install -y python3-venv 2>/dev/null || true
+if [ ! -x "$VENV_DIR/bin/pip" ]; then
+    # `python3 -m venv --help` succeeds even when Debian's ensurepip package is
+    # missing, so try creating the environment itself before deciding.
+    if ! "$PYTHON_BIN" -m venv "$VENV_DIR"; then
+        if [ "$PKG_MGR" = "apt-get" ]; then
+            warn "Python ${PYTHON_VER} venv support is missing — installing python${PYTHON_VER}-venv..."
+            sudo apt-get update -qq
+            sudo apt-get install -y "python${PYTHON_VER}-venv"
+            "$PYTHON_BIN" -m venv --clear "$VENV_DIR" || error "Could not create Python virtual environment."
+        else
+            error "Could not create Python virtual environment. Install the venv/ensurepip package for Python ${PYTHON_VER} and rerun."
+        fi
+    fi
 fi
-$PYTHON_BIN -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"
 pip install --upgrade pip --quiet
 pip install -r "$BACKEND_DIR/requirements.txt" --quiet
