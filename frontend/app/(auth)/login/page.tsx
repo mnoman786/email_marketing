@@ -1,12 +1,12 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { authApi } from '@/lib/api'
-import { setTokens, setUser } from '@/lib/auth'
+import { restoreAuthFromOtherTab, setTokens, setUser } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,14 @@ type FormData = z.infer<typeof schema>
 export default function LoginPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    restoreAuthFromOtherTab().then(authenticated => {
+      if (active && authenticated) router.replace('/dashboard')
+    })
+    return () => { active = false }
+  }, [router])
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
