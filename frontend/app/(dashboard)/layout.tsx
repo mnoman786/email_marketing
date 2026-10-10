@@ -1,19 +1,27 @@
 'use client'
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { isAuthenticated } from '@/lib/auth'
+import { restoreAuthFromOtherTab } from '@/lib/auth'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
 import { AuthProvider } from '@/components/providers/auth-provider'
+import { useState } from 'react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/login')
-    }
+    let active = true
+    restoreAuthFromOtherTab().then(authenticated => {
+      if (!active) return
+      if (authenticated) setReady(true)
+      else router.replace('/login')
+    })
+    return () => { active = false }
   }, [router])
+
+  if (!ready) return null
 
   return (
     <AuthProvider>

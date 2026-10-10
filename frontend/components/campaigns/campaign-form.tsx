@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { campaignsApi, listsApi, smtpApi } from '@/lib/api'
 import { Campaign, CampaignStep } from '@/lib/types'
 import { useAuth } from '@/components/providers/auth-provider'
@@ -17,6 +17,9 @@ import { Tabs } from '@/components/ui/tabs'
 import { SendingScheduleCard } from '@/components/shared/sending-schedule-card'
 import { EmailBodyEditor } from '@/components/campaigns/email-body-editor'
 import { TemplatePickerDialog } from '@/components/campaigns/template-picker-dialog'
+import { AddSendingAccountDialog } from '@/components/smtp/add-sending-account-dialog'
+import { SMTPFormDialog } from '@/components/smtp/smtp-form-dialog'
+import { useMailboxOAuthPopup } from '@/components/smtp/use-mailbox-oauth-popup'
 import { ArrowLeft, Save, Play, Plus, Trash2, ChevronUp, ChevronDown, Clock, Settings2, Mail, Users, Check, X, FlaskConical, CheckCircle2, AlertCircle, Eye, GitBranch, ArrowRight, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
@@ -140,6 +143,7 @@ interface Props {
 
 export function CampaignForm({ campaign, initialName }: Props) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
   const [tab, setTab] = useState<'sequence' | 'leads' | 'schedule' | 'options'>('sequence')
   const [steps, setSteps] = useState<LocalStep[]>(
@@ -156,6 +160,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const [deletedVariants, setDeletedVariants] = useState<{ stepId: number; variantId: number }[]>([])
   const [deletedTransitions, setDeletedTransitions] = useState<{ stepId: number; transitionId: number }[]>([])
   const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null)
+  const [showAddAccount, setShowAddAccount] = useState(false)
+  const [showSmtpForm, setShowSmtpForm] = useState(false)
   const [subjectTagsOpen, setSubjectTagsOpen] = useState<string | null>(null)
   const [templatePickerTarget, setTemplatePickerTarget] = useState<{
     key: string
@@ -212,7 +218,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
   })
 
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, getValues, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: campaign?.name || initialName || '',
@@ -236,6 +242,12 @@ export function CampaignForm({ campaign, initialName }: Props) {
       schedule_timezone: campaign?.schedule_timezone ?? 'UTC',
     },
   })
+  const selectNewAccount = (accountId: number) => {
+    const selected = getValues('smtp_account_ids') || []
+    if (!selected.includes(accountId)) setValue('smtp_account_ids', [...selected, accountId])
+    setShowAddAccount(false)
+  }
+  const { start: startOAuth, pendingProvider } = useMailboxOAuthPopup(selectNewAccount)
 
   const name = watch('name')
   const selectedLists = watch('contact_list_ids') || []
@@ -266,15 +278,16 @@ export function CampaignForm({ campaign, initialName }: Props) {
       ? s.variants.every(v => v.subject.trim() && v.html_content.trim())
       : Boolean(s.subject.trim() && s.html_content.trim())
 
-  const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0 && selectedSmtp.length > 0
+  const hasActiveSmtp = selectedSmtpObjs.some((account: any) => account.is_active)
+  const detailsValid = Boolean((name || '').trim()) && selectedLists.length > 0 && hasActiveSmtp
   const stepsValid = steps.length > 0 && steps.every(stepIsFilled)
   const leadsValid = selectedLists.length > 0
-  const optionsValid = Boolean((name || '').trim()) && selectedSmtp.length > 0
+  const optionsValid = Boolean((name || '').trim()) && hasActiveSmtp
   const canActivate = detailsValid && stepsValid
 
   const missing: string[] = []
   if (!(name || '').trim()) missing.push('campaign name')
-  if (selectedSmtp.length === 0) missing.push('at least one sending account')
+  if (!hasActiveSmtp) missing.push('at least one active sending account')
   if (selectedLists.length === 0) missing.push('at least one target list')
   if (steps.length === 0) missing.push('at least one step')
   else if (!steps.every(stepIsFilled)) missing.push('subject & body for every step/variant')
@@ -323,6 +336,7 @@ export function CampaignForm({ campaign, initialName }: Props) {
   const addVariant = (index: number) => {
     setSteps(prev => prev.map((s, i) => {
       if (i !== index) return s
+      if (s.variants.length >= (s.order === 1 ? 4 : 2)) return s
       if (s.variants.length === 0) {
         return {
           ...s,
@@ -454,8 +468,10 @@ export function CampaignForm({ campaign, initialName }: Props) {
       return res.data
     },
     onSuccess: (data) => {
-      toast.success(campaign ? 'Campaign saved' : 'Campaign created')
-      router.push(`/campaigns/${data.id}`)
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', String(data.id)] })
+      toast.success(campaign && campaign.status !== 'draft' ? 'Campaign saved' : 'Draft saved')
+      if (!campaign) router.replace(`/campaigns/${data.id}/edit`)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to save'),
   })
@@ -470,6 +486,8 @@ export function CampaignForm({ campaign, initialName }: Props) {
       return res.data
     },
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', String(data.id)] })
       toast.success('Campaign activated!')
       router.push(`/campaigns/${data.id}`)
     },
@@ -496,7 +514,14 @@ export function CampaignForm({ campaign, initialName }: Props) {
               Complete: {missing.join(', ')}
             </p>
           )}
-          <Button variant="outline" size="sm" onClick={handleSubmit(d => saveMut.mutate(d))} loading={saveMut.isPending}>
+          <Button variant="outline" size="sm" onClick={() => {
+            const draft = getValues()
+            if (!draft.name.trim()) {
+              toast.error('Enter a campaign name to save a draft.')
+              return
+            }
+            saveMut.mutate({ ...draft, name: draft.name.trim() })
+          }} loading={saveMut.isPending}>
             <Save size={14} /> Save Draft
           </Button>
           <Button size="sm"
@@ -598,14 +623,15 @@ export function CampaignForm({ campaign, initialName }: Props) {
                       )}
                       <button
                         type="button"
+                        disabled={step.variants.length >= (step.order === 1 ? 4 : 2)}
                         onClick={() => {
                           setActiveStepIndex(i)
                           addVariant(i)
                           setActiveVarTab(prev => ({ ...prev, [i]: step.variants.length || 0 }))
                         }}
-                        className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-primary hover:underline"
+                        className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
                       >
-                        <Plus size={11} /> Add variant
+                        <Plus size={11} /> {step.variants.length >= (step.order === 1 ? 4 : 2) ? `Limit: ${step.order === 1 ? 4 : 2} variants` : 'Add variant'}
                       </button>
                     </div>
                   </div>
@@ -647,9 +673,17 @@ export function CampaignForm({ campaign, initialName }: Props) {
                 <p className="text-xs text-destructive">{errors.smtp_account_ids.message as string}</p>
               )}
               {(smtpAccounts || []).length === 0 ? (
-                <div className="rounded-lg border border-dashed p-4 text-center">
-                  <p className="text-sm text-muted-foreground">No SMTP accounts yet.</p>
-                  <a href="/accounts" className="text-sm text-primary hover:underline">Add a sending account →</a>
+                <div className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] px-5 py-6 text-center">
+                  <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Mail size={21} />
+                  </span>
+                  <p className="mt-3 text-sm font-semibold">Connect a sending account</p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+                    Add the mailbox and From address you want to use for this campaign.
+                  </p>
+                  <Button type="button" size="sm" onClick={() => setShowAddAccount(true)} className="mt-4 gap-2">
+                    <Plus size={15} /> Add SMTP account
+                  </Button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2">
@@ -676,6 +710,11 @@ export function CampaignForm({ campaign, initialName }: Props) {
                     )
                   })}
                 </div>
+              )}
+              {(smtpAccounts || []).length > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowAddAccount(true)} className="gap-2">
+                  <Plus size={15} /> Add another account
+                </Button>
               )}
               <div className="pt-1">
                 <Label className="text-xs">Reply-To <span className="text-muted-foreground font-normal">(optional)</span></Label>
@@ -1368,6 +1407,24 @@ export function CampaignForm({ campaign, initialName }: Props) {
           if (templatePickerTarget) {
             setAppliedTemplates(prev => ({ ...prev, [templatePickerTarget.key]: name }))
           }
+        }}
+      />
+      <AddSendingAccountDialog
+        open={showAddAccount}
+        onClose={() => setShowAddAccount(false)}
+        onProvider={provider => { void startOAuth(provider) }}
+        onManual={() => { setShowAddAccount(false); setShowSmtpForm(true) }}
+        pendingProvider={pendingProvider}
+      />
+      <SMTPFormDialog
+        open={showSmtpForm}
+        onClose={() => setShowSmtpForm(false)}
+        account={null}
+        onSaved={accountId => {
+          queryClient.invalidateQueries({ queryKey: ['smtp-all'] })
+          queryClient.invalidateQueries({ queryKey: ['smtp-accounts'] })
+          if (accountId) selectNewAccount(accountId)
+          setShowSmtpForm(false)
         }}
       />
     </div>

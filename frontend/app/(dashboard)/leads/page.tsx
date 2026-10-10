@@ -2,8 +2,9 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { contactsApi, listsApi } from '@/lib/api'
-import { Contact, ContactList, PaginatedResponse } from '@/lib/types'
+import { contactsApi, listsApi, campaignsApi } from '@/lib/api'
+import { Contact, ContactList, CampaignListItem, PaginatedResponse } from '@/lib/types'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { SearchInput } from '@/components/ui/search-input'
@@ -35,15 +36,42 @@ function ContactsContent() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [selected, setSelected] = useState<number[]>([])
+  const [showCampaignPicker, setShowCampaignPicker] = useState(false)
+  const [campaignId, setCampaignId] = useState<number | null>(null)
+  const { data: campaigns } = useQuery({
+    queryKey: ['campaigns', 'lead-picker'],
+    queryFn: async () => {
+      const first = (await campaignsApi.getAll({ page: 1 })).data as PaginatedResponse<CampaignListItem>
+      const items = [...first.items]
+      for (let page = 2; items.length < first.count; page++) {
+        const next = (await campaignsApi.getAll({ page })).data as PaginatedResponse<CampaignListItem>
+        if (!next.items.length) break
+        items.push(...next.items)
+      }
+      return items
+    },
+    enabled: showCampaignPicker,
+  })
+  const enrollMut = useMutation({
+    mutationFn: () => campaignsApi.enrollSelected(campaignId!, selected),
+    onSuccess: (res) => {
+      toast.success(`${res.data.added} leads added to campaign${res.data.skipped ? ` · ${res.data.skipped} skipped` : ''}`)
+      setSelected([])
+      setShowCampaignPicker(false)
+      setCampaignId(null)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Could not add leads'),
+  })
   const [showForm, setShowForm] = useState(false)
   const [editContact, setEditContact] = useState<Contact | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [viewContact, setViewContact] = useState<Contact | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['contacts', { search, status, page, listId }],
-    queryFn: () => contactsApi.getAll({ search, status: status || undefined, list_id: listId, page }).then(r => r.data as PaginatedResponse<Contact>),
+    queryKey: ['contacts', { search, status, page, pageSize, listId }],
+    queryFn: () => contactsApi.getAll({ search, status: status || undefined, list_id: listId, page, page_size: pageSize }).then(r => r.data as PaginatedResponse<Contact>),
   })
 
   // Resolve the filtered list's name for the "Filtered by" chip below.
@@ -296,13 +324,17 @@ function ContactsContent() {
               </Table>
             </TableScroll>
 
-            <TablePagination page={page} pageSize={20} total={total} onPageChange={setPage} />
+            <TablePagination page={page} pageSize={pageSize} total={total} onPageChange={setPage}
+              pageSizeOptions={[20, 50, 100]} onPageSizeChange={size => { setPageSize(size); setPage(1); setSelected([]) }} />
           </>
         )}
       </TableContainer>
 
       {/* Floating bulk actions */}
       <BulkActionBar count={selected.length} onClear={() => setSelected([])} noun="lead">
+        <Button variant="outline" size="sm" onClick={() => setShowCampaignPicker(true)}>
+          <Users size={14} /> Add to campaign
+        </Button>
         <Button
           variant="destructive"
           size="sm"
@@ -312,6 +344,20 @@ function ContactsContent() {
           <Trash2 size={14} /> Delete
         </Button>
       </BulkActionBar>
+
+      <Dialog open={showCampaignPicker} onOpenChange={setShowCampaignPicker}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add {selected.length} selected leads to a campaign</DialogTitle></DialogHeader>
+          <NativeSelect value={campaignId ?? ''} onChange={e => setCampaignId(Number(e.target.value) || null)}>
+            <option value="">Choose a campaign</option>
+            {(campaigns || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">Only active, eligible leads are added. Leads already in the campaign are skipped.</p>
+          <DialogFooter>
+            <Button disabled={!campaignId || enrollMut.isPending} loading={enrollMut.isPending} onClick={() => enrollMut.mutate()}>Add leads</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialogs */}
       <ContactViewDialog

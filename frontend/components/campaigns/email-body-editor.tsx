@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Bold, Italic, Underline, Link as LinkIcon, Shuffle, ChevronDown, Check, X, AlertTriangle } from 'lucide-react'
+import { Bold, Italic, Underline, Highlighter, Link as LinkIcon, Shuffle, ChevronDown, Check, X, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Flags HTML that genuinely hurts cold-email deliverability.
@@ -29,6 +29,8 @@ const SENDER_TAGS = [
 
 // Flat list used by the { } autocomplete
 const MERGE_TAGS = [...CONTACT_TAGS, ...SENDER_TAGS]
+const FONT_FAMILIES = ['Arial', 'Georgia', 'Tahoma', 'Verdana'] as const
+const FONT_SIZES = ['2', '3', '4'] as const
 
 // Items shown in the { } autocomplete popup.
 const AUTOCOMPLETE_ITEMS = [
@@ -56,6 +58,8 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
   const savedRange = useRef<Range | null>(null)
   const [tagsOpen, setTagsOpen] = useState(false)
   const [linkMode, setLinkMode] = useState(false)
+  const [selectedFont, setSelectedFont] = useState('')
+  const [selectedSize, setSelectedSize] = useState('')
   const [complexHtml, setComplexHtml] = useState(() => COMPLEX_HTML_RE.test(value || ''))
   const [linkUrl, setLinkUrl] = useState('')
   const linkInputRef = useRef<HTMLInputElement>(null)
@@ -82,6 +86,10 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0 && divRef.current.contains(sel.anchorNode)) {
         savedRange.current = sel.getRangeAt(0).cloneRange()
+        const font = String(document.queryCommandValue('fontName') || '').replace(/["']/g, '').trim()
+        setSelectedFont(FONT_FAMILIES.find(name => name.toLowerCase() === font.toLowerCase()) || '')
+        const size = String(document.queryCommandValue('fontSize') || '')
+        setSelectedSize(FONT_SIZES.find(option => option === size) || '')
       }
     }
     document.addEventListener('selectionchange', save)
@@ -137,6 +145,17 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
     el.focus()
     restoreRange(getRange())
     document.execCommand(cmd, false)
+    emit()
+  }
+
+  const formatValue = (cmd: string, value: string) => {
+    const el = divRef.current
+    if (!el) return
+    el.focus()
+    restoreRange(getRange())
+    document.execCommand(cmd, false, value)
+    if (cmd === 'fontName') setSelectedFont(value)
+    if (cmd === 'fontSize') setSelectedSize(value)
     emit()
   }
 
@@ -241,7 +260,9 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
     const range = getRange()
     const selectedText = range.toString()
     const anchor = document.createElement('a')
-    anchor.href = url.startsWith('http') ? url : `https://${url}`
+    anchor.href = /^https?:\/\//i.test(url) ? url : `https://${url}`
+    anchor.style.color = 'inherit'
+    anchor.style.textDecoration = 'underline'
     anchor.textContent = selectedText || url
     range.deleteContents()
     range.insertNode(anchor)
@@ -273,6 +294,26 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
         <ToolbarBtn onMouseDown={e => { e.preventDefault(); execFormat('underline') }} title="Underline">
           <Underline size={13} />
         </ToolbarBtn>
+        <ToolbarBtn onMouseDown={e => { e.preventDefault(); formatValue('hiliteColor', '#fff2a8') }} title="Highlight selected text">
+          <Highlighter size={13} />
+        </ToolbarBtn>
+        <select aria-label="Font family" title="Font family" value={selectedFont}
+          onChange={e => { if (e.target.value) formatValue('fontName', e.target.value) }}
+          className="bg-transparent text-xs border rounded px-1 py-1 ml-1">
+          <option value="">Font</option>
+          <option value="Arial">Arial</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Tahoma">Tahoma</option>
+          <option value="Verdana">Verdana</option>
+        </select>
+        <select aria-label="Font size" title="Font size" value={selectedSize}
+          onChange={e => { if (e.target.value) formatValue('fontSize', e.target.value) }}
+          className="bg-transparent text-xs border rounded px-1 py-1">
+          <option value="">Size</option>
+          <option value="2">Small</option>
+          <option value="3">Normal</option>
+          <option value="4">Large</option>
+        </select>
 
         {/* Inline link input */}
         <div className="relative">
@@ -393,7 +434,7 @@ export function EmailBodyEditor({ value, onChange, placeholder, className }: Pro
         data-placeholder={placeholder}
         onInput={() => { emit(); checkAutocomplete() }}
         onKeyDown={handleKeyDown}
-        className="px-3 py-2 text-sm min-h-56 max-h-96 overflow-y-auto outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground"
+        className="email-body-editor px-3 py-2 text-sm min-h-56 max-h-96 overflow-y-auto outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_a]:!text-inherit [&_a]:underline"
       />
 
       {/* Inline { } autocomplete popup */}

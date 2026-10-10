@@ -13,9 +13,8 @@ import { TablePagination } from '@/components/shared/table-pagination'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { cn } from '@/lib/utils'
-import { Plus, Trash2, Megaphone, Play, Pause, Mail, Layers } from 'lucide-react'
+import { Plus, Trash2, Megaphone, Play, Pause, Mail, Layers, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
-import axios from 'axios'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -70,12 +69,6 @@ export default function CampaignsPage() {
   const deleteMut = useMutation({
     mutationFn: (id: number) => campaignsApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign deleted'); setDeleteId(null) },
-  })
-
-  const activateMut = useMutation({
-    mutationFn: (id: number) => campaignsApi.activate(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); toast.success('Campaign activated') },
-    onError: (err: unknown) => toast.error(axios.isAxiosError(err) ? (err.response?.data?.detail || 'Failed to activate') : 'Failed to activate'),
   })
 
   const pauseMut = useMutation({
@@ -203,12 +196,18 @@ export default function CampaignsPage() {
                       <MetricCell value={campaign.replied} total={campaign.sent} tone="text-green-600" />
                       <TD onClick={e => e.stopPropagation()}>
                         <div className="flex gap-1">
-                          {(campaign.status === 'draft' || campaign.status === 'paused') && (
+                          {campaign.status === 'draft' && (
+                            <Button variant="ghost" size="icon-sm" title="Complete draft"
+                              onClick={() => router.push(`/campaigns/${campaign.id}/edit`)}>
+                              <Pencil size={14} />
+                            </Button>
+                          )}
+                          {campaign.status === 'paused' && (
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title={campaign.status === 'draft' ? 'Activate' : 'Resume'}
-                              onClick={() => campaign.status === 'draft' ? activateMut.mutate(campaign.id) : resumeMut.mutate(campaign.id)}
+                              title="Resume"
+                              onClick={() => resumeMut.mutate(campaign.id)}
                               className="text-green-600 hover:text-green-700"
                             >
                               <Play size={14} />

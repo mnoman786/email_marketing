@@ -26,7 +26,7 @@ export function SessionsCard() {
 
   const revokeOthersMut = useMutation({
     mutationFn: () => authApi.revokeOtherSessions(),
-    onSuccess: () => { invalidate(); toast.success('Signed out of all other devices') },
+    onSuccess: () => { invalidate(); toast.success('Signed out of all other sessions') },
     onError: () => toast.error('Failed to revoke other sessions'),
   })
 
@@ -45,13 +45,13 @@ export function SessionsCard() {
             onClick={() => revokeOthersMut.mutate()}
             loading={revokeOthersMut.isPending}
           >
-            <LogOut size={14} /> Log out other devices
+            <LogOut size={14} /> Log out other sessions
           </Button>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {isLoading ? 'Loading…' : `${sessions?.length || 0} device${sessions?.length === 1 ? '' : 's'} currently signed in.`}
+          {isLoading ? 'Loading…' : `${sessions?.length || 0} active sign-in session${sessions?.length === 1 ? '' : 's'}. Signing in again creates a new session, even on this browser.`}
         </p>
 
         <div className="space-y-2">
@@ -62,14 +62,15 @@ export function SessionsCard() {
                   <span className="font-medium truncate">{s.device}</span>
                   {s.is_current && (
                     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-                      <ShieldCheck size={10} /> THIS DEVICE
+                      <ShieldCheck size={10} /> CURRENT SESSION
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5 text-xs text-muted-foreground">
                   {s.ip_address && (
                     <span className="flex items-center gap-1"><MapPin size={11} />{s.ip_address}</span>
                   )}
+                  <span>Signed in {formatDateTime(s.created_at)}</span>
                   <span>Active {formatDateTime(s.last_active_at)}</span>
                 </div>
               </div>
@@ -78,7 +79,7 @@ export function SessionsCard() {
                   variant="ghost"
                   size="icon-sm"
                   className="text-destructive hover:text-destructive shrink-0"
-                  title="Sign out this device"
+                  title="Sign out this session"
                   onClick={() => revokeMut.mutate(s.id)}
                   disabled={revokeMut.isPending}
                 >

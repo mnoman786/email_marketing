@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q, Count
 from django.utils import timezone
 from typing import Optional, List
+from pydantic import field_validator
 from django.http import HttpResponse
 from .models import ContactList, Contact, Tag, Suppression, suppress_email
 from .unsubscribe import verify_unsubscribe_token
@@ -147,8 +148,27 @@ VERIFICATION_BUCKETS = _VERIFICATION_BUCKETS
 _bucket_filter = bucket_filter
 
 
+class LeadPagePagination(PageNumberPagination):
+    class Input(PageNumberPagination.Input):
+        page_size: int = 20
+
+        @field_validator('page_size')
+        @classmethod
+        def valid_page_size(cls, value):
+            if value not in (20, 50, 100):
+                raise ValueError('Page size must be 20, 50, or 100')
+            return value
+
+    def paginate_queryset(self, queryset, pagination, **params):
+        offset = (pagination.page - 1) * pagination.page_size
+        return {
+            'items': queryset[offset:offset + pagination.page_size],
+            'count': self._items_count(queryset),
+        }
+
+
 @router.get('/', response=List[ContactOut], auth=auth)
-@paginate(PageNumberPagination, page_size=20)
+@paginate(LeadPagePagination)
 def list_contacts(
     request,
     status: Optional[str] = None,

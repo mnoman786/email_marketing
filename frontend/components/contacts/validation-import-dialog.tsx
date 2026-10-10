@@ -47,6 +47,11 @@ export function ValidationImportDialog({ open, onClose, onCreated }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const readFile = (f: File) => {
+    if (f.size > 25 * 1024 * 1024) {
+      toast.error('CSV files must be 25 MB or smaller.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
     if (!f.name.endsWith('.csv') && f.type !== 'text/csv') {
       toast.error('Please upload a .csv file.')
       return
@@ -136,7 +141,7 @@ export function ValidationImportDialog({ open, onClose, onCreated }: Props) {
                   <FileText size={20} className="text-primary shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{file.name}</p>
-                    <p className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+                    <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB · 25 MB max</p>
                   </div>
                   <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
                     className="text-muted-foreground hover:text-destructive">

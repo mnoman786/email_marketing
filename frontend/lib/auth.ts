@@ -55,3 +55,42 @@ export function setUser(user: User) {
 export function isAuthenticated(): boolean {
   return !!getAccessToken()
 }
+
+let pendingTabRestore: Promise<boolean> | null = null
+
+/** Share the current session with a newly opened tab on the same origin. */
+export function restoreAuthFromOtherTab(): Promise<boolean> {
+  if (isAuthenticated()) return Promise.resolve(true)
+  if (pendingTabRestore) return pendingTabRestore
+  if (typeof BroadcastChannel === 'undefined') return Promise.resolve(false)
+
+  pendingTabRestore = new Promise<boolean>(resolve => {
+    const channel = new BroadcastChannel('mailflow-auth')
+    const requestId = crypto.randomUUID()
+    let finished = false
+    const finish = (restored: boolean) => {
+      if (finished) return
+      finished = true
+      window.clearTimeout(timer)
+      channel.close()
+      resolve(restored)
+    }
+    channel.onmessage = event => {
+      const message = event.data
+      if (message?.type !== 'session-response' || message.requestId !== requestId) return
+      if (typeof message.access !== 'string' || typeof message.refresh !== 'string') return
+      setTokens(message.access, message.refresh)
+      finish(true)
+    }
+    const timer = window.setTimeout(() => finish(false), 1500)
+    channel.postMessage({ type: 'session-request', requestId })
+  }).finally(() => { pendingTabRestore = null })
+  return pendingTabRestore
+}
+
+export function broadcastLogout() {
+  if (typeof BroadcastChannel === 'undefined') return
+  const channel = new BroadcastChannel('mailflow-auth')
+  channel.postMessage({ type: 'logout' })
+  channel.close()
+}

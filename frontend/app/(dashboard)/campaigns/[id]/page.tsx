@@ -141,6 +141,16 @@ export default function CampaignDetailPage() {
   }
 
   const totalEnrolled = stats?.total_enrolled || 0
+  const draftMissing = [
+    !campaign.name.trim() && 'campaign name',
+    !campaign.contact_list_ids.length && 'target list',
+    !campaign.smtp_accounts_detail.some(account => account.is_active) && 'active sending account',
+    !campaign.steps.length && 'campaign step',
+    campaign.steps.some(step => {
+      const contents = step.variants.length ? step.variants : [step]
+      return contents.some(item => !item.subject.trim() || !item.html_content.trim())
+    }) && 'subject and body for every step',
+  ].filter(Boolean)
   const counts = stats?.enrollment_counts || {}
   const steps: any[] = stats?.steps || []
 
@@ -202,6 +212,11 @@ export default function CampaignDetailPage() {
             <p className="text-sm text-muted-foreground mt-0.5">
               {campaign.steps.length} step(s) · Created {formatDateTime(campaign.created_at)} · Updated {formatDateTime(campaign.updated_at)}
             </p>
+            {campaign.status === 'draft' && draftMissing.length > 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                Complete before activating: {draftMissing.join(', ')}.
+              </p>
+            )}
             {campaign.auto_paused && campaign.auto_pause_reason && (
               <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">{campaign.auto_pause_reason}</p>
             )}
@@ -215,7 +230,9 @@ export default function CampaignDetailPage() {
             </Link>
           )}
           {campaign.status === 'draft' && (
-            <Button size="sm" onClick={() => activateMut.mutate()} disabled={activateMut.isPending}>
+            <Button size="sm" onClick={() => activateMut.mutate()}
+              disabled={activateMut.isPending || draftMissing.length > 0}
+              title={draftMissing.length ? `Complete: ${draftMissing.join(', ')}` : undefined}>
               <Play size={14} /> Activate
             </Button>
           )}

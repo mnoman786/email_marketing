@@ -95,7 +95,12 @@ export function NodeEditDialog({ open, onClose, nodeType, initialConfig, lists, 
                 <NativeSelect wrapperClassName="w-full" value={config.trigger_type || ''}
                   onChange={e => set({ trigger_type: e.target.value, list_id: undefined, tag_id: undefined, campaign_id: undefined, days: undefined })}>
                   <option value="">Select trigger...</option>
-                  {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  {['added_to_list', 'no_reply_after'].includes(config.trigger_type) && (
+                    <option value={config.trigger_type} hidden>{TRIGGER_LABELS[config.trigger_type]}</option>
+                  )}
+                  {Object.entries(TRIGGER_LABELS)
+                    .filter(([value]) => value !== 'added_to_list' && value !== 'no_reply_after')
+                    .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </NativeSelect>
               </div>
 

@@ -9,6 +9,7 @@ from django.db.models import Case, Count, IntegerField, Min, Max, OuterRef, Q, S
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from typing import Optional, List
+from ninja import Schema
 from .models import Campaign, CampaignStep, CampaignStepVariant, CampaignEnrollment, StepTransition
 from .schemas import (
     CampaignOut, CampaignListOut, CampaignIn, CampaignUpdateIn,
@@ -21,6 +22,35 @@ from apps.accounts.auth import auth
 
 logger = logging.getLogger(__name__)
 router = Router(tags=['Campaigns'])
+
+
+class SelectedLeadsIn(Schema):
+    contact_ids: List[int]
+
+
+@router.post('/{campaign_id}/enroll-selected/', auth=auth)
+def enroll_selected_leads(request, campaign_id: int, data: SelectedLeadsIn):
+    """Add an explicit selection without making future leads in their lists eligible."""
+    from apps.contacts.models import Contact, Suppression
+    campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
+    first_step = campaign.steps.order_by('order').first()
+    if not first_step:
+        raise HttpError(400, 'Create a campaign step before adding leads.')
+    suppressed = Suppression.objects.filter(user=request.auth).values('email')
+    ids = list(Contact.objects.filter(
+        id__in=data.contact_ids, user=request.auth, status='active'
+    ).exclude(email__in=suppressed).exclude(
+        verification_status='invalid'
+    ).values_list('id', flat=True).distinct())
+    due = timezone.now() + timedelta(days=first_step.delay_days, hours=first_step.delay_hours)
+    existing = set(CampaignEnrollment.objects.filter(
+        campaign=campaign, contact_id__in=ids
+    ).values_list('contact_id', flat=True))
+    CampaignEnrollment.objects.bulk_create([
+        CampaignEnrollment(campaign=campaign, contact_id=contact_id, status='active', next_send_at=due)
+        for contact_id in ids if contact_id not in existing
+    ], ignore_conflicts=True)
+    return {'added': len(ids) - len(existing), 'skipped': len(data.contact_ids) - len(ids) + len(existing)}
 
 
 @router.get('/', response=List[CampaignListOut], auth=auth)
@@ -145,6 +175,8 @@ def list_step_variants(request, campaign_id: int, step_id: int):
 @router.post('/{campaign_id}/steps/{step_id}/variants/', response=CampaignStepVariantOut, auth=auth)
 def create_step_variant(request, campaign_id: int, step_id: int, data: CampaignStepVariantIn):
     step = get_object_or_404(CampaignStep, id=step_id, campaign_id=campaign_id, campaign__user=request.auth)
+    if step.variants.count() >= (4 if step.order == 1 else 2):
+        raise HttpError(400, 'Variant limit reached for this step.')
     return CampaignStepVariant.objects.create(step=step, **data.dict())
 
 
@@ -220,8 +252,24 @@ def activate_campaign(request, campaign_id: int):
     campaign = get_object_or_404(Campaign, id=campaign_id, user=request.auth)
     if campaign.status not in ('draft', 'paused'):
         raise HttpError(400, f'Cannot activate campaign in "{campaign.status}" status.')
-    if not campaign.steps.exists():
-        raise HttpError(400, 'Campaign has no steps.')
+    missing = []
+    if not campaign.name.strip():
+        missing.append('campaign name')
+    if not campaign.contact_lists.exists():
+        missing.append('target list')
+    if not campaign.smtp_accounts.filter(is_active=True).exists():
+        missing.append('active sending account')
+    steps = list(campaign.steps.prefetch_related('variants'))
+    if not steps:
+        missing.append('campaign step')
+    else:
+        for step in steps:
+            variants = list(step.variants.all())
+            contents = variants if variants else [step]
+            if any(not item.subject.strip() or not item.html_content.strip() for item in contents):
+                missing.append(f'subject and body for step {step.order}')
+    if missing:
+        raise HttpError(400, 'Complete before activating: ' + ', '.join(missing) + '.')
     campaign.status = 'active'
     campaign.save(update_fields=['status'])
     from .tasks import enroll_due_contacts

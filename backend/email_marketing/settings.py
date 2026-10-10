@@ -1,5 +1,8 @@
 import sys
 from pathlib import Path
+
+# A 25 MB CSV expands when parsed into JSON before reaching the import endpoint.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 128 * 1024 * 1024
 from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent

@@ -8,6 +8,8 @@ interface Props {
   pageSize: number
   total: number
   onPageChange: (page: number) => void
+  pageSizeOptions?: number[]
+  onPageSizeChange?: (size: number) => void
   className?: string
 }
 
@@ -24,7 +26,7 @@ function pageWindow(current: number, last: number): (number | '…')[] {
   return out
 }
 
-export function TablePagination({ page, pageSize, total, onPageChange, className }: Props) {
+export function TablePagination({ page, pageSize, total, onPageChange, pageSizeOptions, onPageSizeChange, className }: Props) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   if (total === 0) return null
 
@@ -38,43 +40,54 @@ export function TablePagination({ page, pageSize, total, onPageChange, className
         of <span className="font-medium text-foreground">{total.toLocaleString()}</span>
       </p>
 
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => onPageChange(page - 1)}
-          disabled={page <= 1}
-          aria-label="Previous page"
-        >
-          <ChevronLeft size={15} />
-        </Button>
-
-        {pageWindow(page, totalPages).map((p, i) =>
-          p === '…' ? (
-            <span key={`gap-${i}`} className="px-1.5 text-xs text-muted-foreground select-none">…</span>
-          ) : (
-            <Button
-              key={p}
-              variant={p === page ? 'default' : 'ghost'}
-              size="icon-sm"
-              onClick={() => onPageChange(p)}
-              aria-current={p === page ? 'page' : undefined}
-              className="text-xs tabular-nums"
-            >
-              {p}
-            </Button>
-          )
+      <div className="flex items-center gap-2">
+        {pageSizeOptions && onPageSizeChange && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground mr-2">
+            Rows per page
+            <select aria-label="Rows per page" value={pageSize} onChange={e => onPageSizeChange(Number(e.target.value))}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground">
+              {pageSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
         )}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => onPageChange(page - 1)}
+            disabled={page <= 1}
+            aria-label="Previous page"
+          >
+            <ChevronLeft size={15} />
+          </Button>
 
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={() => onPageChange(page + 1)}
-          disabled={page >= totalPages}
-          aria-label="Next page"
-        >
-          <ChevronRight size={15} />
-        </Button>
+          {pageWindow(page, totalPages).map((p, i) =>
+            p === '…' ? (
+              <span key={`gap-${i}`} className="px-1.5 text-xs text-muted-foreground select-none">…</span>
+            ) : (
+              <Button
+                key={p}
+                variant={p === page ? 'default' : 'ghost'}
+                size="icon-sm"
+                onClick={() => onPageChange(p)}
+                aria-current={p === page ? 'page' : undefined}
+                className="text-xs tabular-nums"
+              >
+                {p}
+              </Button>
+            )
+          )}
+
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= totalPages}
+            aria-label="Next page"
+          >
+            <ChevronRight size={15} />
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -51,7 +51,7 @@ interface Props {
   open: boolean
   onClose: () => void
   account: SMTPAccount | null
-  onSaved: () => void
+  onSaved: (accountId?: number) => void
 }
 
 export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
@@ -151,9 +151,9 @@ export function SMTPFormDialog({ open, onClose, account, onSaved }: Props) {
     mutationFn: (data: FormData) => account
       ? smtpApi.update(account.id, data)
       : smtpApi.create(data),
-    onSuccess: () => {
+    onSuccess: (response) => {
       toast.success(account ? 'SMTP account updated' : 'SMTP account created')
-      onSaved()
+      onSaved(response.data.id)
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || 'Failed to save SMTP account')

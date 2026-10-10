@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { useQueryClient } from '@tanstack/react-query'
 import { User } from '@/lib/types'
 import { authApi } from '@/lib/api'
-import { setTokens, clearTokens, setUser, getUser, isAuthenticated, getRefreshToken } from '@/lib/auth'
+import { setTokens, clearTokens, setUser, getUser, isAuthenticated, getRefreshToken, broadcastLogout } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
@@ -33,9 +33,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserState(res.data)
           setUser(res.data)
         })
-        .catch(() => {
-          clearTokens()
-          setUserState(null)
+        .catch((error: unknown) => {
+          // A temporary network/server error should not sign the user out.
+          const status = (error as { response?: { status?: number } })?.response?.status
+          if (status === 401) {
+            clearTokens()
+            setUserState(null)
+          }
         })
         .finally(() => setLoading(false))
     } else {
@@ -66,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
     queryClient.clear()
     clearTokens()
+    broadcastLogout()
     setUserState(null)
     router.push('/login')
   }

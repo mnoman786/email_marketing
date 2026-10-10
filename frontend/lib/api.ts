@@ -157,6 +157,7 @@ export const campaignsApi = {
   resume: (id: number) => api.post(`/api/campaigns/${id}/resume/`),
   stats: (id: number) => api.get(`/api/campaigns/${id}/stats/`),
   enrollments: (id: number, params?: any) => api.get(`/api/campaigns/${id}/enrollments/`, { params }),
+  enrollSelected: (id: number, contact_ids: number[]) => api.post(`/api/campaigns/${id}/enroll-selected/`, { contact_ids }),
   getSteps: (id: number) => api.get(`/api/campaigns/${id}/steps/`),
   createStep: (id: number, data: any) => api.post(`/api/campaigns/${id}/steps/`, data),
   updateStep: (id: number, stepId: number, data: any) => api.patch(`/api/campaigns/${id}/steps/${stepId}/`, data),
