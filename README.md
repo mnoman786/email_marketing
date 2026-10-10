@@ -262,6 +262,8 @@ On a systemd-based Linux server, from the project directory run:
 
 The script asks for frontend and backend ports, detects the server's public IPv4 address (falling back to its local address), installs dependencies, configures Django and Next.js, builds the frontend, and starts backend, frontend, Celery worker, and Celery beat systemd services. It updates URL and origin settings on reruns while preserving existing secrets and database settings. Open `http://SERVER_IP:FRONTEND_PORT` after setup.
 
+The generated `backend/.env` includes every setting in `backend/.env.example`. Set `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `DEFAULT_FROM_EMAIL` to enable account verification emails. Set the Google or Microsoft OAuth client credentials when you want those mailbox connections. Existing values are kept if you run setup again.
+
 For a non-interactive run, set `FRONTEND_PORT`, `BACKEND_PORT`, and optionally `SERVER_IP` before `./setup.sh`. A custom `DOMAIN` also requires Nginx, Certbot, and DNS pointing to the server; the script obtains HTTPS for that domain. Cloud firewall or security group rules must allow the selected ports (or 80/443 for a domain). Google and Microsoft mailbox OAuth require a registered HTTPS callback URL matching `https://DOMAIN/accounts/oauth/callback`.
 
 After updates, run `./build.sh all` to rebuild and restart the services.

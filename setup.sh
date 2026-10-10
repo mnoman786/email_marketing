@@ -226,15 +226,20 @@ echo ""
 info "━━━ [2/8] Configuring backend environment..."
 ENV_FILE="$BACKEND_DIR/.env"
 
-python - "$ENV_FILE" "$SERVER_IP" "$BACKEND_PORT" "$FRONTEND_PORT" "$DOMAIN" "$REDIS_URL" "$API_URL" "$FRONTEND_URL" <<'PY'
+python - "$ENV_FILE" "$BACKEND_DIR/.env.example" "$SERVER_IP" "$BACKEND_PORT" "$FRONTEND_PORT" "$DOMAIN" "$REDIS_URL" "$API_URL" "$FRONTEND_URL" <<'PY'
 import secrets
 import sys
 from pathlib import Path
 from cryptography.fernet import Fernet
 
-path, server_ip, backend_port, frontend_port, domain, redis_url, api_url, frontend_url = sys.argv[1:]
+path, template_path, server_ip, backend_port, frontend_port, domain, redis_url, api_url, frontend_url = sys.argv[1:]
 env = Path(path)
 lines = env.read_text().splitlines() if env.exists() else []
+template = {}
+for line in Path(template_path).read_text().splitlines():
+    if '=' in line and not line.lstrip().startswith('#'):
+        key, value = line.split('=', 1)
+        template[key] = value
 existing = {}
 for line in lines:
     if '=' in line and not line.lstrip().startswith('#'):
@@ -265,6 +270,11 @@ updates = {
     'SESSION_COOKIE_SECURE': 'True' if domain else 'False',
     'CSRF_COOKIE_SECURE': 'True' if domain else 'False',
 }
+# Fill every documented backend setting without replacing credentials or
+# user-chosen tuning values from an existing .env file.
+for key, value in template.items():
+    if key not in existing and key not in updates:
+        updates[key] = value
 output = []
 seen = set()
 for line in lines:
