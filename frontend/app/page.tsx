@@ -10,5 +10,9 @@ export default function RootPage() {
       router.replace(authenticated ? '/dashboard' : '/login')
     })
   }, [router])
-  return null
+  return (
+    <main className="flex min-h-screen items-center justify-center p-6 text-sm text-muted-foreground">
+      Opening MailFlow… <a href="/login" className="ml-1 text-primary underline">Go to sign in</a>
+    </main>
+  )
 }

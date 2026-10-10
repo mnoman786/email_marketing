@@ -66,7 +66,9 @@ export function restoreAuthFromOtherTab(): Promise<boolean> {
 
   pendingTabRestore = new Promise<boolean>(resolve => {
     const channel = new BroadcastChannel('mailflow-auth')
-    const requestId = crypto.randomUUID()
+    // randomUUID is unavailable on plain HTTP public-IP origins. This ID only
+    // pairs a tab request with its response; it is not an auth secret.
+    const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
     let finished = false
     const finish = (restored: boolean) => {
       if (finished) return
