@@ -172,6 +172,7 @@ class LeadPagePagination(PageNumberPagination):
 def list_contacts(
     request,
     status: Optional[str] = None,
+    lead_stage: Optional[str] = None,
     verification_status: Optional[str] = None,
     verification: Optional[str] = None,
     list_id: Optional[int] = None,
@@ -181,6 +182,8 @@ def list_contacts(
     qs = Contact.objects.filter(user=request.auth).prefetch_related('lists', 'tags')
     if status:
         qs = qs.filter(status=status)
+    if lead_stage:
+        qs = qs.filter(lead_stage=lead_stage)
     if verification_status:
         qs = qs.filter(verification_status=verification_status)
     # `verification` is the richer bucket filter used by the list-detail tabs
@@ -442,6 +445,8 @@ def get_contact(request, contact_id: int):
 def update_contact(request, contact_id: int, data: ContactUpdateIn):
     contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
     payload = data.dict(exclude_none=True)
+    if 'next_follow_up_at' in data.model_fields_set and data.next_follow_up_at is None:
+        payload['next_follow_up_at'] = None
     list_ids = payload.pop('list_ids', None)
     tag_ids = payload.pop('tag_ids', None)
     for field, value in payload.items():

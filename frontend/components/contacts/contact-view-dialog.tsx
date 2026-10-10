@@ -6,7 +6,12 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { VerificationDot, SpamRiskBadge, SUB_STATUS_LABEL } from '@/components/contacts/verification-badges'
 import { getTagBadgeProps } from './tag-form-dialog'
 import { formatDateTime, cn } from '@/lib/utils'
-import { UserRound, Pencil, Mail, Phone, Building2, ListFilter, Tag as TagIcon, Calendar } from 'lucide-react'
+import { UserRound, Pencil, Mail, Phone, Building2, ListFilter, Tag as TagIcon, Calendar, Globe, Briefcase, MapPin, Link2, Flag, CalendarClock, StickyNote } from 'lucide-react'
+
+const STAGE_LABELS: Record<Contact['lead_stage'], string> = {
+  new: 'New', contacted: 'Contacted', replied: 'Replied',
+  qualified: 'Qualified', won: 'Won', lost: 'Lost',
+}
 
 interface Props {
   open: boolean
@@ -61,6 +66,43 @@ export function ContactViewDialog({ open, onClose, contact, onEdit }: Props) {
             <Field icon={Phone} label="Phone" value={contact.phone || '—'} />
             <Field icon={Building2} label="Company" value={contact.company || '—'} />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field icon={Flag} label="Lead stage" value={STAGE_LABELS[contact.lead_stage || 'new']} />
+            <Field icon={CalendarClock} label="Next follow-up" value={contact.next_follow_up_at || '—'} />
+          </div>
+
+          {(contact.title || contact.industry || contact.company_size || contact.lead_source) && (
+            <div className="grid grid-cols-2 gap-4">
+              {contact.title && <Field icon={Briefcase} label="Job title" value={contact.title} />}
+              {contact.industry && <Field icon={Building2} label="Industry" value={contact.industry} />}
+              {contact.company_size && <Field icon={UserRound} label="Company size" value={contact.company_size} />}
+              {contact.lead_source && <Field icon={Flag} label="Lead source" value={contact.lead_source} />}
+            </div>
+          )}
+
+          {(contact.website || contact.linkedin_url || contact.city || contact.state || contact.country) && (
+            <div className="grid grid-cols-2 gap-4">
+              {contact.website && <Field icon={Globe} label="Website" value={/^https?:\/\//i.test(contact.website) ? <a href={contact.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{contact.website}</a> : contact.website} />}
+              {contact.linkedin_url && <Field icon={Link2} label="LinkedIn" value={/^https?:\/\//i.test(contact.linkedin_url) ? <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">View profile</a> : contact.linkedin_url} />}
+              {(contact.city || contact.state || contact.country) && <Field icon={MapPin} label="Location" value={[contact.city, contact.state, contact.country].filter(Boolean).join(', ')} />}
+            </div>
+          )}
+
+          {contact.notes && (
+            <div className="rounded-lg border p-3">
+              <p className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground"><StickyNote size={12} /> Notes</p>
+              <p className="whitespace-pre-wrap break-words text-sm">{contact.notes}</p>
+            </div>
+          )}
+
+          {Object.keys(contact.custom_fields || {}).length > 0 && (
+            <div className="grid grid-cols-2 gap-4">
+              {Object.entries(contact.custom_fields).map(([key, value]) => (
+                <Field key={key} icon={ListFilter} label={key} value={String(value ?? '—')} />
+              ))}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <Field

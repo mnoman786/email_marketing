@@ -1,7 +1,9 @@
 from ninja import Schema
 from pydantic import EmailStr
-from typing import Optional, List, Any, Dict
-from datetime import datetime
+from typing import Optional, List, Any, Dict, Literal
+from datetime import date, datetime
+
+LeadStage = Literal['new', 'contacted', 'replied', 'qualified', 'won', 'lost']
 
 
 class ContactListOut(Schema):
@@ -76,6 +78,18 @@ class ContactOut(Schema):
     last_name: str
     phone: str
     company: str
+    website: str
+    linkedin_url: str
+    title: str
+    industry: str
+    company_size: str
+    city: str
+    state: str
+    country: str
+    lead_source: str
+    lead_stage: LeadStage
+    next_follow_up_at: Optional[date] = None
+    notes: str
     status: str
     verification_status: str
     verification_detail: Dict[str, Any] = {}
@@ -120,6 +134,18 @@ class ContactIn(Schema):
     last_name: str = ''
     phone: str = ''
     company: str = ''
+    website: str = ''
+    linkedin_url: str = ''
+    title: str = ''
+    industry: str = ''
+    company_size: str = ''
+    city: str = ''
+    state: str = ''
+    country: str = ''
+    lead_source: str = ''
+    lead_stage: LeadStage = 'new'
+    next_follow_up_at: Optional[date] = None
+    notes: str = ''
     status: str = 'active'
     custom_fields: Dict[str, Any] = {}
     list_ids: List[int] = []
@@ -132,6 +158,18 @@ class ContactUpdateIn(Schema):
     last_name: Optional[str] = None
     phone: Optional[str] = None
     company: Optional[str] = None
+    website: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    title: Optional[str] = None
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    lead_source: Optional[str] = None
+    lead_stage: Optional[LeadStage] = None
+    next_follow_up_at: Optional[date] = None
+    notes: Optional[str] = None
     status: Optional[str] = None
     custom_fields: Optional[Dict[str, Any]] = None
     list_ids: Optional[List[int]] = None

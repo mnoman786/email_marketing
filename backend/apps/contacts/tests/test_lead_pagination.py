@@ -32,3 +32,11 @@ class LeadPaginationTests(TestCase):
     def test_unsupported_page_size_is_rejected(self):
         response = self.client.get('/api/contacts/', {'page_size': 500}, **self.headers)
         self.assertEqual(response.status_code, 422)
+
+    def test_filter_by_lead_stage(self):
+        ids = list(Contact.objects.filter(user=self.user).order_by('id').values_list('id', flat=True)[:3])
+        Contact.objects.filter(id__in=ids).update(lead_stage='qualified')
+        response = self.client.get('/api/contacts/', {'lead_stage': 'qualified'}, **self.headers)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['count'], 3)
+        self.assertTrue(all(item['lead_stage'] == 'qualified' for item in response.json()['items']))

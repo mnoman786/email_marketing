@@ -9,10 +9,12 @@ import { Contact } from '@/lib/types'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { NativeSelect } from '@/components/ui/native-select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { Plus, UserRound, Tag as TagIcon, X, ListFilter } from 'lucide-react'
+import { Plus, UserRound, Tag as TagIcon, X, ListFilter, ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getTagBadgeProps, randomTagColor } from './tag-form-dialog'
 
@@ -22,6 +24,18 @@ const schema = z.object({
   last_name: z.string().optional(),
   phone: z.string().optional(),
   company: z.string().optional(),
+  website: z.union([z.url().refine(value => /^https?:\/\//i.test(value)), z.literal('')]).optional(),
+  linkedin_url: z.union([z.url().refine(value => /^https?:\/\//i.test(value)), z.literal('')]).optional(),
+  title: z.string().optional(),
+  industry: z.string().optional(),
+  company_size: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+  lead_source: z.string().optional(),
+  lead_stage: z.enum(['new', 'contacted', 'replied', 'qualified', 'won', 'lost']),
+  next_follow_up_at: z.string().optional(),
+  notes: z.string().optional(),
   list_ids: z.array(z.number()).optional(),
   tag_ids: z.array(z.number()).optional(),
 })
@@ -41,6 +55,8 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
   const qc = useQueryClient()
   const [newTagName, setNewTagName] = useState('')
   const [creatingTag, setCreatingTag] = useState(false)
+  const [showMoreDetails, setShowMoreDetails] = useState(false)
+  const [extraFields, setExtraFields] = useState<{ id: number; key: string; value: string }[]>([])
 
   const { data: listsData } = useQuery({
     queryKey: ['lists-all'],
@@ -66,17 +82,33 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
         last_name: contact.last_name,
         phone: contact.phone,
         company: contact.company,
+        website: contact.website || '',
+        linkedin_url: contact.linkedin_url || '',
+        title: contact.title || '',
+        industry: contact.industry || '',
+        company_size: contact.company_size || '',
+        city: contact.city || '',
+        state: contact.state || '',
+        country: contact.country || '',
+        lead_source: contact.lead_source || '',
+        lead_stage: contact.lead_stage || 'new',
+        next_follow_up_at: contact.next_follow_up_at || '',
+        notes: contact.notes || '',
         list_ids: contact.list_ids,
         tag_ids: contact.tag_ids,
       })
+      setExtraFields(Object.entries(contact.custom_fields || {}).map(([key, value], id) => ({ id, key, value: String(value ?? '') })))
+      setShowMoreDetails(Boolean(contact.website || contact.linkedin_url || contact.title || contact.industry || contact.company_size || contact.city || contact.state || contact.country || contact.lead_source || (contact.lead_stage && contact.lead_stage !== 'new') || contact.next_follow_up_at || contact.notes || Object.keys(contact.custom_fields || {}).length))
     } else {
-      reset({ email: '', first_name: '', last_name: '', phone: '', company: '', list_ids: [], tag_ids: [] })
+      reset({ email: '', first_name: '', last_name: '', phone: '', company: '', website: '', linkedin_url: '', title: '', industry: '', company_size: '', city: '', state: '', country: '', lead_source: '', lead_stage: 'new', next_follow_up_at: '', notes: '', list_ids: [], tag_ids: [] })
+      setExtraFields([])
+      setShowMoreDetails(false)
     }
     setNewTagName('')
   }, [contact, open, reset])
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => contact
+    mutationFn: (data: Omit<FormData, 'next_follow_up_at'> & { custom_fields: Record<string, unknown>; next_follow_up_at: string | null }) => contact
       ? contactsApi.update(contact.id, data)
       : contactsApi.create(data),
     onSuccess: () => {
@@ -150,6 +182,21 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
     }
   }
 
+  const saveLead = (data: FormData) => {
+    const namedFields = extraFields.filter(field => field.key.trim())
+    const keys = namedFields.map(field => field.key.trim())
+    if (new Set(keys.map(key => key.toLowerCase())).size !== keys.length) {
+      toast.error('Custom field names must be unique')
+      return
+    }
+    const custom_fields = Object.fromEntries(namedFields.map(field => {
+      const key = field.key.trim()
+      const oldValue = contact?.custom_fields?.[key]
+      return [key, oldValue !== undefined && String(oldValue ?? '') === field.value ? oldValue : field.value]
+    }))
+    mutation.mutate({ ...data, next_follow_up_at: data.next_follow_up_at || null, custom_fields })
+  }
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden">
@@ -166,7 +213,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit(d => mutation.mutate(d))}>
+        <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))}>
           {/* Body */}
           <div className="px-6 py-5 space-y-5 max-h-[62vh] overflow-y-auto">
             <div>
@@ -195,6 +242,60 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
                 <Label>Company</Label>
                 <Input {...register('company')} placeholder="Acme Inc." className="mt-1.5" />
               </div>
+            </div>
+
+            <div className="rounded-lg border border-input">
+              <button type="button" onClick={() => setShowMoreDetails(value => !value)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium hover:bg-muted/50">
+                <span>{showMoreDetails ? 'Additional lead details' : 'Add more details'}</span>
+                {showMoreDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {showMoreDetails && (
+                <div className="space-y-5 border-t px-4 py-4">
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Work and company</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><Label>Job title</Label><Input {...register('title')} placeholder="Marketing Manager" className="mt-1.5" /></div>
+                      <div><Label>Industry</Label><Input {...register('industry')} placeholder="Software" className="mt-1.5" /></div>
+                      <div><Label>Company size</Label><Input {...register('company_size')} placeholder="11–50 employees" className="mt-1.5" /></div>
+                      <div><Label>Website</Label><Input {...register('website')} type="url" placeholder="https://example.com" className="mt-1.5" />{errors.website && <p className="mt-1 text-xs text-destructive">Enter a valid URL</p>}</div>
+                      <div className="col-span-2"><Label>LinkedIn profile</Label><Input {...register('linkedin_url')} type="url" placeholder="https://linkedin.com/in/name" className="mt-1.5" />{errors.linkedin_url && <p className="mt-1 text-xs text-destructive">Enter a valid URL</p>}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div><Label>City</Label><Input {...register('city')} className="mt-1.5" /></div>
+                      <div><Label>State / region</Label><Input {...register('state')} className="mt-1.5" /></div>
+                      <div><Label>Country</Label><Input {...register('country')} className="mt-1.5" /></div>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tracking</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><Label>Lead source</Label><Input {...register('lead_source')} placeholder="Referral, event, website…" className="mt-1.5" /></div>
+                      <div><Label>Stage</Label><NativeSelect {...register('lead_stage')} wrapperClassName="mt-1.5 w-full"><option value="new">New</option><option value="contacted">Contacted</option><option value="replied">Replied</option><option value="qualified">Qualified</option><option value="won">Won</option><option value="lost">Lost</option></NativeSelect></div>
+                      <div className="col-span-2"><Label>Next follow-up</Label><Input {...register('next_follow_up_at')} type="date" className="mt-1.5" /></div>
+                    </div>
+                    <div className="mt-3"><Label>Notes</Label><Textarea {...register('notes')} placeholder="Conversation history, interests, or anything your team should remember" rows={4} className="mt-1.5" /></div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom details</p>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setExtraFields(fields => [...fields, { id: Math.max(0, ...fields.map(field => field.id)) + 1, key: '', value: '' }])}><Plus size={13} /> Add field</Button>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {extraFields.map(field => (
+                        <div key={field.id} className="flex items-center gap-2">
+                          <Input aria-label="Custom field name" placeholder="Field name" value={field.key} onChange={e => setExtraFields(fields => fields.map(item => item.id === field.id ? { ...item, key: e.target.value } : item))} />
+                          <Input aria-label="Custom field value" placeholder="Value" value={field.value} onChange={e => setExtraFields(fields => fields.map(item => item.id === field.id ? { ...item, value: e.target.value } : item))} />
+                          <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove custom field" onClick={() => setExtraFields(fields => fields.filter(item => item.id !== field.id))}><X size={15} /></Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {listsData && listsData.length > 0 && (

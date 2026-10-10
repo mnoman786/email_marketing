@@ -110,6 +110,18 @@ export interface Contact {
   last_name: string
   phone: string
   company: string
+  website: string
+  linkedin_url: string
+  title: string
+  industry: string
+  company_size: string
+  city: string
+  state: string
+  country: string
+  lead_source: string
+  lead_stage: 'new' | 'contacted' | 'replied' | 'qualified' | 'won' | 'lost'
+  next_follow_up_at: string | null
+  notes: string
   status: 'active' | 'unsubscribed' | 'bounced' | 'complained'
   verification_status: 'unverified' | 'valid' | 'invalid' | 'unknown'
   verification_detail: VerificationDetail

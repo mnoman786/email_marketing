@@ -35,6 +35,7 @@ function ContactsContent() {
 
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [leadStage, setLeadStage] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [selected, setSelected] = useState<number[]>([])
@@ -70,8 +71,8 @@ function ContactsContent() {
   const [viewContact, setViewContact] = useState<Contact | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['contacts', { search, status, page, pageSize, listId }],
-    queryFn: () => contactsApi.getAll({ search, status: status || undefined, list_id: listId, page, page_size: pageSize }).then(r => r.data as PaginatedResponse<Contact>),
+    queryKey: ['contacts', { search, status, leadStage, page, pageSize, listId }],
+    queryFn: () => contactsApi.getAll({ search, status: status || undefined, lead_stage: leadStage || undefined, list_id: listId, page, page_size: pageSize }).then(r => r.data as PaginatedResponse<Contact>),
   })
 
   // Resolve the filtered list's name for the "Filtered by" chip below.
@@ -180,6 +181,15 @@ function ContactsContent() {
           <option value="bounced">Bounced</option>
           <option value="complained">Complained</option>
         </NativeSelect>
+        <NativeSelect value={leadStage} onChange={e => { setLeadStage(e.target.value); setPage(1); setSelected([]) }}>
+          <option value="">All Stages</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="replied">Replied</option>
+          <option value="qualified">Qualified</option>
+          <option value="won">Won</option>
+          <option value="lost">Lost</option>
+        </NativeSelect>
       </div>
 
       {/* Table */}
@@ -213,6 +223,7 @@ function ContactsContent() {
                     </TH>
                     <TH>Name / Email</TH>
                     <TH>Company</TH>
+                    <TH>Stage / Follow-up</TH>
                     <TH>Lists</TH>
                     <TH>Tags</TH>
                     <TH>Spam risk</TH>
@@ -262,6 +273,10 @@ function ContactsContent() {
                         </div>
                       </TD>
                       <TD className="text-muted-foreground">{contact.company || '—'}</TD>
+                      <TD>
+                        <span className="badge bg-muted text-muted-foreground text-xs capitalize">{contact.lead_stage || 'new'}</span>
+                        {contact.next_follow_up_at && <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">{contact.next_follow_up_at}</p>}
+                      </TD>
                       <TD>
                         {contact.list_names.length > 0 ? (
                           <div className="flex gap-1 flex-nowrap items-center max-w-40">
