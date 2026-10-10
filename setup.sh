@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  MailFlow — Full Production Setup Script
-#  Backend:  Gunicorn + Django  → systemd → port 9006
-#  Frontend: Next.js            → systemd → port 4001
+#  Backend:  Gunicorn + Django  → systemd → chosen port
+#  Frontend: Next.js            → systemd → chosen port
 #  Celery:   worker + beat      → systemd → Redis DB > 10
 #  Proxy:    Nginx (optional)   → port 80 / 443
 # =============================================================================
@@ -20,6 +20,7 @@ error()   { echo -e "${RED}[ERR]${NC}   $*"; exit 1; }
 BACKEND_PORT="${BACKEND_PORT:-9006}"
 FRONTEND_PORT="${FRONTEND_PORT:-4001}"
 DOMAIN="${DOMAIN:-}"              # e.g. "mail.example.com" — leave blank to skip nginx
+SERVER_IP="${SERVER_IP:-}"
 # Kept above 10 on purpose so this app's queue/cache doesn't collide with
 # other apps' DB 0-10 on a shared Redis instance. Broker, result backend, and
 # Django's cache all read this same REDIS_URL today.
@@ -46,6 +47,44 @@ PYTHON_BIN="python3"
 NODE_BIN="node"
 NPM_BIN="npm"
 
+ask_port() {
+    local label="$1" value="$2" answer
+    if [ -t 0 ]; then
+        read -r -p "  ${label} port [${value}]: " answer
+        value="${answer:-$value}"
+    fi
+    [[ "$value" =~ ^[0-9]+$ ]] && (( 10#$value >= 1 && 10#$value <= 65535 )) \
+        || error "${label} port must be between 1 and 65535."
+    printf -v "$3" '%d' "$((10#$value))"
+}
+
+ask_port "Frontend" "$FRONTEND_PORT" FRONTEND_PORT
+ask_port "Backend" "$BACKEND_PORT" BACKEND_PORT
+[ "$FRONTEND_PORT" != "$BACKEND_PORT" ] || error "Frontend and backend ports must differ."
+
+# The browser must reach a real server address. Public IP is preferred on a
+# cloud VM; route/hostname detection also supports private LAN deployments.
+if [ -z "$SERVER_IP" ] && command -v curl >/dev/null 2>&1; then
+    SERVER_IP="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+fi
+if [ -z "$SERVER_IP" ] && command -v ip >/dev/null 2>&1; then
+    SERVER_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}')"
+fi
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+fi
+[ -n "$SERVER_IP" ] || error "Could not detect a server IP. Re-run with SERVER_IP=your.ip.address."
+if [ -n "$DOMAIN" ] && [[ ! "$DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+    error "DOMAIN must be a DNS hostname without a scheme or port."
+fi
+
+FRONTEND_URL="http://${SERVER_IP}:${FRONTEND_PORT}"
+API_URL="http://${SERVER_IP}:${BACKEND_PORT}"
+if [ -n "$DOMAIN" ]; then
+    FRONTEND_URL="https://${DOMAIN}"
+    API_URL="https://${DOMAIN}"
+fi
+
 # ─── Banner ──────────────────────────────────────────────────────────────────
 echo -e "${CYAN}"
 echo "  ███╗   ███╗ █████╗ ██╗██╗     ███████╗██╗      ██████╗ ██╗    ██╗"
@@ -56,14 +95,18 @@ echo "  ██║ ╚═╝ ██║██║  ██║██║████�
 echo "  ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝ "
 echo -e "${NC}"
 echo -e "${GREEN}  Email Marketing Platform — Production Setup${NC}"
-echo -e "  Backend  → http://localhost:${BACKEND_PORT}"
-echo -e "  Frontend → http://localhost:${FRONTEND_PORT}"
+echo -e "  Backend  → ${API_URL}"
+echo -e "  Frontend → ${FRONTEND_URL}"
 echo ""
 
 # ─── Preflight checks & auto-install ─────────────────────────────────────────
 info "Checking prerequisites..."
 
 command -v systemctl >/dev/null 2>&1 || error "systemctl not found. This script requires a systemd-based Linux system."
+if [ -n "$DOMAIN" ]; then
+    command -v nginx >/dev/null 2>&1 || error "DOMAIN requires Nginx for HTTPS. Install nginx or leave DOMAIN unset."
+    command -v certbot >/dev/null 2>&1 || error "DOMAIN requires Certbot for HTTPS. Install certbot and python3-certbot-nginx."
+fi
 
 # Detect package manager
 if command -v apt-get >/dev/null 2>&1; then
@@ -89,6 +132,11 @@ if ! command -v $PYTHON_BIN >/dev/null 2>&1; then
     fi
 fi
 command -v $PYTHON_BIN >/dev/null 2>&1 || error "Python 3 installation failed."
+python3 - "$SERVER_IP" <<'PY' || error "SERVER_IP must be a valid IPv4 address."
+import ipaddress
+import sys
+ipaddress.IPv4Address(sys.argv[1])
+PY
 
 # ── Auto-install Node.js v20 LTS ──────────────────────────────────────────
 if ! command -v $NODE_BIN >/dev/null 2>&1; then
@@ -170,39 +218,78 @@ echo ""
 info "━━━ [2/8] Configuring backend environment..."
 ENV_FILE="$BACKEND_DIR/.env"
 
-if [ ! -f "$ENV_FILE" ]; then
-    SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
-    ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-    SITE_URL="http://localhost:${BACKEND_PORT}"
-    [ -n "$DOMAIN" ] && SITE_URL="https://${DOMAIN}"
-    cat > "$ENV_FILE" <<EOF
-SECRET_KEY=${SECRET_KEY}
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,${DOMAIN}
-DATABASE_URL=sqlite:///db.sqlite3
-REDIS_URL=${REDIS_URL}
-CORS_ALLOWED_ORIGINS=http://localhost:${FRONTEND_PORT}$([ -n "$DOMAIN" ] && echo ",https://${DOMAIN}")
-SITE_URL=${SITE_URL}
-ENCRYPTION_KEY=${ENCRYPTION_KEY}
-EOF
-    success "Created .env with generated keys."
-else
-    warn ".env already exists — skipping generation."
-fi
+python - "$ENV_FILE" "$SERVER_IP" "$BACKEND_PORT" "$FRONTEND_PORT" "$DOMAIN" "$REDIS_URL" "$API_URL" "$FRONTEND_URL" <<'PY'
+import secrets
+import sys
+from pathlib import Path
+from cryptography.fernet import Fernet
+
+path, server_ip, backend_port, frontend_port, domain, redis_url, api_url, frontend_url = sys.argv[1:]
+env = Path(path)
+lines = env.read_text().splitlines() if env.exists() else []
+existing = {}
+for line in lines:
+    if '=' in line and not line.lstrip().startswith('#'):
+        key, value = line.split('=', 1)
+        existing[key] = value
+
+secret = existing.get('SECRET_KEY', '')
+if not secret or secret.startswith('django-insecure-') or secret == 'your-super-secret-key-here':
+    secret = secrets.token_urlsafe(50)
+encryption = existing.get('ENCRYPTION_KEY', '') or Fernet.generate_key().decode()
+hosts = ['localhost', '127.0.0.1', server_ip]
+origins = [f'http://localhost:{frontend_port}', f'http://127.0.0.1:{frontend_port}', f'http://{server_ip}:{frontend_port}']
+if domain:
+    hosts.append(domain)
+    origins.append(f'https://{domain}')
+updates = {
+    'SECRET_KEY': secret,
+    'ENCRYPTION_KEY': encryption,
+    'DEBUG': 'False',
+    'ALLOWED_HOSTS': ','.join(hosts),
+    'DATABASE_URL': existing.get('DATABASE_URL') or 'sqlite:///db.sqlite3',
+    'REDIS_URL': redis_url,
+    'CORS_ALLOWED_ORIGINS': ','.join(origins),
+    'CSRF_TRUSTED_ORIGINS': ','.join(origins),
+    'SITE_URL': api_url,
+    'FRONTEND_URL': frontend_url,
+    'MAILBOX_OAUTH_REDIRECT_URI': frontend_url + '/accounts/oauth/callback',
+    'SESSION_COOKIE_SECURE': 'True' if domain else 'False',
+    'CSRF_COOKIE_SECURE': 'True' if domain else 'False',
+}
+output = []
+seen = set()
+for line in lines:
+    key = line.split('=', 1)[0] if '=' in line and not line.lstrip().startswith('#') else None
+    if key in updates:
+        if key not in seen:
+            output.append(f'{key}={updates[key]}')
+            seen.add(key)
+    else:
+        output.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        output.append(f'{key}={value}')
+env.write_text('\n'.join(output) + '\n')
+env.chmod(0o600)
+PY
+success "Backend environment configured for ${SERVER_IP} (existing credentials preserved)."
 
 # ─── 3. Backend — Migrations & static files ──────────────────────────────────
 echo ""
 info "━━━ [3/8] Running database migrations..."
 cd "$BACKEND_DIR"
-python manage.py makemigrations --no-input 2>/dev/null || true
 python manage.py migrate --no-input
 python manage.py collectstatic --no-input --clear -v 0
 success "Database migrated and static files collected."
 
 # Prompt to create superuser
 echo ""
-read -p "  Create Django superuser now? [Y/n] " CREATE_SU
-if [[ "$CREATE_SU" != "n" && "$CREATE_SU" != "N" ]]; then
+CREATE_SU="n"
+if [ -t 0 ]; then
+    read -r -p "  Create Django superuser now? [y/N] " CREATE_SU
+fi
+if [[ "$CREATE_SU" = "y" || "$CREATE_SU" = "Y" ]]; then
     python manage.py createsuperuser
 fi
 
@@ -247,7 +334,7 @@ sleep 2
 if systemctl is-active --quiet mailflow-backend; then
     success "mailflow-backend service running on port ${BACKEND_PORT}."
 else
-    warn "Service may not have started. Check: sudo journalctl -u mailflow-backend -n 30"
+    error "Backend failed to start. Check: sudo journalctl -u mailflow-backend -n 30"
 fi
 
 # ─── 5. Frontend — install & build ───────────────────────────────────────────
@@ -257,10 +344,15 @@ cd "$FRONTEND_DIR"
 
 # Point frontend at the backend
 FE_ENV="$FRONTEND_DIR/.env.local"
-cat > "$FE_ENV" <<EOF
-NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}
-EOF
-[ -n "$DOMAIN" ] && sed -i "s|localhost:${BACKEND_PORT}|https://${DOMAIN}|" "$FE_ENV"
+python - "$FE_ENV" "$API_URL" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+lines = path.read_text().splitlines() if path.exists() else []
+lines = [line for line in lines if not line.startswith('NEXT_PUBLIC_API_URL=')]
+lines.append('NEXT_PUBLIC_API_URL=' + sys.argv[2])
+path.write_text('\n'.join(lines) + '\n')
+PY
 
 $NPM_BIN install --prefer-offline --quiet
 info "Building Next.js for production..."
@@ -282,7 +374,7 @@ User=${SERVICE_USER}
 WorkingDirectory=${FRONTEND_DIR}
 Environment=PORT=${FRONTEND_PORT}
 Environment=NODE_ENV=production
-ExecStart=$(which $NODE_BIN) node_modules/.bin/next start --port ${FRONTEND_PORT}
+ExecStart=$(which $NODE_BIN) node_modules/.bin/next start --hostname 0.0.0.0 --port ${FRONTEND_PORT}
 Restart=on-failure
 RestartSec=5s
 StandardOutput=append:${FRONTEND_DIR}/.next/stdout.log
@@ -300,11 +392,11 @@ sleep 2
 if systemctl is-active --quiet mailflow-frontend; then
     success "mailflow-frontend service running on port ${FRONTEND_PORT}."
 else
-    warn "Service may not have started. Check: sudo journalctl -u mailflow-frontend -n 30"
+    error "Frontend failed to start. Check: sudo journalctl -u mailflow-frontend -n 30"
 fi
 
 # ─── 7. Nginx reverse proxy (optional) ───────────────────────────────────────
-if [ -n "$DOMAIN" ] && command -v nginx >/dev/null 2>&1; then
+if [ -n "$DOMAIN" ]; then
     echo ""
     info "━━━ [7/8] Configuring Nginx reverse proxy for ${DOMAIN}..."
 
@@ -316,7 +408,7 @@ server {
     listen 80;
     server_name ${DOMAIN};
 
-    client_max_body_size 20M;
+    client_max_body_size 35M;
 
     # API → Django
     location /api/ {
@@ -362,19 +454,18 @@ EOF
     sudo nginx -t && sudo systemctl reload nginx
     success "Nginx configured for ${DOMAIN}."
 
-    # Optional: auto SSL with certbot
-    if command -v certbot >/dev/null 2>&1; then
-        read -p "  Setup HTTPS with Let's Encrypt? [Y/n] " DO_SSL
-        if [[ "$DO_SSL" != "n" && "$DO_SSL" != "N" ]]; then
-            sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-                -m "admin@${DOMAIN}" --redirect
-            success "SSL certificate installed."
-        fi
-    else
-        warn "certbot not found — skipping SSL. Install with: sudo apt install certbot python3-certbot-nginx"
-    fi
+    sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
+        -m "admin@${DOMAIN}" --redirect
+    success "SSL certificate installed."
 else
     info "━━━ [7/8] Skipping Nginx (DOMAIN not set or nginx not installed)."
+fi
+
+# On hosts that use UFW, allow direct IP access on the selected ports.
+if command -v ufw >/dev/null 2>&1 && sudo ufw status | grep -q '^Status: active'; then
+    sudo ufw allow "${FRONTEND_PORT}/tcp"
+    sudo ufw allow "${BACKEND_PORT}/tcp"
+    success "UFW allows frontend and backend ports."
 fi
 
 # ─── Celery worker + beat ─────────────────────────────────────────────────────
@@ -430,7 +521,7 @@ sleep 2
 if systemctl is-active --quiet mailflow-celery && systemctl is-active --quiet mailflow-beat; then
     success "Celery worker (pool=${CELERY_POOL}, concurrency=${CELERY_CONCURRENCY}) + beat scheduler running."
 else
-    warn "Celery may not have started. Check: sudo journalctl -u mailflow-celery -u mailflow-beat -n 30"
+    error "Celery failed to start. Check: sudo journalctl -u mailflow-celery -u mailflow-beat -n 30"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
@@ -439,9 +530,9 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}  MailFlow is ready!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "  ${CYAN}Frontend${NC}   →  http://localhost:${FRONTEND_PORT}"
-echo -e "  ${CYAN}Backend API${NC} →  http://localhost:${BACKEND_PORT}/api/"
-echo -e "  ${CYAN}Django Admin${NC}→  http://localhost:${BACKEND_PORT}/admin/"
+echo -e "  ${CYAN}Frontend${NC}   →  ${FRONTEND_URL}"
+echo -e "  ${CYAN}Backend API${NC} →  ${API_URL}/api/"
+echo -e "  ${CYAN}Django Admin${NC}→  ${API_URL}/admin/"
 [ -n "$DOMAIN" ] && echo -e "  ${CYAN}Domain${NC}     →  https://${DOMAIN}"
 echo ""
 echo -e "  ${YELLOW}Redis${NC}      →  DB index ${REDIS_DB} (${REDIS_URL})"

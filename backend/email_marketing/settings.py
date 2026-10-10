@@ -19,8 +19,8 @@ if not DEBUG and (not SECRET_KEY or SECRET_KEY.startswith('django-insecure-') or
     raise RuntimeError('Set a unique SECRET_KEY before running with DEBUG=False.')
 if not DEBUG and ('*' in ALLOWED_HOSTS or not ALLOWED_HOSTS):
     raise RuntimeError('Set explicit ALLOWED_HOSTS before running with DEBUG=False.')
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
@@ -124,6 +124,7 @@ CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='http://localhost:3000,http://127.0.0.1:3000'
 ).split(',')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in config('CSRF_TRUSTED_ORIGINS', default='').split(',') if origin.strip()]
 CORS_ALLOW_CREDENTIALS = True
 
 # Celery
