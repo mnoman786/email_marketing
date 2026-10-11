@@ -7,8 +7,10 @@ from django.test import TestCase
 
 from apps.contacts.models import Contact
 from apps.contacts.schemas import ContactIn, ContactUpdateIn
-from apps.contacts.views import create_contact, update_contact
+from apps.contacts.views import create_contact, update_contact, get_contact_activity
 from apps.contacts import verification
+from apps.analytics.models import SendLog
+from apps.sequences.models import Campaign, CampaignEnrollment
 
 
 class LeadDetailsTests(TestCase):
@@ -47,3 +49,19 @@ class LeadDetailsTests(TestCase):
         self.assertEqual(contact.lead_stage, 'won')
         self.assertIsNone(contact.next_follow_up_at)
         self.assertEqual(contact.notes, 'Deal closed')
+
+    def test_detail_activity_is_scoped_to_lead_owner(self):
+        contact = Contact.objects.create(user=self.request.auth, email='tracked@example.com')
+        campaign = Campaign.objects.create(user=self.request.auth, name='Outreach')
+        CampaignEnrollment.objects.create(campaign=campaign, contact=contact)
+        SendLog.objects.create(campaign=campaign, contact=contact, contact_email=contact.email, status='sent')
+
+        activity = get_contact_activity(self.request, contact.id)
+        self.assertEqual(activity['campaigns'][0]['name'], 'Outreach')
+        self.assertEqual(activity['events'][0]['status'], 'sent')
+
+        other = get_user_model().objects.create_user(
+            username='other-lead-owner', email='other@example.com', password='test-password'
+        )
+        with self.assertRaisesMessage(Exception, 'No Contact matches the given query'):
+            get_contact_activity(SimpleNamespace(auth=other), contact.id)

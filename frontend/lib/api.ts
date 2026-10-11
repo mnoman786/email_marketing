@@ -86,6 +86,7 @@ export const contactsApi = {
   getAll: (params?: any) => api.get('/api/contacts/', { params }),
   stats: (params?: { list_id?: number }) => api.get('/api/contacts/stats/', { params }),
   get: (id: number) => api.get(`/api/contacts/${id}/`),
+  activity: (id: number) => api.get(`/api/contacts/${id}/activity/`),
   create: (data: any) => api.post('/api/contacts/', data),
   update: (id: number, data: any) => api.patch(`/api/contacts/${id}/`, data),
   delete: (id: number) => api.delete(`/api/contacts/${id}/`),

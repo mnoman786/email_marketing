@@ -18,11 +18,10 @@ import { BulkActionBar } from '@/components/shared/bulk-action-bar'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDateTime, cn } from '@/lib/utils'
 import {
-  Plus, Trash2, Pencil, Users, ListFilter, X, Upload
+  Plus, Trash2, Pencil, Users, ListFilter, X, Upload, Eye
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ContactFormDialog } from '@/components/contacts/contact-form-dialog'
-import { ContactViewDialog } from '@/components/contacts/contact-view-dialog'
 import { LeadImportDialog } from '@/components/contacts/lead-import-dialog'
 import { VerificationDot, SpamRiskBadge } from '@/components/contacts/verification-badges'
 import { getTagBadgeProps } from '@/components/contacts/tag-form-dialog'
@@ -70,7 +69,6 @@ function ContactsContent() {
   const [showImport, setShowImport] = useState(false)
   const [editContact, setEditContact] = useState<Contact | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [viewContact, setViewContact] = useState<Contact | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['contacts', { search, status, leadStage, page, pageSize, listId }],
@@ -243,7 +241,7 @@ function ContactsContent() {
                       key={contact.id}
                       selected={selected.includes(contact.id)}
                       className="cursor-pointer"
-                      onClick={() => setViewContact(contact)}
+                      onClick={() => router.push(`/leads/${contact.id}`)}
                     >
                       <TD>
                         <Checkbox
@@ -320,6 +318,9 @@ function ContactsContent() {
                       <TD className="text-muted-foreground text-xs whitespace-nowrap">{formatDateTime(contact.created_at)}</TD>
                       <TD>
                         <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon-sm" title="View lead details" onClick={() => router.push(`/leads/${contact.id}`)}>
+                            <Eye size={14} />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -382,17 +383,14 @@ function ContactsContent() {
 
       {/* Dialogs */}
       <LeadImportDialog open={showImport} onClose={() => setShowImport(false)} listId={listId} />
-      <ContactViewDialog
-        open={!!viewContact}
-        onClose={() => setViewContact(null)}
-        contact={viewContact}
-        onEdit={() => { setEditContact(viewContact); setViewContact(null); setShowForm(true) }}
-      />
       <ContactFormDialog
         open={showForm}
         onClose={() => setShowForm(false)}
         contact={editContact}
-        onSaved={() => { qc.invalidateQueries({ queryKey: ['contacts'] }); setShowForm(false) }}
+        onSaved={(saved, keepOpen) => {
+          qc.invalidateQueries({ queryKey: ['contacts'] })
+          if (!keepOpen) { setShowForm(false); router.push(`/leads/${saved.id}`) }
+        }}
       />
       <ConfirmDialog
         open={!!deleteId}

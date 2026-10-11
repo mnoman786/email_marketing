@@ -48,7 +48,7 @@ interface Props {
   open: boolean
   onClose: () => void
   contact: Contact | null
-  onSaved: () => void
+  onSaved: (saved: Contact, keepOpen: boolean) => void
 }
 
 export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
@@ -67,7 +67,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
     queryFn: () => tagsApi.getAll().then(r => (r.data || []) as TagLite[]),
   })
 
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, reset, setFocus, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   })
 
@@ -102,18 +102,25 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
     } else {
       reset({ email: '', first_name: '', last_name: '', phone: '', company: '', website: '', linkedin_url: '', title: '', industry: '', company_size: '', city: '', state: '', country: '', lead_source: '', lead_stage: 'new', next_follow_up_at: '', notes: '', list_ids: [], tag_ids: [] })
       setExtraFields([])
-      setShowMoreDetails(false)
+      setShowMoreDetails(true)
     }
     setNewTagName('')
   }, [contact, open, reset])
 
   const mutation = useMutation({
-    mutationFn: (data: Omit<FormData, 'next_follow_up_at'> & { custom_fields: Record<string, unknown>; next_follow_up_at: string | null }) => contact
+    mutationFn: ({ data }: { data: Omit<FormData, 'next_follow_up_at'> & { custom_fields: Record<string, unknown>; next_follow_up_at: string | null }; keepOpen: boolean }) => contact
       ? contactsApi.update(contact.id, data)
       : contactsApi.create(data),
-    onSuccess: () => {
+    onSuccess: (response, variables) => {
       toast.success(contact ? 'Lead updated' : 'Lead created')
-      onSaved()
+      onSaved(response.data as Contact, variables.keepOpen)
+      if (variables.keepOpen) {
+        const list_ids = watch('list_ids') || []
+        const tag_ids = watch('tag_ids') || []
+        reset({ email: '', first_name: '', last_name: '', phone: '', company: '', website: '', linkedin_url: '', title: '', industry: '', company_size: '', city: '', state: '', country: '', lead_source: '', lead_stage: 'new', next_follow_up_at: '', notes: '', list_ids, tag_ids })
+        setExtraFields([])
+        requestAnimationFrame(() => setFocus('email'))
+      }
     },
     onError: (err: any) => {
       const msg = err.response?.data?.email?.[0] || err.response?.data?.detail || 'Failed to save'
@@ -182,7 +189,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
     }
   }
 
-  const saveLead = (data: FormData) => {
+  const saveLead = (data: FormData, keepOpen = false) => {
     const namedFields = extraFields.filter(field => field.key.trim())
     const keys = namedFields.map(field => field.key.trim())
     if (new Set(keys.map(key => key.toLowerCase())).size !== keys.length) {
@@ -194,7 +201,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
       const oldValue = contact?.custom_fields?.[key]
       return [key, oldValue !== undefined && String(oldValue ?? '') === field.value ? oldValue : field.value]
     }))
-    mutation.mutate({ ...data, next_follow_up_at: data.next_follow_up_at || null, custom_fields })
+    mutation.mutate({ data: { ...data, next_follow_up_at: data.next_follow_up_at || null, custom_fields }, keepOpen })
   }
 
   return (
@@ -216,7 +223,7 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <form onSubmit={handleSubmit(data => saveLead(data), () => setShowMoreDetails(true))} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* Body */}
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-muted/20 px-5 py-6 sm:px-8">
             <section className="rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
@@ -405,10 +412,12 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex shrink-0 justify-end gap-2 border-t bg-background px-5 py-4 sm:px-8">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t bg-background px-5 py-4 sm:px-8">
+            {mutation.isPending && <span className="mr-auto text-xs text-muted-foreground">Checking email and saving…</span>}
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            {!contact && <Button type="button" variant="outline" disabled={mutation.isPending} onClick={handleSubmit(data => saveLead(data, true))}>Save & add another</Button>}
             <Button type="submit" loading={mutation.isPending}>
-              {contact ? 'Save changes' : 'Create lead'}
+              {contact ? 'Save changes' : 'Save lead'}
             </Button>
           </div>
         </form>

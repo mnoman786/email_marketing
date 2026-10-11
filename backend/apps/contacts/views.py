@@ -458,6 +458,44 @@ def get_contact(request, contact_id: int):
     return get_object_or_404(Contact, id=contact_id, user=request.auth)
 
 
+@router.get('/{contact_id}/activity/', auth=auth)
+def get_contact_activity(request, contact_id: int):
+    """Campaign membership and recent send events for a lead owned by this user."""
+    from apps.analytics.models import SendLog
+
+    contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
+    enrollments = contact.campaign_enrollments.select_related('campaign', 'current_step').order_by('-enrolled_at')
+    logs = SendLog.objects.filter(contact=contact, campaign__user=request.auth).select_related('campaign', 'sequence_step').order_by('-created_at')[:20]
+    return {
+        'campaigns': [
+            {
+                'id': enrollment.campaign_id,
+                'name': enrollment.campaign.name,
+                'status': enrollment.status,
+                'current_step': enrollment.current_step.order if enrollment.current_step else None,
+                'next_send_at': enrollment.next_send_at.isoformat() if enrollment.next_send_at else None,
+                'enrolled_at': enrollment.enrolled_at.isoformat(),
+            }
+            for enrollment in enrollments
+        ],
+        'events': [
+            {
+                'id': log.id,
+                'campaign_id': log.campaign_id,
+                'campaign_name': log.campaign.name if log.campaign else '',
+                'step': log.sequence_step.order if log.sequence_step else None,
+                'status': log.status,
+                'sent_at': log.sent_at.isoformat() if log.sent_at else None,
+                'opened_at': log.opened_at.isoformat() if log.opened_at else None,
+                'clicked_at': log.clicked_at.isoformat() if log.clicked_at else None,
+                'replied_at': log.replied_at.isoformat() if log.replied_at else None,
+                'created_at': log.created_at.isoformat(),
+            }
+            for log in logs
+        ],
+    }
+
+
 @router.patch('/{contact_id}/', response=ContactOut, auth=auth)
 def update_contact(request, contact_id: int, data: ContactUpdateIn):
     contact = get_object_or_404(Contact, id=contact_id, user=request.auth)
