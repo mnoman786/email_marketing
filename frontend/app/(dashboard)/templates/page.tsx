@@ -82,11 +82,11 @@ export default function TemplatesPage() {
   })
 
   return (
-    <div className="p-6 space-y-10">
+    <div className="workspace-page space-y-10">
 
       {/* ── My Templates ── */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="page-intro flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold">Email Templates</h1>
             <p className="text-sm text-muted-foreground">Your saved templates</p>

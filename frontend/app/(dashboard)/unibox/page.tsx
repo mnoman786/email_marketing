@@ -13,7 +13,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { Skeleton } from '@/components/shared/loading-skeleton'
 import { cn, formatRelativeTime, avatarColor, initials } from '@/lib/utils'
 import {
-  Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox,
+  Inbox as InboxIcon, Search, Send, MessageSquare, Mailbox, ArrowLeft,
   Archive, ArchiveRestore, MailOpen, MailCheck, Paperclip, Clock, X, Plus,
   Square, CheckSquare, UserPlus,
 } from 'lucide-react'
@@ -380,8 +380,8 @@ function InboxPageInner() {
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-muted/20">
       {/* Thread list */}
-      <div className="w-[340px] border-r bg-card flex flex-col shrink-0 min-h-0">
-        <div className="p-4 border-b space-y-3">
+      <div className={cn('w-full md:w-[350px] border-r bg-card flex flex-col shrink-0 min-h-0', selectedId && 'hidden md:flex')}>
+        <div className="p-4 border-b space-y-3 bg-[radial-gradient(circle_at_95%_0%,rgba(126,93,247,.13),transparent_50%)]">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-bold">Inbox</h1>
             <div className="flex items-center gap-2">
@@ -651,7 +651,7 @@ function InboxPageInner() {
       </div>
 
       {/* Conversation panel */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      <div className={cn('flex-1 flex flex-col min-w-0 min-h-0', !selectedId && 'hidden md:flex')}>
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
             <EmptyState icon={MessageSquare} title="Select a conversation" description="Pick a thread from the left to view the full conversation." />
@@ -662,7 +662,8 @@ function InboxPageInner() {
           </div>
         ) : (
           <>
-            <div className="px-5 py-3 border-b bg-card flex items-center gap-2">
+            <div className="px-4 md:px-5 py-3 border-b bg-card flex items-center gap-2">
+              <Button variant="ghost" size="icon-sm" className="md:hidden shrink-0" aria-label="Back to conversations" onClick={() => selectThread(null)}><ArrowLeft size={17} /></Button>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-sm truncate flex items-center gap-1.5">
                   {thread.contact_name || thread.contact_email}

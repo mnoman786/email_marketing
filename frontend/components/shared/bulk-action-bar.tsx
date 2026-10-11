@@ -19,7 +19,7 @@ export function BulkActionBar({ count, onClear, children, noun = 'item' }: Props
 
   return (
     <div className="fixed inset-x-0 bottom-6 z-40 flex justify-center px-4 pointer-events-none">
-      <div className="pointer-events-auto flex items-center gap-3 rounded-full border bg-popover/95 py-2 pl-4 pr-2 shadow-lg backdrop-blur animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-3 overflow-x-auto rounded-2xl border border-primary/20 bg-popover/95 py-2.5 pl-4 pr-2 shadow-[0_20px_50px_-18px_rgba(40,25,110,0.45)] backdrop-blur animate-in fade-in slide-in-from-bottom-2 duration-200">
         <div className="flex items-center gap-2">
           <span className="grid h-6 min-w-6 place-items-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground tabular-nums">
             {count}

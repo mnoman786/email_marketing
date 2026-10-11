@@ -131,8 +131,8 @@ export default function LeadFinderPage() {
   const someSelected = selected.size > 0 && !allSelected
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
+    <div className="workspace-page space-y-6">
+      <div className="page-intro">
         <h1 className="text-2xl font-bold">Lead Finder</h1>
         <p className="text-sm text-muted-foreground">Search Apollo.io's B2B database and import prospects into your contact lists</p>
       </div>

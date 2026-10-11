@@ -18,12 +18,12 @@ export function ErrorState({
   onRetry,
 }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-destructive/10 mb-4">
+    <div className="flex flex-col items-center justify-center py-18 px-5 text-center">
+      <div className="flex items-center justify-center w-18 h-18 rounded-[1.5rem] border border-destructive/15 bg-destructive/10 mb-5">
         <AlertTriangle className="w-8 h-8 text-destructive" />
       </div>
-      <h3 className="text-lg font-semibold mb-1">{title}</h3>
-      <p className="text-sm text-muted-foreground max-w-sm mb-6">{description}</p>
+      <h3 className="text-xl font-bold mb-1">{title}</h3>
+      <p className="text-sm leading-6 text-muted-foreground max-w-sm mb-6">{description}</p>
       {onRetry && (
         <Button variant="outline" onClick={onRetry}>
           <RefreshCw size={14} /> Retry

@@ -34,7 +34,7 @@ export function TablePagination({ page, pageSize, total, onPageChange, pageSizeO
   const to = Math.min(page * pageSize, total)
 
   return (
-    <div className={cn('flex items-center justify-between gap-3 border-t px-4 py-3 flex-wrap', className)}>
+    <div className={cn('flex items-center justify-between gap-3 border-t border-border/70 bg-muted/20 px-5 py-3.5 flex-wrap', className)}>
       <p className="text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{from.toLocaleString()}–{to.toLocaleString()}</span>{' '}
         of <span className="font-medium text-foreground">{total.toLocaleString()}</span>
@@ -45,7 +45,7 @@ export function TablePagination({ page, pageSize, total, onPageChange, pageSizeO
           <label className="flex items-center gap-2 text-xs text-muted-foreground mr-2">
             Rows per page
             <select aria-label="Rows per page" value={pageSize} onChange={e => onPageSizeChange(Number(e.target.value))}
-              className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground">
+              className="h-9 rounded-lg border border-input bg-card px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20">
               {pageSizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
             </select>
           </label>

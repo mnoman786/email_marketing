@@ -48,8 +48,8 @@ function VerifyEmailInner() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-8 bg-muted/30">
-      <div className="w-full max-w-md bg-card border rounded-2xl p-8 shadow-sm text-center">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-[radial-gradient(circle_at_75%_10%,rgba(128,95,245,.14),transparent_45%),#f7f6fc] dark:bg-background">
+      <div className="w-full max-w-md bg-card border border-border/80 rounded-[1.75rem] p-8 sm:p-10 shadow-[0_25px_70px_-40px_rgba(42,29,114,0.35)] text-center">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm">
             <Zap className="w-5 h-5 text-primary-foreground" />

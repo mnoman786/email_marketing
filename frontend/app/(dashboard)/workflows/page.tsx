@@ -53,8 +53,8 @@ export default function WorkflowsPage() {
   })
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="workspace-page space-y-6">
+      <div className="page-intro flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Workflows</h1>
           <p className="text-sm text-muted-foreground">Build automations on a visual canvas — triggers, conditions, and actions</p>

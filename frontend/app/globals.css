@@ -395,3 +395,101 @@ h1 { font-weight: 750; }
 @media (max-width: 640px) {
   .app-main > div { padding: 1rem; }
 }
+
+/* Shared inner pages */
+.workspace-page { padding: clamp(1rem, 2.2vw, 2rem); max-width: 1720px; margin-inline: auto; }
+.page-intro { position: relative; overflow: hidden; isolation: isolate; }
+.workspace-page .rounded-xl.border.bg-card {
+  border-radius: 1.15rem;
+  border-color: hsl(var(--border) / .8);
+  box-shadow: 0 4px 24px -16px rgba(27, 24, 70, .22);
+}
+.workspace-page > .flex.gap-3.flex-wrap:not(.page-intro),
+.workspace-page > .flex.items-center.gap-3.flex-wrap:not(.page-intro) {
+  padding: .5rem;
+  border: 1px solid hsl(var(--border) / .75);
+  border-radius: 1rem;
+  background: hsl(var(--card) / .82);
+}
+.workspace-page .table-row-hover:hover { background: hsl(var(--primary) / .06); }
+.campaign-builder { background: radial-gradient(circle at 95% 0%, rgba(111, 79, 232, .08), transparent 35%), hsl(var(--background)); }
+.campaign-builder .rounded-xl.border.bg-card { border-radius: 1.25rem; box-shadow: 0 8px 28px -20px rgba(29, 22, 86, .3); }
+@media (max-width: 640px) {
+  .workspace-page { padding: 1rem; }
+  .page-intro { padding: 1.25rem; gap: 1rem; }
+  .page-intro > div:last-child { flex-wrap: wrap; }
+}
+
+/* Inner-page hero: same visual language as the dashboard opening. */
+.workspace-page .page-intro {
+  display: flex;
+  align-items: center;
+  min-height: 178px;
+  padding: 2rem clamp(1.5rem, 3vw, 2.75rem);
+  border: 0;
+  border-radius: 1.75rem;
+  color: #fff;
+  background-color: #211a52;
+  background-image: radial-gradient(circle at 78% -45%, rgba(154, 115, 255, .68), transparent 38%),
+                    radial-gradient(circle at 8% 110%, rgba(50, 102, 193, .4), transparent 38%),
+                    linear-gradient(110deg, #171438, #28205d 72%, #3d2a8e);
+  box-shadow: 0 24px 45px -28px rgba(30, 19, 98, .8);
+}
+.workspace-page .page-intro::before {
+  content: "";
+  position: absolute;
+  top: -95px;
+  right: 7%;
+  width: 290px;
+  height: 290px;
+  border-radius: 52px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .035);
+  transform: rotate(32deg);
+}
+.workspace-page .page-intro::after {
+  content: "";
+  position: absolute;
+  right: 20%;
+  bottom: -95px;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.workspace-page .page-intro > * { position: relative; z-index: 1; }
+.workspace-page .page-intro h1 { color: #fff; font-size: clamp(1.85rem, 3vw, 2.5rem); line-height: 1.12; }
+.workspace-page .page-intro p { color: #d8d4f2; font-size: .9rem; max-width: 40rem; margin-top: .65rem; }
+.workspace-page .page-intro .bg-primary { background: #fff; color: #241858; box-shadow: 0 12px 24px -13px rgba(0,0,0,.5); }
+.workspace-page .page-intro .bg-primary:hover { background: #f1edff; }
+.workspace-page .page-intro .border-input { border-color: rgba(255,255,255,.26); background: rgba(255,255,255,.1); color: #fff; }
+.workspace-page .page-intro .border-input:hover { background: rgba(255,255,255,.2); }
+.workspace-page .page-intro .border-input svg { color: #fff; }
+.workspace-page .page-intro .text-muted-foreground { color: #d8d4f2; }
+@media (max-width: 640px) {
+  .workspace-page .page-intro { align-items: flex-start; min-height: 176px; padding: 1.5rem; }
+  .workspace-page .page-intro::before { right: -135px; }
+  .workspace-page .page-intro h1 { font-size: 1.85rem; }
+}
+.empty-spotlight {
+  position: relative;
+  isolation: isolate;
+  background-image: radial-gradient(circle at center, rgba(116, 84, 237, .09), transparent 45%),
+                    radial-gradient(rgba(100, 84, 170, .12) .7px, transparent .7px);
+  background-size: auto, 20px 20px;
+}
+.empty-spotlight > * { position: relative; z-index: 1; }
+.dark .empty-spotlight {
+  background-image: radial-gradient(circle at center, rgba(116, 84, 237, .13), transparent 48%),
+                    radial-gradient(rgba(174, 155, 255, .11) .7px, transparent .7px);
+}
+.app-topbar {
+  background: radial-gradient(circle at 70% -180%, rgba(137, 95, 255, .3), transparent 55%), #17142f;
+}
+.app-topbar .text-muted-foreground { color: #aaa8c4; }
+.app-topbar .text-muted-foreground:hover { color: #fff; }
+.app-topbar .border-input { border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: #fff; }
+.app-topbar .border-input:hover { background: rgba(255,255,255,.16); }
+.app-topbar button:hover { background-color: rgba(255,255,255,.1); }
+.app-topbar .bg-popover { color: hsl(var(--popover-foreground)); }
+.app-topbar .bg-popover .text-muted-foreground { color: hsl(var(--muted-foreground)); }

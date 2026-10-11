@@ -35,7 +35,7 @@ export function Topbar({ title, onMenuClick }: TopbarProps) {
     : '?'
 
   return (
-    <header className="flex items-center justify-between min-h-19 px-4 sm:px-7 border-b border-border/70 bg-card/85 backdrop-blur-xl shrink-0 z-20">
+    <header className="app-topbar flex items-center justify-between min-h-19 px-4 sm:px-7 border-b border-white/10 bg-[#17142f] text-white shrink-0 z-20">
       <div className="flex items-center gap-3 min-w-0">
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open navigation"><Menu size={20} /></Button>
         <div className="min-w-0">

@@ -495,10 +495,10 @@ export function CampaignForm({ campaign, initialName }: Props) {
   })
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="campaign-builder flex flex-col h-full bg-background">
 
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-6 py-3.5 border-b bg-card shrink-0">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b bg-card/90 backdrop-blur shrink-0">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/campaigns')} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft size={16} />

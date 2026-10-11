@@ -78,21 +78,21 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
+    <div className="workspace-page space-y-6">
+      <div className="page-intro">
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted-foreground">Manage your account, security and workspace preferences</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 items-start max-w-7xl">
         {/* Tab nav */}
-        <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible rounded-xl border bg-card p-2 shadow-sm">
+        <nav className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible rounded-2xl border border-border/75 bg-card p-2.5 shadow-[0_8px_28px_-20px_rgba(35,25,95,.36)]">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={cn(
-                'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap shrink-0',
+                'flex items-center gap-2.5 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap shrink-0',
                 tab === t.key
                   ? 'bg-gradient-to-r from-primary to-purple-600 text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'

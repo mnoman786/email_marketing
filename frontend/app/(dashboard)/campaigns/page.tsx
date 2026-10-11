@@ -97,8 +97,8 @@ export default function CampaignsPage() {
   )
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="workspace-page space-y-6">
+      <div className="page-intro flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Campaigns</h1>
           <p className="text-sm text-muted-foreground">Single emails or multi-step drip campaigns for cold outreach</p>
@@ -118,9 +118,10 @@ export default function CampaignsPage() {
             { label: 'Click rate', value: `${pct(totals.clicked, totals.sent)}%`, sub: totals.clicked.toLocaleString(), tone: 'text-blue-600' },
             { label: 'Reply rate', value: `${pct(totals.replied, totals.sent)}%`, sub: totals.replied.toLocaleString(), tone: 'text-green-600' },
           ].map(s => (
-            <div key={s.label} className="rounded-xl border bg-card p-4">
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-              <p className={cn('text-2xl font-bold mt-1 tabular-nums', s.tone)}>{s.value}</p>
+            <div key={s.label} className="group relative overflow-hidden rounded-2xl border border-border/75 bg-card p-4 sm:p-5 shadow-[0_8px_28px_-20px_rgba(35,25,95,.36)] transition-transform hover:-translate-y-0.5">
+              <span className="absolute right-0 top-0 h-1 w-16 rounded-bl-full bg-primary/60" />
+              <p className="text-xs font-semibold uppercase tracking-[.1em] text-muted-foreground">{s.label}</p>
+              <p className={cn('text-2xl sm:text-3xl font-bold mt-2 tabular-nums', s.tone)}>{s.value}</p>
               {s.sub !== undefined && <p className="text-xs text-muted-foreground tabular-nums">{s.sub}</p>}
             </div>
           ))}

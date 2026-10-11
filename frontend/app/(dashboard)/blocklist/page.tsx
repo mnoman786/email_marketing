@@ -64,8 +64,8 @@ export default function SuppressionsPage() {
   const items = data?.items || []
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
+    <div className="workspace-page space-y-6">
+      <div className="page-intro">
         <h1 className="text-2xl font-bold flex items-center gap-2"><ShieldBan size={22} /> Suppression List</h1>
         <p className="text-sm text-muted-foreground">
           Emails here are never sent to by any campaign or sequence — even if re-imported. Unsubscribes and bounces land here automatically.

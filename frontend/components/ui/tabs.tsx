@@ -20,7 +20,7 @@ interface TabsProps<K extends string> {
 /** Underlined tab bar shared across campaign pages — dumb/controlled, no internal state. */
 export function Tabs<K extends string>({ tabs, value, onChange, className }: TabsProps<K>) {
   return (
-    <div className={cn('flex items-center gap-1', className)}>
+    <div className={cn('flex items-center gap-1.5 overflow-x-auto', className)}>
       {tabs.map(t => {
         const active = value === t.key
         return (
@@ -29,8 +29,8 @@ export function Tabs<K extends string>({ tabs, value, onChange, className }: Tab
             type="button"
             onClick={() => onChange(t.key)}
             className={cn(
-              'relative flex items-center gap-2 px-3 py-3.5 text-sm font-medium transition-colors',
-              active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              'relative flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3.5 text-sm font-semibold transition-colors',
+              active ? 'bg-primary/7 text-primary' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             )}
           >
             {t.icon && <t.icon size={14} />}
@@ -43,7 +43,7 @@ export function Tabs<K extends string>({ tabs, value, onChange, className }: Tab
             )}
             {t.dotClassName && <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', t.dotClassName)} />}
             {active && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />
+              <span className="absolute bottom-0 left-1 right-1 h-0.75 bg-primary rounded-t-full" />
             )}
           </button>
         )

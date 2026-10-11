@@ -73,8 +73,8 @@ function AnalyticsContent() {
     setSelectedFailed(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="workspace-page space-y-6">
+      <div className="page-intro flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Send Logs & Analytics</h1>
           <p className="text-sm text-muted-foreground">Track email delivery performance across all campaigns</p>
