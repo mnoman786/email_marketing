@@ -19,8 +19,8 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
       <select
         ref={ref}
         className={cn(
-          'h-9 w-full appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-sm shadow-sm',
-          'transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          'h-10 w-full appearance-none rounded-xl border border-input bg-card pl-3 pr-8 text-sm shadow-sm',
+          'transition-all hover:border-primary/30 focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-3 focus-visible:ring-primary/10',
           'disabled:cursor-not-allowed disabled:opacity-50',
           className
         )}

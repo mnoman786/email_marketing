@@ -52,7 +52,7 @@ const navGroups = [
   },
 ]
 
-export function Sidebar() {
+export function Sidebar({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -95,23 +95,23 @@ export function Sidebar() {
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
   const renderItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: typeof LayoutDashboard }) => (
-    <Link key={href} href={href}>
+    <Link key={href} href={href} onClick={onNavigate}>
       <div
         className={cn(
           'sidebar-item',
           isActive(href) && 'active',
-          collapsed && 'justify-center px-0'
+          collapsed && !mobile && 'justify-center px-0'
         )}
-        title={collapsed ? label : undefined}
+        title={collapsed && !mobile ? label : undefined}
       >
         <Icon className="w-4.5 h-4.5 shrink-0" size={18} />
-        {!collapsed && <span className="flex-1">{label}</span>}
+        {(!collapsed || mobile) && <span className="flex-1">{label}</span>}
         {href === '/unibox' && unreadCount > 0 && (
           <span className={cn(
             'flex items-center justify-center text-[10px] font-semibold rounded-full bg-primary text-primary-foreground',
-            collapsed ? 'absolute top-1 right-1 w-2 h-2' : 'min-w-4.5 h-4.5 px-1'
+            collapsed && !mobile ? 'absolute top-1 right-1 w-2 h-2' : 'min-w-4.5 h-4.5 px-1'
           )}>
-            {!collapsed && (unreadCount > 99 ? '99+' : unreadCount)}
+            {(!collapsed || mobile) && (unreadCount > 99 ? '99+' : unreadCount)}
           </span>
         )}
       </div>
@@ -122,25 +122,25 @@ export function Sidebar() {
     <aside
       className={cn(
         'sidebar-rail relative flex flex-col h-screen transition-all duration-300 shrink-0',
-        collapsed ? 'w-16' : 'w-60'
+        mobile ? 'w-70' : collapsed ? 'w-18' : 'w-64'
       )}
     >
       {/* Logo */}
-      <div className={cn('sidebar-border flex items-center h-16 border-b px-4', collapsed ? 'justify-center' : 'gap-3')}>
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary shadow-sm shrink-0">
-          <Zap className="w-4 h-4 text-primary-foreground" />
+      <div className={cn('sidebar-border flex items-center h-19 border-b px-5', collapsed && !mobile ? 'justify-center' : 'gap-3')}>
+        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary shadow-[0_8px_20px_-5px_rgba(124,93,255,0.8)] shrink-0">
+          <Zap className="w-5 h-5 text-white" />
         </div>
-        {!collapsed && (
-          <span className="text-lg tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>MailFlow</span>
+        {(!collapsed || mobile) && (
+          <span className="text-xl font-bold tracking-tight">Mail<span className="text-violet-300">Flow</span></span>
         )}
       </div>
 
       {/* Main nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+      <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-1">
         {topItems.map(renderItem)}
         {navGroups.map(group => (
           <div key={group.label}>
-            {!collapsed && <div className="sidebar-group-label">{group.label}</div>}
+            {(!collapsed || mobile) && <div className="sidebar-group-label">{group.label}</div>}
             {group.items.map(renderItem)}
           </div>
         ))}
@@ -161,12 +161,12 @@ export function Sidebar() {
       )}
 
       {/* Collapse toggle */}
-      <button
+      {!mobile && <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 flex items-center justify-center w-6 h-6 rounded-full border bg-card text-foreground shadow-sm hover:bg-accent transition-colors z-10"
+        className="absolute -right-3 top-24 flex items-center justify-center w-6 h-6 rounded-full border bg-card text-foreground shadow-sm hover:bg-accent transition-colors z-10"
       >
         {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
+      </button>}
     </aside>
   )
 }

@@ -347,3 +347,51 @@ button:disabled,
 /* Remove border radius on editor panels for flat look */
 .gjs-pn-panel { border-radius: 0 !important; }
 
+
+/* MailFlow workspace visual system */
+:root {
+  --font-display: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sidebar-bg: #111029;
+  --sidebar-fg: #f7f5ff;
+  --sidebar-muted: #a6a4bd;
+  --sidebar-hover-bg: rgba(164, 145, 255, 0.12);
+  --sidebar-active-bg: linear-gradient(100deg, rgba(114, 77, 240, 0.38), rgba(114, 77, 240, 0.12));
+  --sidebar-border: rgba(212, 207, 255, 0.12);
+}
+.dark {
+  --sidebar-bg: #0b0c1d;
+  --sidebar-fg: #f7f5ff;
+  --sidebar-muted: #a6a4bd;
+  --sidebar-hover-bg: rgba(164, 145, 255, 0.12);
+  --sidebar-active-bg: linear-gradient(100deg, rgba(114, 77, 240, 0.38), rgba(114, 77, 240, 0.12));
+  --sidebar-border: rgba(212, 207, 255, 0.12);
+}
+body { font-family: var(--font-display); letter-spacing: -0.012em; }
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.035em; }
+h1 { font-weight: 750; }
+::selection { background: #dcd2ff; color: #291669; }
+.app-main {
+  background: radial-gradient(ellipse 70% 42% at 100% -10%, rgba(115, 85, 245, .09), transparent),
+              radial-gradient(ellipse 55% 40% at 0% 100%, rgba(34, 175, 210, .05), transparent),
+              hsl(var(--background));
+}
+.dark .app-main {
+  background: radial-gradient(ellipse 70% 42% at 100% -10%, rgba(115, 85, 245, .14), transparent), hsl(var(--background));
+}
+.sidebar-rail {
+  background: radial-gradient(circle at 0% 0%, rgba(110, 75, 240, .2), transparent 40%), var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+}
+.sidebar-group-label { padding: 1.2rem .8rem .4rem; letter-spacing: .16em; font-size: .64rem; }
+.sidebar-item { min-height: 2.6rem; border-radius: .75rem; padding: .65rem .8rem; font-weight: 550; }
+.sidebar-item:hover { transform: translateX(2px); }
+.sidebar-item.active {
+  background: var(--sidebar-active-bg);
+  color: #fff;
+  box-shadow: inset 3px 0 0 #a996ff, 0 8px 18px -14px #8f6bff;
+}
+.card-hover:hover { transform: translateY(-2px); box-shadow: 0 16px 36px -22px rgba(41, 35, 91, .35); }
+.badge { font-weight: 650; letter-spacing: .01em; }
+@media (max-width: 640px) {
+  .app-main > div { padding: 1rem; }
+}

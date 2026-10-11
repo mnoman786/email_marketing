@@ -1,17 +1,20 @@
 'use client'
 import { useTheme } from '@/components/providers/theme-provider'
-import { Moon, Sun, Bell, ChevronDown, LogOut, Settings } from 'lucide-react'
+import { Moon, Sun, ChevronDown, LogOut, Settings, Menu, Plus, Inbox } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { usePathname } from 'next/navigation'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 
 interface TopbarProps {
   title?: string
+  onMenuClick?: () => void
 }
 
-export function Topbar({ title }: TopbarProps) {
+export function Topbar({ title, onMenuClick }: TopbarProps) {
+  const pathname = usePathname()
+  const section = title || ({ dashboard: 'Overview', unibox: 'Inbox', leads: 'Leads', lists: 'Lists', tags: 'Tags', campaigns: 'Campaigns', workflows: 'Workflows', analytics: 'Analytics', accounts: 'Accounts', settings: 'Settings', validation: 'Email Validation', blocklist: 'Blocklist', 'lead-finder': 'Lead Finder' } as Record<string, string>)[pathname.split('/')[1]] || 'Workspace'
   const { resolvedTheme, setTheme } = useTheme()
   const { user, logout } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -32,10 +35,17 @@ export function Topbar({ title }: TopbarProps) {
     : '?'
 
   return (
-    <header className="flex items-center justify-between h-16 px-6 border-b bg-card/50 backdrop-blur shrink-0">
-      {title && <h1 className="text-lg font-semibold">{title}</h1>}
+    <header className="flex items-center justify-between min-h-19 px-4 sm:px-7 border-b border-border/70 bg-card/85 backdrop-blur-xl shrink-0 z-20">
+      <div className="flex items-center gap-3 min-w-0">
+        <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open navigation"><Menu size={20} /></Button>
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground">MailFlow / Workspace</p>
+          <p className="text-base font-bold tracking-tight truncate">{section}</p>
+        </div>
+      </div>
 
       <div className="flex items-center gap-3 ml-auto">
+        <Button variant="outline" size="sm" asChild className="hidden sm:inline-flex"><Link href="/campaigns/new"><Plus size={15} /> New campaign</Link></Button>
         {/* Theme toggle */}
         <Button
           variant="ghost"
@@ -47,11 +57,7 @@ export function Topbar({ title }: TopbarProps) {
           <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </Button>
 
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="text-muted-foreground relative">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-primary rounded-full" />
-        </Button>
+        <Button variant="ghost" size="icon" className="text-muted-foreground" asChild><Link href="/unibox" aria-label="Open inbox"><Inbox className="h-4 w-4" /></Link></Button>
 
         {/* User dropdown */}
         <div className="relative" ref={dropdownRef}>

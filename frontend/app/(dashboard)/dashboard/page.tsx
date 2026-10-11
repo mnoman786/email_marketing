@@ -10,7 +10,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts'
-import { Users, Megaphone, Mail, Server, TrendingUp, Laptop, Workflow } from 'lucide-react'
+import { Users, Megaphone, Mail, Server, TrendingUp, Laptop, Workflow, ArrowUpRight, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 const COLORS = ['#573cdd', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#6b7280']
@@ -74,12 +74,18 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Overview of your email marketing performance
-        </p>
+      <div className="relative overflow-hidden rounded-[1.75rem] bg-[#211a52] px-6 py-8 sm:px-10 sm:py-10 text-white shadow-[0_22px_50px_-25px_rgba(40,25,110,0.65)]">
+        <div className="absolute -right-14 -top-28 h-80 w-80 rounded-full bg-violet-500/30 blur-3xl" />
+        <div className="absolute right-10 bottom-0 h-36 w-36 rotate-45 rounded-[2rem] border border-white/15 bg-white/5" />
+        <div className="relative z-10 max-w-xl">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-violet-100"><Sparkles size={13} /> Your command center</span>
+          <h1 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight">Every conversation starts here.</h1>
+          <p className="mt-3 text-sm sm:text-base text-violet-100/80">Track your outreach, spot what is working, and keep your next campaign moving.</p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/campaigns/new" className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#281b66] shadow-lg transition hover:bg-violet-50">Create campaign <ArrowUpRight size={16} /></Link>
+            <Link href="/leads" className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20">View leads</Link>
+          </div>
+        </div>
       </div>
 
       {/* KPI Cards */}

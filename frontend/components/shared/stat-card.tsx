@@ -20,7 +20,8 @@ const gradientMap = {
 
 export function StatCard({ title, value, subtitle, icon: Icon, gradient, trend, className }: StatCardProps) {
   return (
-    <div className={cn('rounded-xl p-5 text-white shadow-md', gradientMap[gradient], className)}>
+    <div className={cn('relative overflow-hidden rounded-2xl p-5 sm:p-6 text-white shadow-[0_16px_32px_-20px_rgba(38,27,108,0.8)]', gradientMap[gradient], className)}>
+      <div className="absolute -right-8 -bottom-15 h-34 w-34 rounded-full border border-white/20 bg-white/10" />
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-white/80">{title}</p>

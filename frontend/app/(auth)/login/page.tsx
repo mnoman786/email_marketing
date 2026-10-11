@@ -56,10 +56,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-[#f7f6fc] dark:bg-background">
       {/* Left: form */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-sm">
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
+        <div className="w-full max-w-md rounded-[1.75rem] border border-white/90 bg-white/90 p-7 sm:p-10 shadow-[0_25px_70px_-40px_rgba(42,29,114,0.35)] dark:border-border dark:bg-card">
           <div className="flex items-center gap-2 mb-8">
             <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm">
               <Zap className="w-5 h-5 text-primary-foreground" />
@@ -67,8 +67,8 @@ export default function LoginPage() {
             <span className="font-bold text-xl">MailFlow</span>
           </div>
 
-          <h1 className="text-2xl font-bold mb-1">Welcome back</h1>
-          <p className="text-muted-foreground text-sm mb-8">Sign in to your account</p>
+          <h1 className="text-3xl font-bold mb-1">Welcome back</h1>
+          <p className="text-muted-foreground text-sm mb-8">Sign in to your MailFlow workspace</p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
@@ -87,7 +87,7 @@ export default function LoginPage() {
               </div>
               {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
             </div>
-            <Button type="submit" className="w-full" loading={loading}>
+            <Button type="submit" className="w-full mt-2" size="lg" loading={loading}>
               Sign In
             </Button>
           </form>
@@ -102,12 +102,15 @@ export default function LoginPage() {
       </div>
 
       {/* Right: branding */}
-      <div className="hidden lg:flex flex-1 bg-linear-to-br from-blue-600 to-indigo-700 items-center justify-center p-12">
-        <div className="text-white max-w-sm">
-          <h2 className="text-3xl font-bold mb-4">
-            Send smarter email campaigns
+      <div className="relative hidden lg:flex flex-1 overflow-hidden bg-[#171239] items-center justify-center p-12">
+        <div className="absolute -top-40 -right-40 h-160 w-160 rounded-full bg-violet-600/35 blur-3xl" />
+        <div className="absolute -bottom-48 -left-40 h-140 w-140 rounded-full bg-blue-500/20 blur-3xl" />
+        <div className="relative text-white max-w-lg">
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[.15em] text-violet-200"><Zap size={14} /> Outreach, organized</div>
+          <h2 className="text-5xl leading-[1.12] font-bold mb-5">
+            Better outreach.<br /><span className="text-violet-300">Real connections.</span>
           </h2>
-          <p className="text-blue-100 leading-relaxed">
+          <p className="text-violet-100/75 leading-relaxed">
             MailFlow gives you powerful tools to manage contacts, run multi-step drip campaigns, and deliver emails that actually land in the inbox.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-4">
@@ -117,7 +120,7 @@ export default function LoginPage() {
               { label: 'Inbox', desc: 'Manage replies in one place' },
               { label: 'Contacts', desc: 'Lists and bulk import' },
             ].map(f => (
-              <div key={f.label} className="bg-white/10 rounded-xl p-3">
+              <div key={f.label} className="border border-white/10 bg-white/8 backdrop-blur rounded-2xl p-4">
                 <p className="font-semibold text-sm">{f.label}</p>
                 <p className="text-blue-100 text-xs mt-0.5">{f.desc}</p>
               </div>
