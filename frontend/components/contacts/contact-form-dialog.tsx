@@ -200,11 +200,11 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className={cn(
-        'w-[calc(100vw-2rem)] max-h-[92vh] p-0 gap-0 overflow-hidden transition-[max-width] duration-200',
+        'flex w-[calc(100vw-2rem)] max-h-[92vh] flex-col p-0 gap-0 overflow-hidden transition-[max-width] duration-200',
         showMoreDetails ? 'max-w-6xl' : 'max-w-2xl'
       )}>
         {/* Header */}
-        <div className="flex items-center gap-4 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-background px-6 py-6 pr-12 sm:px-8">
+        <div className="flex shrink-0 items-center gap-4 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-background px-6 py-6 pr-12 sm:px-8">
           <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary text-primary-foreground shadow-sm shrink-0">
             <UserRound size={22} />
           </div>
@@ -216,9 +216,9 @@ export function ContactFormDialog({ open, onClose, contact, onSaved }: Props) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))} className="flex min-h-0 flex-col">
+        <form onSubmit={handleSubmit(saveLead, () => setShowMoreDetails(true))} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* Body */}
-          <div className="max-h-[calc(92vh-174px)] space-y-6 overflow-y-auto bg-muted/20 px-5 py-6 sm:px-8">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-muted/20 px-5 py-6 sm:px-8">
             <section className="rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
               <div className="mb-5 flex items-center gap-3 border-b pb-4">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><UserRound size={18} /></span>
